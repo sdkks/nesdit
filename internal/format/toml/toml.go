@@ -34,6 +34,19 @@ func Decode(r io.Reader) (*omap.Doc, error) {
 	return decodeBytes(data)
 }
 
+// DecodeValue reads a single TOML document and returns the result as an
+// omap.Value. Per the TOML spec the root MUST be a table — unlike JSON and
+// YAML, TOML does not permit sequence/scalar tops (BUG-0001 preserves this
+// constraint). DecodeValue therefore always returns a KindMap value when
+// successful; non-table tops are rejected by the underlying parser.
+func DecodeValue(r io.Reader) (omap.Value, error) {
+	d, err := Decode(r)
+	if err != nil {
+		return omap.Value{}, err
+	}
+	return omap.MapValue(d), nil
+}
+
 // Encode writes d as a TOML document to w using the key insertion order of
 // every *omap.Doc it contains. Returns *omap.EncodeError when a value
 // cannot be represented in TOML (null, NaN, +/-Inf).
@@ -42,6 +55,39 @@ func Encode(w io.Writer, d *omap.Doc) error {
 		return err
 	}
 	return newTOMLWriter(w).writeDoc(d)
+}
+
+// EncodeValue writes any omap.Value as a TOML document. Because TOML spec
+// requires a top-level table, non-map roots (sequences, scalars, null) are
+// rejected with a clear error — this preserves the TOML constraint while
+// matching the format-neutral API added for BUG-0001 on JSON/YAML.
+func EncodeValue(w io.Writer, v omap.Value) error {
+	if v.Kind != omap.KindMap {
+		return fmt.Errorf("toml: top-level value must be a table, got %s (TOML spec does not permit top-level %s)", kindName(v.Kind), kindName(v.Kind))
+	}
+	if v.Map == nil {
+		return fmt.Errorf("toml: top-level table is nil")
+	}
+	return Encode(w, v.Map)
+}
+
+func kindName(k omap.Kind) string {
+	switch k {
+	case omap.KindNull:
+		return "null"
+	case omap.KindBool:
+		return "bool"
+	case omap.KindNum:
+		return "number"
+	case omap.KindStr:
+		return "string"
+	case omap.KindSeq:
+		return "array"
+	case omap.KindMap:
+		return "table"
+	default:
+		return "unknown"
+	}
 }
 
 // ----------------------------- decode -----------------------------

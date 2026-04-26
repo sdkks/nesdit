@@ -54,6 +54,26 @@ func valueToAny(v Value) any {
 	return nil
 }
 
+// ValueToAny converts any omap.Value into the `any`-shaped representation
+// go-jq accepts. Mirrors (*Doc).ToAny but handles non-map tops: arrays become
+// []any, scalars stay as their Go equivalents, and maps delegate to Doc.ToAny.
+//
+// BUG-0001: JSON (RFC 8259) and YAML (1.2) permit any value at the document
+// root, not just maps. This function is the map-agnostic counterpart to
+// ToAny so the CLI pipeline can carry a top-level array or scalar from
+// decode through query to encode.
+func ValueToAny(v Value) any { return valueToAny(v) }
+
+// ValueFromAny converts a go-jq result rooted at any value type back into
+// an omap.Value. It uses prev (the pre-query snapshot at the same path) to
+// preserve key insertion order in nested maps (same reconciliation rules as
+// FromAny — see its doc for DR-007 positional seq reconciliation). Pass the
+// zero Value when no prev exists.
+//
+// BUG-0001: the map-rooted FromAny remains for callers that specifically
+// want *Doc; this is the top-level-agnostic version.
+func ValueFromAny(v any, prev Value) Value { return anyToValue(v, prev) }
+
 // FromAny converts a go-jq result (map[string]any, []any, json.Number,
 // string, bool, nil, and the numeric Go types go-jq produces internally
 // — int, float64, *big.Int) back into an *omap.Doc. Key order is

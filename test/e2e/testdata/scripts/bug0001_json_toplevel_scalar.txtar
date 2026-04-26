@@ -1,0 +1,28 @@
+# bug0001_json_toplevel_scalar.txtar — regression for BUG-0001.
+#
+# Top-level JSON scalars (string, number, bool, null) must round-trip.
+
+nesdit-idempotent --query '.' str.json
+nesdit --query '.' str.json
+stdout '^"hello"$'
+
+nesdit-idempotent --query '.' num.json
+nesdit --query '.' num.json
+stdout '^42$'
+
+nesdit-idempotent --query '.' bool.json
+nesdit --query '.' bool.json
+stdout '^true$'
+
+nesdit-idempotent --query '.' null.json
+nesdit --query '.' null.json
+stdout '^null$'
+
+-- str.json --
+"hello"
+-- num.json --
+42
+-- bool.json --
+true
+-- null.json --
+null

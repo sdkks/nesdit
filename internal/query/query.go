@@ -133,6 +133,63 @@ func RunWithArgs(ctx context.Context, doc *omap.Doc, query string, args []Arg) (
 	return omap.FromAny(m, doc), nil
 }
 
+// RunValue is the top-level-agnostic counterpart to Run: it accepts any
+// omap.Value as input (map, seq, scalar) and returns the first output value
+// reconciled against the pre-query snapshot using ValueFromAny. Multi-output
+// queries still produce *Error{Op:"result"}; the top-level-object
+// restriction that Run enforces is deliberately relaxed here because RFC
+// 8259 and YAML 1.2 permit any top-level value (BUG-0001 fix).
+func RunValue(ctx context.Context, v omap.Value, query string) (omap.Value, error) {
+	return RunValueWithArgs(ctx, v, query, nil)
+}
+
+// RunValueWithArgs is RunValue plus --arg/--argjson variable bindings.
+// Same semantics as RunWithArgs except the input and output are omap.Value
+// rather than *omap.Doc. See RunWithArgs for the full contract.
+func RunValueWithArgs(ctx context.Context, v omap.Value, query string, args []Arg) (omap.Value, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	parsed, err := gojq.Parse(query)
+	if err != nil {
+		return omap.Value{}, &Error{Op: "parse", Err: err}
+	}
+
+	varNames := make([]string, 0, len(args))
+	varValues := make([]any, 0, len(args))
+	for _, a := range args {
+		varNames = append(varNames, "$"+a.Name)
+		bv, err := bindArg(a)
+		if err != nil {
+			return omap.Value{}, &Error{Op: "parse", Err: err}
+		}
+		varValues = append(varValues, bv)
+	}
+
+	var compileOpts []gojq.CompilerOption
+	if len(varNames) > 0 {
+		compileOpts = append(compileOpts, gojq.WithVariables(varNames))
+	}
+	code, err := gojq.Compile(parsed, compileOpts...)
+	if err != nil {
+		return omap.Value{}, &Error{Op: "compile", Err: err}
+	}
+
+	in := omap.ValueToAny(v)
+	iter := code.RunWithContext(ctx, in, varValues...)
+	first, ok := iter.Next()
+	if !ok {
+		return omap.Value{}, &Error{Op: "result", Err: errors.New("query produced no output")}
+	}
+	if runErr, isErr := first.(error); isErr {
+		return omap.Value{}, &Error{Op: "runtime", Err: runErr}
+	}
+	if _, more := iter.Next(); more {
+		return omap.Value{}, &Error{Op: "result", Err: errors.New("multi-output queries are not supported in v1; query produced 2+ values (single-output only)")}
+	}
+	return omap.ValueFromAny(first, v), nil
+}
+
 // bindArg converts an Arg to the go-jq-facing value. For --arg (JSON
 // false), the value is the literal string. For --argjson, the value
 // is the decoded JSON with UseNumber() so integer precision survives.

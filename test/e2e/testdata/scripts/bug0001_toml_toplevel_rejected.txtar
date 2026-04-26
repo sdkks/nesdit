@@ -1,0 +1,13 @@
+# bug0001_toml_toplevel_rejected.txtar — confirm TOML's top-level-table
+# constraint is preserved. TOML spec requires a table at root — this is
+# the one format where a non-table top-level is invalid and the CLI must
+# still reject it with a clear error.
+
+# TOML with a bare value at the top is not valid TOML — the parser should
+# reject it. We assert exit 1 with a parse error on stderr.
+
+! nesdit --query '.' bad.toml
+stderr '^nesdit: error: '
+
+-- bad.toml --
+[1, 2, 3]

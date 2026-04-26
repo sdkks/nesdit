@@ -1,0 +1,32 @@
+# bug0001_json_toplevel_array.txtar — regression for BUG-0001.
+#
+# RFC 8259 allows any JSON value at the top level. Prior to the fix, nesdit
+# rejected arrays/scalars at the root with parse.error. This script confirms
+# that arrays round-trip with no query and are queryable.
+
+# Empty array — identity round-trip preserves byte shape.
+nesdit-idempotent --query '.' empty.json
+nesdit --query '.' empty.json
+stdout '^\[\]$'
+! stderr .
+
+# Array of numbers — identity round-trip.
+nesdit-idempotent --query '.' nums.json
+nesdit --query '.' nums.json
+stdout '^\[1,2,3\]$'
+
+# Index into top-level array.
+nesdit --query '.[0]' nums.json
+stdout '^1$'
+
+# Array of objects — key order within each element preserved on identity.
+nesdit-idempotent --query '.' objs.json
+nesdit --query '.' objs.json
+stdout '^\[\{"name":"a","id":1\},\{"name":"b","id":2\}\]$'
+
+-- empty.json --
+[]
+-- nums.json --
+[1,2,3]
+-- objs.json --
+[{"name":"a","id":1},{"name":"b","id":2}]

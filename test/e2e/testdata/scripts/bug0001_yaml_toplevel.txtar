@@ -1,0 +1,21 @@
+# bug0001_yaml_toplevel.txtar — regression for BUG-0001.
+#
+# YAML 1.2 allows any node (mapping, sequence, scalar) at the top level.
+# These cases confirm the YAML decoder no longer enforces mapping-only.
+
+# Top-level sequence.
+nesdit-idempotent --query '.' seq.yaml
+nesdit --query '.' seq.yaml
+stdout '^- 1$'
+
+# Top-level scalar.
+nesdit-idempotent --query '.' scalar.yaml
+nesdit --query '.' scalar.yaml
+stdout '^hello$'
+
+-- seq.yaml --
+- 1
+- 2
+- 3
+-- scalar.yaml --
+hello

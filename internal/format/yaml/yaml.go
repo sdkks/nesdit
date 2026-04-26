@@ -27,6 +27,10 @@ import (
 
 // Decode reads a single YAML document from r and returns its top-level
 // mapping as *omap.Doc.
+//
+// Deprecated for CLI use: prefer DecodeValue, which accepts any YAML 1.2
+// top-level node (mapping, sequence, or scalar). This function is retained
+// for tests and callers that specifically want a map root.
 func Decode(r io.Reader) (*omap.Doc, error) {
 	var root yaml.Node
 	dec := yaml.NewDecoder(r)
@@ -49,16 +53,44 @@ func Decode(r io.Reader) (*omap.Doc, error) {
 	return nodeToMap(content)
 }
 
+// DecodeValue reads a single YAML document from r and returns its top-level
+// node as an omap.Value. YAML 1.2 permits any node (mapping, sequence, or
+// scalar) at the root. This is the BUG-0001 fix entry point the CLI uses.
+func DecodeValue(r io.Reader) (omap.Value, error) {
+	var root yaml.Node
+	dec := yaml.NewDecoder(r)
+	if err := dec.Decode(&root); err != nil {
+		return omap.Value{}, fmt.Errorf("yaml: %w", err)
+	}
+	var content *yaml.Node
+	if root.Kind == yaml.DocumentNode {
+		if len(root.Content) != 1 {
+			return omap.Value{}, fmt.Errorf("yaml: document has %d content nodes, want 1", len(root.Content))
+		}
+		content = root.Content[0]
+	} else {
+		content = &root
+	}
+	return nodeToValue(content)
+}
+
 // Encode writes d to w as a single YAML document with key insertion order
 // preserved. Indentation is 2 spaces (yaml.v3's default).
 func Encode(w io.Writer, d *omap.Doc) error {
-	// Walk the doc for NaN/Inf first so the caller gets a path-aware error
+	return EncodeValue(w, omap.MapValue(d))
+}
+
+// EncodeValue writes any omap.Value as a single YAML document. Unlike Encode
+// (which wraps a *Doc), EncodeValue accepts sequence and scalar roots — the
+// BUG-0001 fix entry point for the CLI.
+func EncodeValue(w io.Writer, v omap.Value) error {
+	// Walk the value for NaN/Inf first so the caller gets a path-aware error
 	// before any partial bytes hit the writer.
-	if err := checkYAMLRepresentable(omap.MapValue(d)); err != nil {
+	if err := checkYAMLRepresentable(v); err != nil {
 		return err
 	}
 
-	root := valueToNode(omap.MapValue(d))
+	root := valueToNode(v)
 
 	enc := yaml.NewEncoder(w)
 	enc.SetIndent(2)

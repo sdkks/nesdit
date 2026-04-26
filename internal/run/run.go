@@ -384,20 +384,20 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 		return &emittedError{cause: err}
 	}
 
-	doc, err := decodeFormat(fmtName, data)
+	val, err := decodeFormatValue(fmtName, data)
 	if err != nil {
 		opts.Logger.Error(logx.EventParseError, path, err.Error())
 		return &emittedError{cause: err}
 	}
 
-	out, err := query.RunWithArgs(ctx, doc, queryExpr, args)
+	outVal, err := query.RunValueWithArgs(ctx, val, queryExpr, args)
 	if err != nil {
 		opts.Logger.Error(classifyQueryErr(err), path, err.Error())
 		return &emittedError{cause: err}
 	}
 
 	var buf bytes.Buffer
-	if err := encodeFormat(fmtName, &buf, out); err != nil {
+	if err := encodeFormatValue(fmtName, &buf, outVal); err != nil {
 		// Distinguish cross-format incompatibility (FR-19) from
 		// generic encode failures for better user diagnostics.
 		var encErr *omap.EncodeError
@@ -450,27 +450,32 @@ func detectFormatByExt(path string) string {
 	}
 }
 
-func decodeFormat(format string, data []byte) (*omap.Doc, error) {
+// decodeFormatValue is the top-level-agnostic decoder. BUG-0001: JSON/YAML
+// allow any top-level value; TOML still requires a table (enforced by the
+// TOML decoder itself).
+func decodeFormatValue(format string, data []byte) (omap.Value, error) {
 	switch format {
 	case "json":
-		return jsonfmt.Decode(bytes.NewReader(data))
+		return jsonfmt.DecodeValue(bytes.NewReader(data))
 	case "yaml":
-		return yamlfmt.Decode(bytes.NewReader(data))
+		return yamlfmt.DecodeValue(bytes.NewReader(data))
 	case "toml":
-		return tomlfmt.Decode(bytes.NewReader(data))
+		return tomlfmt.DecodeValue(bytes.NewReader(data))
 	default:
-		return nil, fmt.Errorf("unknown format %q", format)
+		return omap.Value{}, fmt.Errorf("unknown format %q", format)
 	}
 }
 
-func encodeFormat(format string, w io.Writer, d *omap.Doc) error {
+// encodeFormatValue is the top-level-agnostic encoder. The TOML implementation
+// rejects non-map tops with a path-aware error so the TOML spec is preserved.
+func encodeFormatValue(format string, w io.Writer, v omap.Value) error {
 	switch format {
 	case "json":
-		return jsonfmt.Encode(w, d)
+		return jsonfmt.EncodeValue(w, v)
 	case "yaml":
-		return yamlfmt.Encode(w, d)
+		return yamlfmt.EncodeValue(w, v)
 	case "toml":
-		return tomlfmt.Encode(w, d)
+		return tomlfmt.EncodeValue(w, v)
 	default:
 		return fmt.Errorf("unknown format %q", format)
 	}

@@ -21,6 +21,11 @@ import (
 // Decode reads a single JSON document from r and returns its top-level
 // representation as *omap.Doc. The top level MUST be a JSON object; arrays
 // and scalars at the root are rejected with a typed error.
+//
+// Deprecated for CLI use: prefer DecodeValue, which accepts any RFC 8259
+// top-level value (object, array, string, number, boolean, null). This
+// function is retained for tests and callers that specifically want a map
+// root.
 func Decode(r io.Reader) (*omap.Doc, error) {
 	dec := stdjson.NewDecoder(r)
 	dec.UseNumber()
@@ -40,6 +45,26 @@ func Decode(r io.Reader) (*omap.Doc, error) {
 	return d, nil
 }
 
+// DecodeValue reads a single JSON document from r and returns its top-level
+// value. Per RFC 8259 any value is permitted at the root — object, array,
+// string, number, boolean, or null. This is the BUG-0001 fix entry point;
+// the CLI pipeline uses DecodeValue so top-level arrays and scalars round-
+// trip without an artificial object-only constraint.
+func DecodeValue(r io.Reader) (omap.Value, error) {
+	dec := stdjson.NewDecoder(r)
+	dec.UseNumber()
+	v, err := decodeValue(dec)
+	if err != nil {
+		return omap.Value{}, err
+	}
+	// RFC 8259: one value per document. Reject trailing content so callers
+	// get a clear error rather than silently ignoring the tail.
+	if dec.More() {
+		return omap.Value{}, fmt.Errorf("json: unexpected trailing content after top-level value")
+	}
+	return v, nil
+}
+
 // Encode writes d as a JSON object to w, preserving key order. No trailing
 // newline is written; callers add framing (JSONL / single-doc) as needed.
 //
@@ -51,6 +76,20 @@ func Encode(w io.Writer, d *omap.Doc) error {
 		return err
 	}
 	return encodeDoc(w, d)
+}
+
+// EncodeValue writes any omap.Value as a JSON document to w. Unlike Encode
+// (which requires a *Doc / map root), EncodeValue accepts any top-level
+// value — matching RFC 8259. BUG-0001: this is the map-agnostic entry point
+// used by the CLI pipeline.
+//
+// Representability checks (NaN/Inf rejection) run before any bytes are
+// written, consistent with Encode.
+func EncodeValue(w io.Writer, v omap.Value) error {
+	if err := checkJSONRepresentable(v); err != nil {
+		return err
+	}
+	return encodeValue(w, v)
 }
 
 // checkJSONRepresentable walks v and returns an *omap.EncodeError for any
