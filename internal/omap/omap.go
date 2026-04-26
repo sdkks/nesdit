@@ -223,6 +223,10 @@ func (d *Doc) At(i int) (string, Value) {
 // TryAt returns the i-th (key, value) pair in insertion order, with
 // ok=false if i is out of range or d is nil. This is the non-panicking
 // companion to [Doc.At] (TASK-0004).
+//
+// On ok=false, the returned Value is the zero Value and should not be
+// inspected — its Kind is KindNull by zero-initialization, which is
+// indistinguishable from a genuinely stored null.
 func (d *Doc) TryAt(i int) (k string, v Value, ok bool) {
 	if d == nil || i < 0 || i >= len(d.keys) {
 		return "", Value{}, false

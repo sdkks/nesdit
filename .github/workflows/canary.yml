@@ -65,7 +65,15 @@ jobs:
           echo "--- go.mod after bump ---"
           cat go.mod
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v6.5.2
+        # BUG-0002: pin to real v6.5.2 SHA — v6.x is the last action major
+        # that supports golangci-lint v1.x (see release notes). v7.0.0+ is
+        # v2-only and rejects `version: v1.*` at startup. v1.62.x is still
+        # v1 semantics so we stay on the v6 action line in lockstep with
+        # primary CI.
+        # SHA → tag mapping verified via `gh api
+        # repos/golangci/golangci-lint-action/tags` on 2026-04-26.
+        # Release: https://github.com/golangci/golangci-lint-action/releases/tag/v6.5.2
+        uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6.5.2 (supports golangci-lint v1.x)
         with:
           # Newer linter version required for Go 1.24 source builds. The
           # primary CI still pins v1.59.1; see README for rationale.

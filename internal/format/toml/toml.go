@@ -335,7 +335,7 @@ func checkTOMLRepresentable(v omap.Value) *omap.EncodeError {
 	return omap.WalkValue(omap.RootPath(), v, func(p omap.Path, v omap.Value) *omap.EncodeError {
 		switch v.Kind {
 		case omap.KindNull:
-			return &omap.EncodeError{Path: p, Kind: "null", Format: "toml"}
+			return &omap.EncodeError{Path: p, Kind: omap.EncodeKindNull, Format: "toml"}
 		case omap.KindNum:
 			s := v.Num.String()
 			f, err := strconv.ParseFloat(s, 64)
@@ -344,11 +344,11 @@ func checkTOMLRepresentable(v omap.Value) *omap.EncodeError {
 			}
 			switch {
 			case math.IsNaN(f):
-				return &omap.EncodeError{Path: p, Kind: "NaN", Format: "toml"}
+				return &omap.EncodeError{Path: p, Kind: omap.EncodeKindNaN, Format: "toml"}
 			case math.IsInf(f, 1):
-				return &omap.EncodeError{Path: p, Kind: "+Inf", Format: "toml"}
+				return &omap.EncodeError{Path: p, Kind: omap.EncodeKindPosInf, Format: "toml"}
 			case math.IsInf(f, -1):
-				return &omap.EncodeError{Path: p, Kind: "-Inf", Format: "toml"}
+				return &omap.EncodeError{Path: p, Kind: omap.EncodeKindNegInf, Format: "toml"}
 			}
 		}
 		return nil

@@ -131,7 +131,7 @@ func TestEncodeErrorKind_HasTypedConstantsForCurrentKinds(t *testing.T) {
 		{"-Inf", omap.EncodeKindNegInf, "-Inf"},
 	}
 	for _, c := range cases {
-		if c.got != c.want {
+		if string(c.got) != c.want {
 			t.Errorf("%s: constant=%q want %q", c.name, c.got, c.want)
 		}
 	}
@@ -140,8 +140,11 @@ func TestEncodeErrorKind_HasTypedConstantsForCurrentKinds(t *testing.T) {
 func TestEncodeError_UsesTypedConstant(t *testing.T) {
 	t.Parallel()
 	// Build an EncodeError using the typed constant and confirm the field
-	// value compares equal to the constant — this fails until Kind is the
-	// EncodeErrorKind type (not a free-form string).
+	// value compares equal to the constant. Because [omap.EncodeErrorKind]
+	// is a defined string type (not an alias), a raw string literal such
+	// as `Kind: "NaN"` on this struct literal would fail to compile —
+	// that compile-time invariant is what makes the enum the single
+	// source of truth (TASK-0004 rework).
 	e := &omap.EncodeError{
 		Path:   omap.RootPath().MapStep("a"),
 		Kind:   omap.EncodeKindNaN,
@@ -150,10 +153,44 @@ func TestEncodeError_UsesTypedConstant(t *testing.T) {
 	if e.Kind != omap.EncodeKindNaN {
 		t.Fatalf("Kind=%q does not equal EncodeKindNaN=%q", e.Kind, omap.EncodeKindNaN)
 	}
+	// Assignability check: the typed constant goes into the field
+	// without a conversion. A raw `"NaN"` literal would require an
+	// explicit omap.EncodeErrorKind("NaN") — that's the friction this
+	// contract depends on.
+	var k omap.EncodeErrorKind = omap.EncodeKindNaN
+	if k != e.Kind {
+		t.Fatalf("typed constant assignment mismatch: %q vs %q", k, e.Kind)
+	}
 	// Error string still includes the kind's textual form.
 	if got, want := e.Error(), "$.a: NaN is not representable in json"; got != want {
 		t.Fatalf("Error()=%q want %q", got, want)
 	}
+}
+
+// TestDoc_Set_NilReceiver_Panics pins the Set-on-nil asymmetry: Set
+// demands a constructed *Doc and panics otherwise. Paired with
+// TestDoc_Delete_NilReceiver_NoOp (below), this documents the
+// intentional split — writes require a live Doc, deletes are tolerant.
+func TestDoc_Set_NilReceiver_Panics(t *testing.T) {
+	t.Parallel()
+	var d *omap.Doc
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Set on nil *Doc did not panic")
+		}
+	}()
+	d.Set("k", omap.IntValue(1))
+}
+
+// TestDoc_Delete_NilReceiver_NoOp pins the tolerant half of the
+// Set/Delete asymmetry: deleting from a nil *Doc is a silent no-op,
+// consistent with the other read-shaped methods (Len, Get, Has, Keys,
+// Values, TryAt, Entries) that treat nil as empty.
+func TestDoc_Delete_NilReceiver_NoOp(t *testing.T) {
+	t.Parallel()
+	var d *omap.Doc
+	// Must not panic.
+	d.Delete("k")
 }
 
 func TestDoc_Entries_YieldsInsertionOrder(t *testing.T) {

@@ -50,9 +50,10 @@ Notes:
   contract so the real gendocs implementation plugs in without Makefile
   churn.
 - `make lint` prints an install hint pointing at
-  `go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1`
-  when `golangci-lint` is absent. CI pins `v1.59.1`; a newer v1.x locally
-  is fine (same schema).
+  `go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2`
+  when `golangci-lint` is absent. CI and canary both pin `v1.62.2` via
+  `golangci/golangci-lint-action@v6.5.2`, so the local install hint and
+  CI resolve to the same binary version.
 - Zero unit tests and zero e2e fixtures ship at this stage — both
   commands exit green. Real fixtures arrive with the feature stories.
 
@@ -84,30 +85,34 @@ risks ("TASK-0005 canary bump introduces upstream breakage — off
 critical path; defer bump to post-epic if canary fails") for the
 accepted-risk framing.
 
-## golangci-lint version split (TASK-0007)
+## golangci-lint pin (TASK-0007 / BUG-0002)
 
-`golangci-lint` also runs on two tracks, for the same reason the Go
-toolchain does: CI wants a reproducible, fast binary; local dev wants
-a version that actually builds under whatever Go the contributor has
-installed.
+`golangci-lint` is pinned to a single version across CI, canary, and
+the local install hint. This used to be a two-track split (CI on
+v1.59.1, local on v1.62.2); BUG-0002 collapsed it back to one track
+after v1.59.1 proved incompatible with Go 1.23 — its typechecker
+cannot load the Go 1.23 stdlib (`regexp`, `math/big`, `slices`) or
+`pelletier/go-toml/v2@v2.3.0/unstable`, producing spurious
+`(typecheck)` errors in CI while the same codebase lints clean
+locally on v1.62.2.
 
-- **CI** pins **v1.59.1** via
-  `golangci/golangci-lint-action@v6.5.2`, which downloads the prebuilt
-  release binary — no `go install` from source, so the CI Go version
-  is irrelevant to the lint binary itself.
-- **Local install** (the install hint in `make lint` and the
-  `Makefile`) points at **v1.62.2** via `go install`. v1.59.1's
-  transitive dependencies do not build from source under Go 1.23+, so
-  contributors on a modern Go toolchain need a newer v1.x. v1.62.2 is
-  the current floor that builds cleanly.
-- Both versions honour the **same v1 config schema**, so a single
-  `.golangci.yml` works for CI and local runs without branching.
+- **Everywhere** — CI (`.github/workflows/ci.yml`), canary
+  (`.github/workflows/canary.yml`), and the `make lint` install hint —
+  pins **v1.62.2** via `golangci/golangci-lint-action@v6.5.2`. v6.x is
+  the last action major that supports golangci-lint v1.x; v7.0.0+ is
+  v2-only.
+- v1.61.0 is the first v1.x release with Go 1.23 loader support;
+  v1.62.2 is the current v1.x floor the project runs. Both CI and
+  local runs resolve to the same binary, so reproduction is trivial.
+- The `.golangci.yml` v1 schema still applies; no per-environment
+  config branching is needed.
 
 ### Pre-staged v2 migration
 
 v1.59 deprecated `run.skip-dirs` in favour of `issues.exclude-dirs`;
-v2 removes the old key entirely. This commit makes the key hop early
-— `.golangci.yml` now declares exclusions under a top-level
-`issues.exclude-dirs`. The v1 schema still accepts it, so nothing
-changes behaviourally today, but the eventual v2 bump will no longer
-need a config edit in the same commit as the tool upgrade.
+v2 removes the old key entirely. `.golangci.yml` now declares
+exclusions under a top-level `issues.exclude-dirs`. The v1 schema
+still accepts it, so nothing changes behaviourally today, but the
+eventual v2 bump (action v8, linter v2) will no longer need a config
+edit in the same commit as the tool upgrade. The v2 migration itself
+is tracked as a separate follow-up under EPIC-0001.

@@ -53,7 +53,7 @@ func TestEncode_PathAwareErrors(t *testing.T) {
 		build    func() *omap.Doc
 		encoder  func(*omap.Doc) error
 		wantPath string
-		wantKind string
+		wantKind omap.EncodeErrorKind
 		wantFmt  string
 	}{
 		{
@@ -67,7 +67,7 @@ func TestEncode_PathAwareErrors(t *testing.T) {
 			},
 			encoder:  func(d *omap.Doc) error { return tomlfmt.Encode(&bytes.Buffer{}, d) },
 			wantPath: "$.a.b",
-			wantKind: "null",
+			wantKind: omap.EncodeKindNull,
 			wantFmt:  "toml",
 		},
 		{
@@ -87,7 +87,7 @@ func TestEncode_PathAwareErrors(t *testing.T) {
 			},
 			encoder:  func(d *omap.Doc) error { return tomlfmt.Encode(&bytes.Buffer{}, d) },
 			wantPath: "$.users[2].score",
-			wantKind: "NaN",
+			wantKind: omap.EncodeKindNaN,
 			wantFmt:  "toml",
 		},
 		{
@@ -105,7 +105,7 @@ func TestEncode_PathAwareErrors(t *testing.T) {
 			},
 			encoder:  func(d *omap.Doc) error { return yamlfmt.Encode(&bytes.Buffer{}, d) },
 			wantPath: "$.users[2].score",
-			wantKind: "NaN",
+			wantKind: omap.EncodeKindNaN,
 			wantFmt:  "yaml",
 		},
 		{
@@ -117,7 +117,7 @@ func TestEncode_PathAwareErrors(t *testing.T) {
 			},
 			encoder:  func(d *omap.Doc) error { return tomlfmt.Encode(&bytes.Buffer{}, d) },
 			wantPath: "$.ratio",
-			wantKind: "+Inf",
+			wantKind: omap.EncodeKindPosInf,
 			wantFmt:  "toml",
 		},
 		{
@@ -129,7 +129,7 @@ func TestEncode_PathAwareErrors(t *testing.T) {
 			},
 			encoder:  func(d *omap.Doc) error { return yamlfmt.Encode(&bytes.Buffer{}, d) },
 			wantPath: "$.ratio",
-			wantKind: "+Inf",
+			wantKind: omap.EncodeKindPosInf,
 			wantFmt:  "yaml",
 		},
 		{
@@ -137,7 +137,7 @@ func TestEncode_PathAwareErrors(t *testing.T) {
 			build:    func() *omap.Doc { return buildMetricsDoc(nan) },
 			encoder:  func(d *omap.Doc) error { return jsonfmt.Encode(&bytes.Buffer{}, d) },
 			wantPath: "$.metrics[1].value",
-			wantKind: "NaN",
+			wantKind: omap.EncodeKindNaN,
 			wantFmt:  "json",
 		},
 		{
@@ -145,7 +145,7 @@ func TestEncode_PathAwareErrors(t *testing.T) {
 			build:    func() *omap.Doc { return buildMetricsDoc(posInf) },
 			encoder:  func(d *omap.Doc) error { return jsonfmt.Encode(&bytes.Buffer{}, d) },
 			wantPath: "$.metrics[1].value",
-			wantKind: "+Inf",
+			wantKind: omap.EncodeKindPosInf,
 			wantFmt:  "json",
 		},
 		{
@@ -153,7 +153,7 @@ func TestEncode_PathAwareErrors(t *testing.T) {
 			build:    func() *omap.Doc { return buildMetricsDoc(negInf) },
 			encoder:  func(d *omap.Doc) error { return jsonfmt.Encode(&bytes.Buffer{}, d) },
 			wantPath: "$.metrics[1].value",
-			wantKind: "-Inf",
+			wantKind: omap.EncodeKindNegInf,
 			wantFmt:  "json",
 		},
 	}
@@ -184,7 +184,7 @@ func TestEncode_PathAwareErrors(t *testing.T) {
 			if !strings.Contains(msg, c.wantPath) {
 				t.Errorf("Error()=%q missing path %q", msg, c.wantPath)
 			}
-			if !strings.Contains(msg, c.wantKind) {
+			if !strings.Contains(msg, string(c.wantKind)) {
 				t.Errorf("Error()=%q missing kind %q", msg, c.wantKind)
 			}
 		})
