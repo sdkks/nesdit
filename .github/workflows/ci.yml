@@ -35,7 +35,15 @@ jobs:
         # Release: https://github.com/golangci/golangci-lint-action/releases/tag/v6.5.2
         uses: golangci/golangci-lint-action@55c2c1448f86e01eaae002a5a3a9624417608d84 # v6.5.2 (supports golangci-lint v1.x)
         with:
-          version: v1.59.1
+          # BUG-0002 follow-on: v1.59.1's typechecker cannot load the Go
+          # 1.23 stdlib (regexp, math/big, slices) or pelletier/go-toml/v2
+          # @v2.3.0/unstable; it emits spurious `(typecheck)` failures on
+          # this codebase. v1.61.0 is the first v1.x release with Go 1.23
+          # loader support; we pin v1.62.2 to match the local install hint
+          # (Makefile) and the canary workflow — a single shared pin keeps
+          # CI and local lint behaviour identical, and removes the old
+          # "version split" rationale (see README).
+          version: v1.62.2
           args: --timeout=5m
       - name: make lint
         run: make lint
