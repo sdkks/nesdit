@@ -1,0 +1,16 @@
+# fr08_argjson_array.txtar — FR-8: `--argjson K=V` binds $K as a JSON-decoded value.
+
+# Array value.
+nesdit a.json --argjson nums='[1,2,3]' --query '.items = $nums'
+stdout '^{"items":\[1,2,3\]}$'
+
+# Number value (NOT a string).
+nesdit a.json --argjson count=42 --query '.count = $count'
+stdout '^{"count":42}$'
+
+# Object value.
+nesdit a.json --argjson cfg='{"a":1}' --query '.cfg = $cfg'
+stdout '^{"cfg":{"a":1}}$'
+
+-- a.json --
+{}

@@ -14,16 +14,30 @@ import (
 	"github.com/sdkks/nesdit/internal/query"
 )
 
-// TestBridgeGoNoGo is the DR-005 Plan A go/no-go gate.
+// TestBridgeGoNoGo is the DR-005 Plan A go/no-go gate, extended with the
+// DR-007 array-reshape lock-in suite.
 //
-// For every (document, query) pair in the corpus × suite, this test:
-//  1. decodes the source bytes → *omap.Doc (Doc_0).
-//  2. runs the query once → Doc_1; encodes Doc_1 → bytes_1.
-//  3. decodes bytes_1 → Doc_1'; runs the same query → Doc_2; encodes → bytes_2.
-//  4. asserts bytes_2 == bytes_1 (idempotency, NFR-2).
-//  5. for the identity query ".", asserts bytes_1 == source bytes (pure identity).
+// Two sub-harnesses run over the corpus:
 //
-// Any failure here authorises the Plan B switch (DR-005) in this same story.
+//  1. Idempotency (Queries field): for every (document, query) pair:
+//     - decodes the source bytes → *omap.Doc (Doc_0).
+//     - runs the query once → Doc_1; encodes Doc_1 → bytes_1.
+//     - decodes bytes_1 → Doc_1'; runs the same query → Doc_2; encodes → bytes_2.
+//     - asserts bytes_2 == bytes_1 (idempotency, NFR-2).
+//     - for the identity query ".", asserts bytes_1 == source bytes.
+//
+//  2. Reshape (Reshape field, DR-007): for every reshapeCase:
+//     - decodes the source → *omap.Doc.
+//     - runs the case query once → Doc_1; encodes → bytes_1.
+//     - asserts bytes_1 == case.Expect.
+//     This pins the positional array-reconciliation contract from DR-007
+//     so any silent switch to identity matching (or a key-set heuristic)
+//     breaks CI loudly. Queries here are NOT required to be self-stable
+//     under a second application (reverse, grow, shrink explicitly are
+//     not) — idempotency is asserted by the Queries field only.
+//
+// Any idempotency failure authorises the Plan B switch (DR-005) in this
+// same story.
 func TestBridgeGoNoGo(t *testing.T) {
 	t.Parallel()
 
@@ -34,6 +48,14 @@ func TestBridgeGoNoGo(t *testing.T) {
 			t.Run(c.Name+"/"+sanitize(q), func(t *testing.T) {
 				t.Parallel()
 				runBridgeCase(t, c, q)
+			})
+		}
+		for _, r := range c.Reshape {
+			c := c
+			r := r
+			t.Run(c.Name+"/"+r.Name, func(t *testing.T) {
+				t.Parallel()
+				runReshapeCase(t, c, r)
 			})
 		}
 	}
@@ -115,6 +137,32 @@ func runBridgeCase(t *testing.T, c bridgeCase, q string) {
 	}
 }
 
+// runReshapeCase is the DR-007 lock-in: run the reshape query exactly
+// once against the source and assert the bytes equal the expected fixed
+// output. This is not an idempotency check — reshape queries like
+// reverse/grow/shrink are not required to be self-stable — it is a pin
+// for the positional reconciliation contract under jq-driven array
+// restructuring.
+func runReshapeCase(t *testing.T, c bridgeCase, r reshapeCase) {
+	t.Helper()
+	doc0, err := decode(c.Format, c.Source)
+	if err != nil {
+		t.Fatalf("decode source: %v", err)
+	}
+	doc1, err := query.Run(context.Background(), doc0, r.Query)
+	if err != nil {
+		t.Fatalf("query.Run(%q): %v", r.Query, err)
+	}
+	got, err := encode(c.Format, doc1)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if !bytes.Equal(got, r.Expect) {
+		t.Fatalf("reshape %q on %s produced unexpected bytes\n--- want ---\n%s\n--- got ---\n%s",
+			r.Query, c.Name, string(r.Expect), string(got))
+	}
+}
+
 // sanitize makes a t.Run name printable for a jq expression.
 func sanitize(q string) string {
 	r := strings.NewReplacer(
@@ -175,6 +223,20 @@ type bridgeCase struct {
 	Format  string // "json" | "yaml" | "toml"
 	Source  []byte
 	Queries []string
+	// Reshape carries DR-007 lock-in queries whose post-run bytes are
+	// pinned explicitly (not asserted idempotent). These exist to pin
+	// the positional array-of-maps reconciliation contract against a
+	// future drift toward identity matching.
+	Reshape []reshapeCase
+}
+
+// reshapeCase pins a single array-reshape query's expected output bytes.
+// Each case becomes a subtest under TestBridgeGoNoGo named
+// "<case.Name>/<reshape.Name>".
+type reshapeCase struct {
+	Name   string // e.g. "reshape_sortby"; becomes the t.Run leaf
+	Query  string
+	Expect []byte
 }
 
 // bridgeCorpus returns the DR-005 test corpus: ~20 (doc, queries) pairs
@@ -234,6 +296,62 @@ func bridgeCorpus() []bridgeCase {
 			Format:  "json",
 			Source:  []byte(`{"a":{"b":{}},"items":[]}`),
 			Queries: ab,
+		},
+
+		// --- DR-007 array-reshape lock-in ---
+		// Positional reconciliation means result[i] inherits map-order
+		// from prev[i], regardless of what jq did to the array. Each
+		// case below pins a single query's expected bytes so a future
+		// silent switch to key-set / identity matching fails CI.
+		{
+			Name:    "json_dr007_reshape",
+			Format:  "json",
+			Source:  []byte(`{"items":[{"name":"a","n":1},{"name":"b","n":2}]}`),
+			Queries: id,
+			Reshape: []reshapeCase{
+				{
+					// Test_FromAny_ArrayReshape_SortBy
+					Name:   "reshape_sortby",
+					Query:  ".items |= sort_by(.name)",
+					Expect: []byte(`{"items":[{"name":"a","n":1},{"name":"b","n":2}]}`),
+				},
+				{
+					// Test_FromAny_ArrayReshape_Reverse
+					Name:   "reshape_reverse",
+					Query:  ".items |= reverse",
+					Expect: []byte(`{"items":[{"name":"b","n":2},{"name":"a","n":1}]}`),
+				},
+				{
+					// Test_FromAny_ArrayGrow_NewElement
+					// New element at i=2 has no prev — its keys sort lex.
+					Name:   "reshape_grow_new_element",
+					Query:  `.items += [{"name":"z","n":99}]`,
+					Expect: []byte(`{"items":[{"name":"a","n":1},{"name":"b","n":2},{"n":99,"name":"z"}]}`),
+				},
+				{
+					// Test_FromAny_ArrayShrink_Slice
+					Name:   "reshape_shrink_slice",
+					Query:  ".items |= .[0:1]",
+					Expect: []byte(`{"items":[{"name":"a","n":1}]}`),
+				},
+				{
+					// Test_FromAny_ArrayReshape_Idempotent_SortBy
+					// Source is already sorted; sort_by is a no-op and
+					// bytes equal the source.
+					Name:   "reshape_idempotent_sortby",
+					Query:  ".items |= sort_by(.name)",
+					Expect: []byte(`{"items":[{"name":"a","n":1},{"name":"b","n":2}]}`),
+				},
+				{
+					// Test_FromAny_ArrayReshape_MapRestructure
+					// Replacement objects have DIFFERENT key sets than
+					// prev — under positional reconciliation, the new
+					// keys lex-sort (fromAnyMap's "new keys" branch).
+					Name:   "reshape_map_restructure",
+					Query:  ".items |= map({id: .name, count: .n})",
+					Expect: []byte(`{"items":[{"count":1,"id":"a"},{"count":2,"id":"b"}]}`),
+				},
+			},
 		},
 
 		// --- YAML ---

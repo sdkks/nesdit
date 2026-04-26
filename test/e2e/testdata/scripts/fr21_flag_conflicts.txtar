@@ -1,0 +1,25 @@
+# fr21_flag_conflicts.txtar — FR-21 / DR-001: mutually-exclusive flag
+# combinations are rejected at flag-parse time, BEFORE any file read,
+# with exit 1 and a canonical-shape stderr. STORY-0003 exercises the
+# flag-pair combinations the STORY-0003 cobra tree actually parses:
+#
+#   - `--query` + `-f` (FR-13 acceptance)                   → flag.conflict
+#
+# Other FR-21 cells (`-i` + `--edit`, `--backup` without `-i`,
+# `-n` + `--check`) are tested in later stories that introduce those
+# flags (STORY-0004 for -i/--backup; STORY-0006 for --check/--dry-run;
+# STORY-0007 for --edit). Each will land its own fr21_* fixture.
+
+# --query + -f (FR-13) — the pair STORY-0003 CAN enforce.
+#
+# CRITICAL: this rejection MUST happen before any file read. We set the
+# file to a nonexistent path and assert the error is the flag.conflict,
+# NOT an IO error. That proves the check fires at flag-parse time.
+! nesdit does-not-exist.json --query '.' -f q.jq
+stderr '^nesdit: error: flag\.conflict: '
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+-- q.jq --
+.z = 99

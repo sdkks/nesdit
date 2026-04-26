@@ -1,0 +1,22 @@
+# fr02_stdout_basic.txtar — FR-2: file→stdout identity query.
+#
+# `nesdit <file> --query '.'` MUST print the decoded-encoded doc to
+# stdout and leave the file untouched (-i is not wired in STORY-0003).
+#
+# Also asserts NFR-2 idempotency via nesdit-idempotent.
+
+# 1. Basic identity query on a file argument → stdout equals decoded+encoded source.
+nesdit a.json --query '.'
+stdout '^{"x":1,"y":2}$'
+! stderr .
+
+# 2. File on disk is not modified.
+cmp a.json a.json.orig
+
+# 3. Idempotency: two runs produce byte-identical output.
+nesdit-idempotent a.json --query '.'
+
+-- a.json --
+{"x":1,"y":2}
+-- a.json.orig --
+{"x":1,"y":2}

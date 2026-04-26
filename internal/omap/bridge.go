@@ -72,6 +72,19 @@ func valueToAny(v Value) any {
 // Scalar tags from prev are preserved when the jq result still carries
 // the same scalar kind at the same leaf, so e.g. !!timestamp strings
 // that jq did not touch round-trip with their tag intact.
+//
+// ARRAY-OF-MAPS RECONCILIATION IS POSITIONAL (DR-007, SPEC-0001).
+// For []any values, element-wise reconciliation is by index: result[i]
+// inherits map-order from prev[i]. This is correct-by-construction for
+// identity, scalar-assignment, and del() queries (result[i] IS the
+// lineal descendant of prev[i]). Array-reshaping jq filters (sort_by,
+// reverse, unique_by, map() producing restructured elements, slice
+// operations) will produce key orders reflecting positional match,
+// NOT element identity — deterministic but potentially surprising.
+// See SPEC-0001 DR-007 for the full rationale and the lock-in corpus
+// in internal/query.TestBridgeGoNoGo (json_dr007_reshape case). The
+// v1.1 roadmap item tracks revisiting if real-world usage surfaces
+// pain; do not change this behaviour without re-opening DR-007.
 func FromAny(v any, prev *Doc) *Doc {
 	m, ok := v.(map[string]any)
 	if !ok {

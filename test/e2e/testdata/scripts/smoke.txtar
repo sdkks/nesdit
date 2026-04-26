@@ -7,9 +7,11 @@
 #
 # Real --edit / --in-place / multi-file fixtures land with STORY-0003+.
 
-# 1. Bare nesdit errors because it requires a file argument.
+# 1. Bare nesdit errors because it requires a file argument. The cobra-
+# generic error text is migrated to the DR-004 canonical shape in
+# STORY-0003, so we assert the canonical prefix.
 ! nesdit
-stderr 'accepts 1 arg'
+stderr '^nesdit: error: flag\.'
 
 # 2. Idempotency harness: two runs of the identity query produce identical output.
 nesdit-idempotent --query '.' basic.json

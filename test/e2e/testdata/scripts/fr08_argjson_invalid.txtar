@@ -1,0 +1,11 @@
+# fr08_argjson_invalid.txtar — FR-8 acceptance: malformed --argjson fails
+# with exit 1 and a canonical-shape stderr naming the arg.
+
+! nesdit a.json --argjson v='not-json' --query '.'
+stderr '^nesdit: error: arg\.decode: .*--argjson.*v.*'
+
+# Exit code check: exit 1, not 2 (DR-002: 2 is reserved for --check).
+! stdout .
+
+-- a.json --
+{}

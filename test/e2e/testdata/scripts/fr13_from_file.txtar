@@ -1,0 +1,20 @@
+# fr13_from_file.txtar — FR-13: `-f/--from-file <path>` loads query text.
+
+# Short form -f.
+nesdit a.json -f q.jq
+stdout '^{"x":1,"y":2,"z":99}$'
+
+# Long form --from-file.
+nesdit a.json --from-file q.jq
+stdout '^{"x":1,"y":2,"z":99}$'
+
+# FR-13 acceptance: --query and -f together are rejected at flag-parse
+# time, before any file read, with a canonical-shape stderr.
+! nesdit a.json --query '.' -f q.jq
+stderr '^nesdit: error: flag\.conflict: '
+! stdout .
+
+-- a.json --
+{"x":1,"y":2}
+-- q.jq --
+.z = 99

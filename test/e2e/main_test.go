@@ -79,7 +79,7 @@ func nesditIdempotent(ts *testscript.TestScript, neg bool, args []string) {
 	}
 }
 
-// captureRun runs nesdit via run.RunWithIO with per-call buffers, so
+// captureRun runs nesdit via run.Execute with per-call buffers, so
 // the idempotency harness does not mutate the global os.Stdout. The
 // original pipe-swap implementation was not goroutine-safe and caused
 // data races when testscript ran multiple scripts in parallel.
@@ -89,7 +89,12 @@ func nesditIdempotent(ts *testscript.TestScript, neg bool, args []string) {
 // failures still produce exit code != 0 with captured stdout/stderr.
 func captureRun(args []string) ([]byte, int, error) {
 	var stdout, stderr bytes.Buffer
-	code := run.WithIO(args, &stdout, &stderr)
+	code := run.Execute(run.RunOptions{
+		Args:   args,
+		Stdin:  bytes.NewReader(nil),
+		Stdout: &stdout,
+		Stderr: &stderr,
+	})
 	return stdout.Bytes(), code, nil
 }
 

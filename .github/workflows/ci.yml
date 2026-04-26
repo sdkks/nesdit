@@ -35,6 +35,19 @@ jobs:
         run: make lint
       - name: make test-all
         run: make test-all
+      - name: Binary size guardrail (< 8 MiB)
+        # SPEC-0001 / STORY-0003 guardrail: a release-shape nesdit binary
+        # MUST stay under 8 MiB so the single-binary distribution story
+        # holds. `wc -c < file` is portable across macOS and linux
+        # (avoids GNU-only `stat -c%s`).
+        run: |
+          bytes=$(wc -c < bin/nesdit | tr -d ' ')
+          limit=8388608
+          echo "nesdit binary size: ${bytes} bytes (limit: ${limit})"
+          if [ "${bytes}" -ge "${limit}" ]; then
+            echo "::error::nesdit binary exceeded 8 MiB limit (${bytes} >= ${limit})"
+            exit 1
+          fi
 
   ticket-trailer:
     if: github.event_name == 'pull_request'

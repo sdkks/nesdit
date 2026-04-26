@@ -14,13 +14,24 @@ package query
 
 import (
 	"context"
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/itchyny/gojq"
 
 	"github.com/sdkks/nesdit/internal/omap"
 )
+
+// Arg binds a single $-variable in the compiled query. Raw is the raw
+// text from the CLI (for --arg, the literal string; for --argjson, the
+// JSON source). JSON=true activates JSON decoding at bind time.
+type Arg struct {
+	Name string // variable name without the leading "$"
+	JSON bool
+	Raw  string
+}
 
 // Error classifies a query failure. Op is one of:
 //
@@ -56,6 +67,17 @@ func (e *Error) Unwrap() error { return e.Err }
 // will cancel ctx; today every caller passes context.Background() and
 // behaviour is unchanged for non-pathological queries.
 func Run(ctx context.Context, doc *omap.Doc, query string) (*omap.Doc, error) {
+	return RunWithArgs(ctx, doc, query, nil)
+}
+
+// RunWithArgs is Run plus `--arg`/`--argjson` variable bindings. Each
+// Arg becomes a gojq variable at compile time; values are bound at
+// call time in the same order. JSON args are decoded with UseNumber
+// to preserve NFR-4 integer precision. String args are passed through
+// as-is.
+//
+// Passing a nil or empty args slice is equivalent to Run.
+func RunWithArgs(ctx context.Context, doc *omap.Doc, query string, args []Arg) (*omap.Doc, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -66,13 +88,31 @@ func Run(ctx context.Context, doc *omap.Doc, query string) (*omap.Doc, error) {
 	if err != nil {
 		return nil, &Error{Op: "parse", Err: err}
 	}
-	code, err := gojq.Compile(parsed)
+
+	// Build the variable binding lists in a stable order (the order
+	// the caller passed args in). gojq wants `$name` style names.
+	varNames := make([]string, 0, len(args))
+	varValues := make([]any, 0, len(args))
+	for _, a := range args {
+		varNames = append(varNames, "$"+a.Name)
+		v, err := bindArg(a)
+		if err != nil {
+			return nil, &Error{Op: "parse", Err: err}
+		}
+		varValues = append(varValues, v)
+	}
+
+	var compileOpts []gojq.CompilerOption
+	if len(varNames) > 0 {
+		compileOpts = append(compileOpts, gojq.WithVariables(varNames))
+	}
+	code, err := gojq.Compile(parsed, compileOpts...)
 	if err != nil {
 		return nil, &Error{Op: "compile", Err: err}
 	}
 
 	in := doc.ToAny()
-	iter := code.RunWithContext(ctx, in)
+	iter := code.RunWithContext(ctx, in, varValues...)
 	first, ok := iter.Next()
 	if !ok {
 		return nil, &Error{Op: "result", Err: errors.New("query produced no output")}
@@ -91,4 +131,20 @@ func Run(ctx context.Context, doc *omap.Doc, query string) (*omap.Doc, error) {
 		return nil, &Error{Op: "result", Err: fmt.Errorf("top-level output is %T, want object", first)}
 	}
 	return omap.FromAny(m, doc), nil
+}
+
+// bindArg converts an Arg to the go-jq-facing value. For --arg (JSON
+// false), the value is the literal string. For --argjson, the value
+// is the decoded JSON with UseNumber() so integer precision survives.
+func bindArg(a Arg) (any, error) {
+	if !a.JSON {
+		return a.Raw, nil
+	}
+	dec := stdjson.NewDecoder(strings.NewReader(a.Raw))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return nil, fmt.Errorf("--argjson %s: %w", a.Name, err)
+	}
+	return v, nil
 }

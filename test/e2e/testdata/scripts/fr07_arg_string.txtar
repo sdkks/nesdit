@@ -1,0 +1,15 @@
+# fr07_arg_string.txtar — FR-7: `--arg K=V` binds $K as a literal string.
+#
+# GIVEN `--arg name=alice --query '.user = $name'`, THEN `.user` is the
+# string "alice" in the output.
+
+nesdit a.json --arg name=alice --query '.user = $name'
+stdout '^{"user":"alice"}$'
+
+# Numbers passed via --arg must remain STRINGS (jq semantics) — "42",
+# not 42.
+nesdit a.json --arg count=42 --query '.count = $count'
+stdout '^{"count":"42"}$'
+
+-- a.json --
+{}
