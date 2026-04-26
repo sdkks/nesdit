@@ -31,7 +31,7 @@ import (
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
-	"github.com/sakkas-zendesk/nesdit/internal/run"
+	"github.com/sdkks/nesdit/internal/run"
 )
 
 func TestMain(m *testing.M) {

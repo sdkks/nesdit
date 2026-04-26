@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/sakkas-zendesk/nesdit/internal/run"
+	"github.com/sdkks/nesdit/internal/run"
 )
 
 func main() {

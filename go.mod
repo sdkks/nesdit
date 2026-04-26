@@ -1,4 +1,4 @@
-module github.com/sakkas-zendesk/nesdit
+module github.com/sdkks/nesdit
 
 go 1.22.0
 
