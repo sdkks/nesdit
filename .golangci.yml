@@ -1,0 +1,23 @@
+# golangci-lint v1-compatible config (schema supported by v1.55+).
+# CI (TASK-0003) will pin a v1.x version; v2 renames some keys
+# (`run.skip-dirs` moves under `issues.exclude-dirs`).
+
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - test/e2e
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - gofmt
+    - unused
+    - ineffassign
+
+linters-settings:
+  gofmt:
+    simplify: true
