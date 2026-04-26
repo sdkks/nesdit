@@ -27,9 +27,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/sdkks/nesdit/internal/format"
 	jsonfmt "github.com/sdkks/nesdit/internal/format/json"
 	tomlfmt "github.com/sdkks/nesdit/internal/format/toml"
 	yamlfmt "github.com/sdkks/nesdit/internal/format/yaml"
@@ -132,12 +134,22 @@ func (e *emittedError) Unwrap() error { return e.cause }
 // calls in parallel.
 func newRootCmd(opts RunOptions) *cobra.Command {
 	var (
-		queryExpr    string
-		queryFile    string
-		format       string
-		argPairs     []string
-		argJSONPairs []string
+		queryExpr          string
+		queryFile          string
+		formatName         string
+		argPairs           []string
+		argJSONPairs       []string
+		timeout            time.Duration
+		maxBytes           int64
+		maxDepth           int
+		maxAliasExpansions int
 	)
+	// STORY-0008 defaults come from the format package so the CLI and
+	// tests share one source of truth.
+	defaults := format.DefaultLimits()
+	maxBytes = defaults.MaxBytes
+	maxDepth = defaults.MaxDepth
+	maxAliasExpansions = defaults.MaxAliasExpansions
 
 	cmd := &cobra.Command{
 		Use:           "nesdit [flags] <file>",
@@ -173,15 +185,26 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 			// handing the text to gojq.
 			qText = unescapeDollarBrace(qText)
 
-			return runOnce(cmd.Context(), opts, args[0], qText, format, jqArgs)
+			limits := format.Limits{
+				MaxBytes:           maxBytes,
+				MaxDepth:           maxDepth,
+				MaxAliasExpansions: maxAliasExpansions,
+			}
+			return runOnce(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout)
 		},
 	}
 
 	cmd.Flags().StringVar(&queryExpr, "query", "", "jq-style query (default '.' identity when neither --query nor -f is given)")
 	cmd.Flags().StringVarP(&queryFile, "from-file", "f", "", "load query from file (mutually exclusive with --query)")
-	cmd.Flags().StringVar(&format, "format", "", "force input format (json|yaml|toml); default is extension-based detection")
+	cmd.Flags().StringVar(&formatName, "format", "", "force input format (json|yaml|toml); default is extension-based detection")
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "bind $K=V in the query as a literal string (repeatable)")
 	cmd.Flags().StringArrayVar(&argJSONPairs, "argjson", nil, "bind $K=V in the query as a JSON-decoded value (repeatable)")
+	// STORY-0008 flags. Defaults come from format.DefaultLimits() so the
+	// safe-by-default semantics live in one place.
+	cmd.Flags().DurationVar(&timeout, "timeout", 0, "cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap")
+	cmd.Flags().Int64Var(&maxBytes, "max-bytes", defaults.MaxBytes, "reject inputs larger than this many bytes; 0 disables the cap")
+	cmd.Flags().IntVar(&maxDepth, "max-depth", defaults.MaxDepth, "reject documents nested deeper than this; 0 disables the cap")
+	cmd.Flags().IntVar(&maxAliasExpansions, "max-alias-expansions", defaults.MaxAliasExpansions, "YAML alias-expansion cap (billion-laughs mitigation); 0 disables the cap")
 
 	cmd.SetOut(opts.Stdout)
 	cmd.SetErr(opts.Stderr)
@@ -367,7 +390,12 @@ func unescapeDollarBrace(q string) string {
 // runOnce is the STORY-0003 file→stdout slice: decode, query, encode.
 // Every error path emits in canonical shape via opts.Logger and
 // returns a sentinel so Execute can exit 1 without double-logging.
-func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat string, args []query.Arg) error {
+//
+// STORY-0008: `limits` are applied at decode time so oversize /
+// deeply-nested / alias-bombed inputs fail fast with canonical-shape
+// stderr. `timeout` (when > 0) wraps ctx with context.WithTimeout so a
+// pathological gojq query cancels on deadline and emits query.timeout.
+func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat string, args []query.Arg, limits format.Limits, timeout time.Duration) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
 		fmtName = detectFormatByExt(path)
@@ -378,21 +406,36 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 		return &emittedError{cause: errors.New(msg)}
 	}
 
+	// Read file without a pre-decode byte cap — the decoder applies the
+	// byte cap itself via format.ReadAllLimited on the reader. Reading
+	// the whole file first matches STORY-0003 behaviour and keeps the
+	// code path simple; future streaming I/O can revisit.
 	data, err := os.ReadFile(path) //nolint:gosec // CLI reads a user-supplied path by design.
 	if err != nil {
 		opts.Logger.Error(logx.EventIORead, path, err.Error())
 		return &emittedError{cause: err}
 	}
 
-	val, err := decodeFormatValue(fmtName, data)
+	val, err := decodeFormatValueWithLimits(fmtName, data, limits)
 	if err != nil {
-		opts.Logger.Error(logx.EventParseError, path, err.Error())
+		opts.Logger.Error(classifyDecodeErr(err), path, err.Error())
 		return &emittedError{cause: err}
 	}
 
-	outVal, err := query.RunValueWithArgs(ctx, val, queryExpr, args)
+	// Apply --timeout (STORY-0008 M4) to the query phase only. Decode
+	// and encode are bounded by the decoder limits above; only the
+	// gojq runtime can diverge on a pathological query like
+	// `[range(1e12)]`. A zero duration means "no timeout".
+	queryCtx := ctx
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		queryCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	outVal, err := query.RunValueWithArgs(queryCtx, val, queryExpr, args)
 	if err != nil {
-		opts.Logger.Error(classifyQueryErr(err), path, err.Error())
+		opts.Logger.Error(classifyQueryErr(queryCtx, err, timeout), path, err.Error())
 		return &emittedError{cause: err}
 	}
 
@@ -418,7 +461,19 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 // classifyQueryErr maps a *query.Error's Op classifier onto a logx
 // event token. Unknown shapes fall through to query.runtime as a safe
 // default.
-func classifyQueryErr(err error) logx.Event {
+//
+// STORY-0008: when a timeout was configured and the query context
+// finished with DeadlineExceeded, classify as query.timeout so
+// operators can filter timeouts distinctly from generic runtime errors.
+// ctx.Err() is authoritative because gojq wraps the deadline-exceeded
+// error in its own runtime-error shape before it reaches callers.
+func classifyQueryErr(ctx context.Context, err error, timeout time.Duration) logx.Event {
+	if timeout > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return logx.EventQueryTimeout
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return logx.EventQueryTimeout
+	}
 	var qErr *query.Error
 	if !errors.As(err, &qErr) {
 		return logx.EventQueryRuntime
@@ -433,6 +488,24 @@ func classifyQueryErr(err error) logx.Event {
 	default:
 		return logx.EventQueryRuntime
 	}
+}
+
+// classifyDecodeErr maps a decode-phase error to the right logx event.
+// STORY-0008 introduces format.LimitError, which must surface as a
+// distinct decoder.limit.* event rather than a generic parse.error.
+func classifyDecodeErr(err error) logx.Event {
+	var lim *format.LimitError
+	if errors.As(err, &lim) {
+		switch lim.Kind {
+		case format.LimitInputSize:
+			return logx.EventDecoderLimitInputSize
+		case format.LimitDepth:
+			return logx.EventDecoderLimitDepth
+		case format.LimitAliasExpansion:
+			return logx.EventDecoderLimitAliasExpansion
+		}
+	}
+	return logx.EventParseError
 }
 
 // detectFormatByExt maps a filename extension to a known format name.
@@ -450,26 +523,27 @@ func detectFormatByExt(path string) string {
 	}
 }
 
-// decodeFormatValue is the top-level-agnostic decoder. BUG-0001: JSON/YAML
-// allow any top-level value; TOML still requires a table (enforced by the
-// TOML decoder itself).
-func decodeFormatValue(format string, data []byte) (omap.Value, error) {
-	switch format {
+// decodeFormatValueWithLimits is the top-level-agnostic decoder
+// carrying STORY-0008 resource bounds. BUG-0001: JSON/YAML allow any
+// top-level value; TOML still requires a table (enforced by the TOML
+// decoder itself).
+func decodeFormatValueWithLimits(fmtName string, data []byte, limits format.Limits) (omap.Value, error) {
+	switch fmtName {
 	case "json":
-		return jsonfmt.DecodeValue(bytes.NewReader(data))
+		return jsonfmt.DecodeValueWithLimits(bytes.NewReader(data), limits)
 	case "yaml":
-		return yamlfmt.DecodeValue(bytes.NewReader(data))
+		return yamlfmt.DecodeValueWithLimits(bytes.NewReader(data), limits)
 	case "toml":
-		return tomlfmt.DecodeValue(bytes.NewReader(data))
+		return tomlfmt.DecodeValueWithLimits(bytes.NewReader(data), limits)
 	default:
-		return omap.Value{}, fmt.Errorf("unknown format %q", format)
+		return omap.Value{}, fmt.Errorf("unknown format %q", fmtName)
 	}
 }
 
 // encodeFormatValue is the top-level-agnostic encoder. The TOML implementation
 // rejects non-map tops with a path-aware error so the TOML spec is preserved.
-func encodeFormatValue(format string, w io.Writer, v omap.Value) error {
-	switch format {
+func encodeFormatValue(fmtName string, w io.Writer, v omap.Value) error {
+	switch fmtName {
 	case "json":
 		return jsonfmt.EncodeValue(w, v)
 	case "yaml":
@@ -477,6 +551,6 @@ func encodeFormatValue(format string, w io.Writer, v omap.Value) error {
 	case "toml":
 		return tomlfmt.EncodeValue(w, v)
 	default:
-		return fmt.Errorf("unknown format %q", format)
+		return fmt.Errorf("unknown format %q", fmtName)
 	}
 }

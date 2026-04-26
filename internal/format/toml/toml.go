@@ -21,17 +21,19 @@ import (
 
 	tomlunstable "github.com/pelletier/go-toml/v2/unstable"
 
+	"github.com/sdkks/nesdit/internal/format"
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
 // Decode reads a single TOML document from r and returns its top-level
-// table as *omap.Doc, preserving source key order.
+// table as *omap.Doc, preserving source key order. No resource bounds
+// are applied; CLI callers MUST use DecodeValueWithLimits.
 func Decode(r io.Reader) (*omap.Doc, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("toml: read: %w", err)
 	}
-	return decodeBytes(data)
+	return decodeBytes(data, 0)
 }
 
 // DecodeValue reads a single TOML document and returns the result as an
@@ -39,8 +41,26 @@ func Decode(r io.Reader) (*omap.Doc, error) {
 // YAML, TOML does not permit sequence/scalar tops (BUG-0001 preserves this
 // constraint). DecodeValue therefore always returns a KindMap value when
 // successful; non-table tops are rejected by the underlying parser.
+//
+// DecodeValue applies no resource bounds. CLI callers MUST use
+// DecodeValueWithLimits; this unlimited form exists for tests and in-
+// process callers that have already sized their input.
 func DecodeValue(r io.Reader) (omap.Value, error) {
-	d, err := Decode(r)
+	return DecodeValueWithLimits(r, format.Limits{})
+}
+
+// DecodeValueWithLimits is DecodeValue with STORY-0008 resource bounds.
+// Applies limits.MaxBytes via format.ReadAllLimited before parsing, then
+// enforces limits.MaxDepth while walking the AST. Alias expansion
+// (MaxAliasExpansions) is YAML-specific and ignored here.
+//
+// A zero Limits value means "no bounds" — useful for tests.
+func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error) {
+	data, err := format.ReadAllLimited(r, limits.MaxBytes, "toml")
+	if err != nil {
+		return omap.Value{}, err
+	}
+	d, err := decodeBytes(data, limits.MaxDepth)
 	if err != nil {
 		return omap.Value{}, err
 	}
@@ -92,31 +112,59 @@ func kindName(k omap.Kind) string {
 
 // ----------------------------- decode -----------------------------
 
-func decodeBytes(data []byte) (*omap.Doc, error) {
+// decodeBytes parses data into an *omap.Doc, tracking the cursor depth so
+// the STORY-0008 M3 depth cap can reject pathological nesting. A maxDepth
+// value <= 0 disables the cap; otherwise a [a.b.c]-style table header
+// counts as depth 3, a [[a.b]] array-of-tables counts as depth 3 on its
+// element table (header depth 2 + 1 for the table inside the array), and
+// inline tables/arrays inside values extend the depth further via
+// astValue.
+func decodeBytes(data []byte, maxDepth int) (*omap.Doc, error) {
 	p := &tomlunstable.Parser{}
 	p.Reset(data)
 
 	root := omap.New()
 	// cursor is the current table into which KeyValue expressions insert.
 	cursor := root
+	cursorDepth := 0 // depth of the table cursor points at
 
 	for p.NextExpression() {
 		expr := p.Expression()
 		switch expr.Kind {
 		case tomlunstable.KeyValue:
-			if err := applyKeyValue(p, cursor, expr); err != nil {
+			if err := applyKeyValue(p, cursor, expr, cursorDepth, maxDepth); err != nil {
 				return nil, err
 			}
 		case tomlunstable.Table:
-			sub, err := ensurePath(root, keyParts(expr.Key()))
+			parts := keyParts(expr.Key())
+			if maxDepth > 0 && len(parts) > maxDepth {
+				return nil, &format.LimitError{
+					Format:   "toml",
+					Kind:     format.LimitDepth,
+					Limit:    int64(maxDepth),
+					Observed: int64(len(parts)),
+				}
+			}
+			sub, err := ensurePath(root, parts)
 			if err != nil {
 				return nil, err
 			}
 			cursor = sub
+			cursorDepth = len(parts)
 		case tomlunstable.ArrayTable:
 			parts := keyParts(expr.Key())
 			if len(parts) == 0 {
 				return nil, fmt.Errorf("toml: array-of-tables with empty key")
+			}
+			// [[a.b]] opens a table inside the array at parts; that
+			// inner table sits one level deeper than the array itself.
+			if maxDepth > 0 && len(parts)+1 > maxDepth {
+				return nil, &format.LimitError{
+					Format:   "toml",
+					Kind:     format.LimitDepth,
+					Limit:    int64(maxDepth),
+					Observed: int64(len(parts) + 1),
+				}
 			}
 			parent, err := ensurePath(root, parts[:len(parts)-1])
 			if err != nil {
@@ -135,6 +183,7 @@ func decodeBytes(data []byte) (*omap.Doc, error) {
 			seq = append(seq, omap.MapValue(newTbl))
 			parent.Set(last, omap.Value{Kind: omap.KindSeq, Seq: seq})
 			cursor = newTbl
+			cursorDepth = len(parts) + 1
 		default:
 			return nil, fmt.Errorf("toml: unexpected top-level node kind %v", expr.Kind)
 		}
@@ -179,16 +228,27 @@ func ensurePath(root *omap.Doc, parts []string) (*omap.Doc, error) {
 
 // applyKeyValue inserts a KeyValue expression into the cursor table, honoring
 // dotted keys (e.g. a.b.c = 1 creates implicit sub-tables along the way).
-func applyKeyValue(p *tomlunstable.Parser, cursor *omap.Doc, kv *tomlunstable.Node) error {
+// cursorDepth is the depth at which cursor sits (0 = root table); the leaf
+// key sits at cursorDepth + len(parts). maxDepth <= 0 disables the cap.
+func applyKeyValue(p *tomlunstable.Parser, cursor *omap.Doc, kv *tomlunstable.Node, cursorDepth, maxDepth int) error {
 	parts := keyParts(kv.Key())
 	if len(parts) == 0 {
 		return fmt.Errorf("toml: keyvalue with empty key")
+	}
+	leafDepth := cursorDepth + len(parts)
+	if maxDepth > 0 && leafDepth > maxDepth {
+		return &format.LimitError{
+			Format:   "toml",
+			Kind:     format.LimitDepth,
+			Limit:    int64(maxDepth),
+			Observed: int64(leafDepth),
+		}
 	}
 	parent, err := ensurePath(cursor, parts[:len(parts)-1])
 	if err != nil {
 		return err
 	}
-	val, err := astValue(p, kv.Value())
+	val, err := astValue(p, kv.Value(), leafDepth, maxDepth)
 	if err != nil {
 		return err
 	}
@@ -205,7 +265,11 @@ func keyParts(it tomlunstable.Iterator) []string {
 	return out
 }
 
-func astValue(p *tomlunstable.Parser, n *tomlunstable.Node) (omap.Value, error) {
+// astValue converts a TOML AST value node to an omap.Value. depth is the
+// nesting depth of the value itself (0 at top-level keys); maxDepth <= 0
+// disables the depth cap. Container values (arrays, inline tables) recurse
+// one level deeper; scalar values do not advance depth.
+func astValue(p *tomlunstable.Parser, n *tomlunstable.Node, depth, maxDepth int) (omap.Value, error) {
 	switch n.Kind {
 	case tomlunstable.String:
 		return omap.StrValue(string(n.Data)), nil
@@ -218,11 +282,19 @@ func astValue(p *tomlunstable.Parser, n *tomlunstable.Node) (omap.Value, error) 
 	case tomlunstable.LocalDate, tomlunstable.LocalTime, tomlunstable.LocalDateTime, tomlunstable.DateTime:
 		return omap.StrValueTagged(string(n.Data), "!!timestamp"), nil
 	case tomlunstable.Array:
+		if maxDepth > 0 && depth+1 > maxDepth {
+			return omap.Value{}, &format.LimitError{
+				Format:   "toml",
+				Kind:     format.LimitDepth,
+				Limit:    int64(maxDepth),
+				Observed: int64(depth + 1),
+			}
+		}
 		var items []omap.Value
 		it := n.Children()
 		for it.Next() {
 			ch := it.Node()
-			v, err := astValue(p, ch)
+			v, err := astValue(p, ch, depth+1, maxDepth)
 			if err != nil {
 				return omap.Value{}, err
 			}
@@ -230,6 +302,13 @@ func astValue(p *tomlunstable.Parser, n *tomlunstable.Node) (omap.Value, error) 
 		}
 		return omap.Value{Kind: omap.KindSeq, Seq: items}, nil
 	case tomlunstable.InlineTable:
+		// An inline table IS the value at `depth`; its keys sit at
+		// depth+1. applyKeyValue's cursorDepth is the depth of the
+		// containing table (so `leafDepth = cursorDepth + len(parts)`
+		// lands on the key's actual depth). Pass `depth` itself, not
+		// `depth+1`, so a single-part child of an inline table at
+		// depth=d ends up at leafDepth=d+1 — matching the intuition
+		// that root -> a -> b -> c is four levels, not five.
 		d := omap.New()
 		it := n.Children()
 		for it.Next() {
@@ -237,7 +316,7 @@ func astValue(p *tomlunstable.Parser, n *tomlunstable.Node) (omap.Value, error) 
 			if kv.Kind != tomlunstable.KeyValue {
 				return omap.Value{}, fmt.Errorf("toml: inline table child kind=%v", kv.Kind)
 			}
-			if err := applyKeyValue(p, d, kv); err != nil {
+			if err := applyKeyValue(p, d, kv, depth, maxDepth); err != nil {
 				return omap.Value{}, err
 			}
 		}

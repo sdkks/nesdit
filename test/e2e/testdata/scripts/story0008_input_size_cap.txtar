@@ -1,0 +1,20 @@
+# story0008_input_size_cap.txtar — STORY-0008 M2.
+#
+# `--max-bytes <N>` rejects an input larger than N bytes with a canonical-
+# shape stderr line carrying the `decoder.limit.input_size` event, exit 1.
+# A sub-cap input round-trips normally through the identity query.
+
+# 1. Input larger than --max-bytes is rejected at decode time.
+!  nesdit big.json --query '.' --max-bytes 20
+stderr '^nesdit: error: big\.json: decoder\.limit\.input_size: json: input_size limit exceeded: observed [0-9]+, limit 20$'
+! stdout .
+
+# 2. A sub-cap input passes through cleanly.
+nesdit tiny.json --query '.'
+stdout '^\{"x":1\}$'
+! stderr .
+
+-- big.json --
+{"some_really_long_value":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+-- tiny.json --
+{"x":1}

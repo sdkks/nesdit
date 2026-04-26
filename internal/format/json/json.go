@@ -8,6 +8,7 @@
 package json
 
 import (
+	"bytes"
 	stdjson "encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sdkks/nesdit/internal/format"
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
@@ -50,10 +52,28 @@ func Decode(r io.Reader) (*omap.Doc, error) {
 // string, number, boolean, or null. This is the BUG-0001 fix entry point;
 // the CLI pipeline uses DecodeValue so top-level arrays and scalars round-
 // trip without an artificial object-only constraint.
+//
+// DecodeValue applies no resource bounds. CLI callers MUST use
+// DecodeValueWithLimits; this unlimited form exists for tests and in-
+// process callers that have already sized their input.
 func DecodeValue(r io.Reader) (omap.Value, error) {
-	dec := stdjson.NewDecoder(r)
+	return DecodeValueWithLimits(r, format.Limits{})
+}
+
+// DecodeValueWithLimits is DecodeValue with STORY-0008 resource bounds.
+// Applies limits.MaxBytes via format.ReadAllLimited before parsing, then
+// enforces limits.MaxDepth while walking the token stream. Alias expansion
+// (MaxAliasExpansions) is YAML-specific and is ignored here.
+//
+// A zero Limits value means "no bounds" — useful for tests.
+func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error) {
+	data, err := format.ReadAllLimited(r, limits.MaxBytes, "json")
+	if err != nil {
+		return omap.Value{}, err
+	}
+	dec := stdjson.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
-	v, err := decodeValue(dec)
+	v, err := decodeValueBounded(dec, 0, limits.MaxDepth)
 	if err != nil {
 		return omap.Value{}, err
 	}
@@ -143,6 +163,99 @@ func nonFiniteJSONKind(s string) string {
 }
 
 // ----------------------------- decode -----------------------------
+
+// decodeValueBounded is the depth-tracking counterpart to decodeValue.
+// maxDepth <= 0 disables the cap; top-level depth is 0 and every nested
+// mapping/sequence adds 1.
+func decodeValueBounded(dec *stdjson.Decoder, depth, maxDepth int) (omap.Value, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return omap.Value{}, fmt.Errorf("json: %w", err)
+	}
+	switch t := tok.(type) {
+	case stdjson.Delim:
+		switch t {
+		case '{':
+			if maxDepth > 0 && depth+1 > maxDepth {
+				return omap.Value{}, &format.LimitError{
+					Format:   "json",
+					Kind:     format.LimitDepth,
+					Limit:    int64(maxDepth),
+					Observed: int64(depth + 1),
+				}
+			}
+			sub, err := decodeObjectBounded(dec, depth+1, maxDepth)
+			if err != nil {
+				return omap.Value{}, err
+			}
+			return omap.MapValue(sub), nil
+		case '[':
+			if maxDepth > 0 && depth+1 > maxDepth {
+				return omap.Value{}, &format.LimitError{
+					Format:   "json",
+					Kind:     format.LimitDepth,
+					Limit:    int64(maxDepth),
+					Observed: int64(depth + 1),
+				}
+			}
+			items, err := decodeArrayBounded(dec, depth+1, maxDepth)
+			if err != nil {
+				return omap.Value{}, err
+			}
+			return omap.Value{Kind: omap.KindSeq, Seq: items}, nil
+		default:
+			return omap.Value{}, fmt.Errorf("json: unexpected delim %q", t)
+		}
+	case string:
+		return omap.StrValue(t), nil
+	case bool:
+		return omap.BoolValue(t), nil
+	case stdjson.Number:
+		return omap.NumValue(t), nil
+	case nil:
+		return omap.NullValue(), nil
+	default:
+		return omap.Value{}, fmt.Errorf("json: unexpected token type %T", tok)
+	}
+}
+
+func decodeObjectBounded(dec *stdjson.Decoder, depth, maxDepth int) (*omap.Doc, error) {
+	d := omap.New()
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, fmt.Errorf("json: %w", err)
+		}
+		key, ok := tok.(string)
+		if !ok {
+			return nil, fmt.Errorf("json: expected string key, got %T: %v", tok, tok)
+		}
+		v, err := decodeValueBounded(dec, depth, maxDepth)
+		if err != nil {
+			return nil, err
+		}
+		d.Set(key, v)
+	}
+	if _, err := dec.Token(); err != nil {
+		return nil, fmt.Errorf("json: %w", err)
+	}
+	return d, nil
+}
+
+func decodeArrayBounded(dec *stdjson.Decoder, depth, maxDepth int) ([]omap.Value, error) {
+	var out []omap.Value
+	for dec.More() {
+		v, err := decodeValueBounded(dec, depth, maxDepth)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	if _, err := dec.Token(); err != nil {
+		return nil, fmt.Errorf("json: %w", err)
+	}
+	return out, nil
+}
 
 // At entry, dec has just consumed the object-open '{' token.
 func decodeObject(dec *stdjson.Decoder) (*omap.Doc, error) {

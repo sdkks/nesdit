@@ -14,6 +14,7 @@
 package yaml
 
 import (
+	"bytes"
 	stdjson "encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/sdkks/nesdit/internal/format"
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
@@ -56,9 +58,33 @@ func Decode(r io.Reader) (*omap.Doc, error) {
 // DecodeValue reads a single YAML document from r and returns its top-level
 // node as an omap.Value. YAML 1.2 permits any node (mapping, sequence, or
 // scalar) at the root. This is the BUG-0001 fix entry point the CLI uses.
+//
+// DecodeValue applies no resource bounds. CLI callers MUST use
+// DecodeValueWithLimits; this unlimited form exists for tests and in-
+// process callers that have already sized their input.
 func DecodeValue(r io.Reader) (omap.Value, error) {
+	return DecodeValueWithLimits(r, format.Limits{})
+}
+
+// DecodeValueWithLimits is DecodeValue with STORY-0008 resource bounds.
+// Applies all three bounds:
+//
+//   - limits.MaxBytes via format.ReadAllLimited before parsing.
+//   - limits.MaxDepth while walking the node tree.
+//   - limits.MaxAliasExpansions while materialising aliases (billion-
+//     laughs mitigation, M1). Each alias resolution counts as a fresh
+//     node materialisation — so a small input that references a deeply
+//     nested anchor 10000 times is rejected with
+//     &format.LimitError{Kind: LimitAliasExpansion}.
+//
+// A zero Limits value means "no bounds" — useful for tests.
+func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error) {
+	data, err := format.ReadAllLimited(r, limits.MaxBytes, "yaml")
+	if err != nil {
+		return omap.Value{}, err
+	}
 	var root yaml.Node
-	dec := yaml.NewDecoder(r)
+	dec := yaml.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&root); err != nil {
 		return omap.Value{}, fmt.Errorf("yaml: %w", err)
 	}
@@ -71,7 +97,11 @@ func DecodeValue(r io.Reader) (omap.Value, error) {
 	} else {
 		content = &root
 	}
-	return nodeToValue(content)
+	w := &yamlWalker{
+		maxDepth: limits.MaxDepth,
+		maxNodes: limits.MaxAliasExpansions,
+	}
+	return w.node(content, 0)
 }
 
 // Encode writes d to w as a single YAML document with key insertion order
@@ -104,6 +134,83 @@ func EncodeValue(w io.Writer, v omap.Value) error {
 }
 
 // ----------------------------- decode -----------------------------
+
+// yamlWalker applies STORY-0008 M1 + M3 bounds while turning a decoded
+// yaml.Node tree into an omap.Value. Each materialisation of a node
+// increments the counter; aliases are resolved by recursing into their
+// Alias target, so a billion-laughs input naturally explodes the count
+// and trips the alias-expansion cap long before OOM.
+//
+// maxDepth <= 0 disables the depth cap.
+// maxNodes <= 0 disables the alias-expansion cap.
+type yamlWalker struct {
+	maxDepth int
+	maxNodes int
+	nodes    int // node materialisations so far
+}
+
+// node materialises a single yaml.Node at tree-depth d. Follows aliases
+// transparently so downstream consumers see a resolved value tree.
+func (w *yamlWalker) node(n *yaml.Node, d int) (omap.Value, error) {
+	w.nodes++
+	if w.maxNodes > 0 && w.nodes > w.maxNodes {
+		return omap.Value{}, &format.LimitError{
+			Format:   "yaml",
+			Kind:     format.LimitAliasExpansion,
+			Limit:    int64(w.maxNodes),
+			Observed: int64(w.nodes),
+		}
+	}
+	if n.Kind == yaml.AliasNode && n.Alias != nil {
+		return w.node(n.Alias, d)
+	}
+	switch n.Kind {
+	case yaml.MappingNode:
+		if w.maxDepth > 0 && d+1 > w.maxDepth {
+			return omap.Value{}, &format.LimitError{
+				Format:   "yaml",
+				Kind:     format.LimitDepth,
+				Limit:    int64(w.maxDepth),
+				Observed: int64(d + 1),
+			}
+		}
+		doc := omap.New()
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			kn, vn := n.Content[i], n.Content[i+1]
+			if kn.Kind != yaml.ScalarNode {
+				return omap.Value{}, fmt.Errorf("yaml: non-scalar map key at line %d (kind=%v)", kn.Line, kn.Kind)
+			}
+			v, err := w.node(vn, d+1)
+			if err != nil {
+				return omap.Value{}, err
+			}
+			doc.Set(kn.Value, v)
+		}
+		return omap.MapValue(doc), nil
+	case yaml.SequenceNode:
+		if w.maxDepth > 0 && d+1 > w.maxDepth {
+			return omap.Value{}, &format.LimitError{
+				Format:   "yaml",
+				Kind:     format.LimitDepth,
+				Limit:    int64(w.maxDepth),
+				Observed: int64(d + 1),
+			}
+		}
+		items := make([]omap.Value, 0, len(n.Content))
+		for _, c := range n.Content {
+			v, err := w.node(c, d+1)
+			if err != nil {
+				return omap.Value{}, err
+			}
+			items = append(items, v)
+		}
+		return omap.Value{Kind: omap.KindSeq, Seq: items}, nil
+	case yaml.ScalarNode:
+		return scalarNodeToValue(n), nil
+	default:
+		return omap.Value{}, fmt.Errorf("yaml: unsupported node kind %v at line %d", n.Kind, n.Line)
+	}
+}
 
 func nodeToMap(n *yaml.Node) (*omap.Doc, error) {
 	if n.Kind != yaml.MappingNode {

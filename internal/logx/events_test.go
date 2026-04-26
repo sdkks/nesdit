@@ -39,6 +39,11 @@ func Test_Logx_EventEnum(t *testing.T) {
 		logx.EventFromFileRead,
 		// Unknown / unsupported format detection.
 		logx.EventFormatUnknown,
+		// STORY-0008 decoder hardening (M1/M2/M3 + M4 timeout).
+		logx.EventDecoderLimitInputSize,
+		logx.EventDecoderLimitDepth,
+		logx.EventDecoderLimitAliasExpansion,
+		logx.EventQueryTimeout,
 	}
 
 	seen := map[logx.Event]bool{}

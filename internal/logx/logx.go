@@ -87,6 +87,20 @@ const (
 
 	// End-of-run info notices.
 	EventBatchSummary Event = "batch.summary"
+
+	// STORY-0008 decoder hardening — resource-limit rejections. Fired
+	// from internal/format/{json,yaml,toml} when an input exceeds a
+	// configured Limits bound. Each token corresponds to a distinct
+	// bound so operators can alert/triage by failure class.
+	EventDecoderLimitInputSize      Event = "decoder.limit.input_size"
+	EventDecoderLimitDepth          Event = "decoder.limit.depth_exceeded"
+	EventDecoderLimitAliasExpansion Event = "decoder.limit.alias_expansion"
+
+	// STORY-0008 — fired when a query run is cancelled because the
+	// user-supplied `--timeout` deadline fired before gojq produced
+	// its first value. Distinct from query.runtime so timeouts are
+	// filterable in log aggregators.
+	EventQueryTimeout Event = "query.timeout"
 )
 
 // knownEvents is the closed-enum registry. Every token declared above
@@ -114,6 +128,11 @@ var knownEvents = map[Event]struct{}{
 	EventFlagInvalid:        {},
 	EventFlagPrecedence:     {},
 	EventBatchSummary:       {},
+
+	EventDecoderLimitInputSize:      {},
+	EventDecoderLimitDepth:          {},
+	EventDecoderLimitAliasExpansion: {},
+	EventQueryTimeout:               {},
 }
 
 // IsKnownEvent reports whether e is a registered event token. Callers

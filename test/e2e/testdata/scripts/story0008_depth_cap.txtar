@@ -1,0 +1,34 @@
+# story0008_depth_cap.txtar — STORY-0008 M3.
+#
+# `--max-depth <N>` rejects a document nested deeper than N levels. Each
+# decoder (JSON/YAML/TOML) surfaces the rejection through the canonical
+# `decoder.limit.depth_exceeded` event. Sub-cap inputs pass unchanged.
+
+# JSON: 5-deep > max-depth 3.
+! nesdit deep.json --query '.' --max-depth 3
+stderr '^nesdit: error: deep\.json: decoder\.limit\.depth_exceeded: json: depth limit exceeded: observed [0-9]+, limit 3$'
+! stdout .
+
+# JSON: 2-deep < max-depth 3 → passes.
+nesdit shallow.json --query '.'
+stdout '^\{"a":\{"b":1\}\}$'
+! stderr .
+
+# YAML: flow-style 5-deep > max-depth 3.
+! nesdit deep.yaml --query '.' --max-depth 3
+stderr '^nesdit: error: deep\.yaml: decoder\.limit\.depth_exceeded: yaml: depth limit exceeded: observed [0-9]+, limit 3$'
+! stdout .
+
+# TOML: dotted key a.b.c.d.e = 1 at depth 5 > max-depth 3.
+! nesdit deep.toml --query '.' --max-depth 3
+stderr '^nesdit: error: deep\.toml: decoder\.limit\.depth_exceeded: toml: depth limit exceeded: observed [0-9]+, limit 3$'
+! stdout .
+
+-- deep.json --
+[[[[[1]]]]]
+-- shallow.json --
+{"a":{"b":1}}
+-- deep.yaml --
+[[[[[1]]]]]
+-- deep.toml --
+a.b.c.d.e = 1

@@ -1,0 +1,19 @@
+# story0008_timeout.txtar — STORY-0008 M4.
+#
+# `--timeout <dur>` cancels a pathological gojq query via
+# context.WithTimeout and surfaces the cancellation as the canonical
+# `query.timeout` event on stderr. Omitting --timeout preserves the
+# STORY-0002 behaviour.
+
+# Pathological query + 10ms timeout → rejected with query.timeout.
+! nesdit in.json --query '[range(1000000000000)]' --timeout 10ms
+stderr '^nesdit: error: in\.json: query\.timeout: .*$'
+! stdout .
+
+# Omitting --timeout with a fast query exits 0 cleanly.
+nesdit in.json --query '.x'
+stdout '^1$'
+! stderr .
+
+-- in.json --
+{"x":1}
