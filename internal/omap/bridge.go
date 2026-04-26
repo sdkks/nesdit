@@ -22,9 +22,10 @@ func (d *Doc) ToAny() map[string]any {
 		return nil
 	}
 	out := make(map[string]any, len(d.keys))
-	for _, k := range d.keys {
-		v, _ := d.Get(k)
-		out[k] = valueToAny(v)
+	// Walk the internal slices directly — same package, no need to
+	// pay the Keys() clone cost.
+	for i, k := range d.keys {
+		out[k] = valueToAny(d.vals[i])
 	}
 	return out
 }
@@ -123,14 +124,15 @@ func fromAnyMap(m map[string]any, prev *Doc) *Doc {
 	seen := make(map[string]bool, len(m))
 
 	// 1. Emit keys from prev in prev order, when still present in m.
+	//    Iterate the internal slice directly to avoid the per-call clone
+	//    cost of the public (*Doc).Keys (TASK-0004 API hygiene).
 	if prev != nil {
-		for _, k := range prev.Keys() {
+		for i, k := range prev.keys {
 			rawNew, ok := m[k]
 			if !ok {
 				continue
 			}
-			prevV, _ := prev.Get(k)
-			out.Set(k, anyToValue(rawNew, prevV))
+			out.Set(k, anyToValue(rawNew, prev.vals[i]))
 			seen[k] = true
 		}
 	}

@@ -11,6 +11,7 @@ package omap
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 )
 
 // Kind enumerates the value kinds an omap.Value can hold.
@@ -92,6 +93,16 @@ func MapValue(d *Doc) Value { return Value{Kind: KindMap, Map: d} }
 // Doc is an ordered string-keyed map preserving insertion order.
 // Duplicate keys overwrite the previous value but retain the original
 // insertion position.
+//
+// Nil-receiver policy (TASK-0004 API hygiene):
+//   - Read methods (Len, Get, Has, Keys, Values, TryAt, Entries) are
+//     safe to call on a nil *Doc and return the obvious zero result.
+//   - Mutating methods (Set) panic on a nil *Doc — a nil *Doc has no
+//     backing map to insert into, and the caller has a bug.
+//   - Delete is a read-biased mutation: it is a no-op on a nil *Doc
+//     or an absent key (idempotent-delete semantics).
+//   - At panics on out-of-range or nil *Doc — use TryAt for the
+//     bounds-checked form.
 type Doc struct {
 	keys  []string
 	index map[string]int
@@ -114,7 +125,12 @@ func (d *Doc) Len() int {
 // Set inserts or updates key k with value v. If k is new, it is appended
 // to the end of the key order; if k already exists, its value is replaced
 // in place without changing its position.
+//
+// Panics if d is nil — construct a *Doc with [New] before calling Set.
 func (d *Doc) Set(k string, v Value) {
+	if d == nil {
+		panic("omap: Set on nil *Doc")
+	}
 	if d.index == nil {
 		d.index = make(map[string]int)
 	}
@@ -166,25 +182,71 @@ func (d *Doc) Delete(k string) {
 	}
 }
 
-// Keys returns the keys in insertion order. Callers MUST NOT mutate the
-// returned slice.
+// Keys returns a copy of the keys in insertion order. Returns nil when d
+// is nil or empty. Callers may mutate the returned slice — mutations do
+// not affect the Doc (TASK-0004: previously the internal slice leaked).
+//
+// Per-call allocation is O(n). Hot-path consumers that walk every entry
+// should prefer [Doc.Entries], which yields (key, value) pairs without
+// allocating an intermediate slice.
 func (d *Doc) Keys() []string {
-	if d == nil {
+	if d == nil || len(d.keys) == 0 {
 		return nil
 	}
-	return d.keys
+	return slices.Clone(d.keys)
 }
 
-// Values returns a parallel slice of values in the same order as Keys.
-// Callers MUST NOT mutate the returned slice.
+// Values returns a copy of the values in the same order as [Doc.Keys].
+// Returns nil when d is nil or empty. Callers may mutate the returned
+// slice — mutations do not affect the Doc (TASK-0004: previously the
+// internal slice leaked).
+//
+// Per-call allocation is O(n). Prefer [Doc.Entries] for paired iteration.
 func (d *Doc) Values() []Value {
-	if d == nil {
+	if d == nil || len(d.vals) == 0 {
 		return nil
 	}
-	return d.vals
+	return slices.Clone(d.vals)
 }
 
 // At returns the i-th (key, value) pair by insertion order.
+//
+// Preconditions (panics on violation):
+//   - d must be non-nil.
+//   - i must satisfy 0 <= i < d.Len().
+//
+// Callers that cannot guarantee the preconditions should use [Doc.TryAt].
 func (d *Doc) At(i int) (string, Value) {
 	return d.keys[i], d.vals[i]
+}
+
+// TryAt returns the i-th (key, value) pair in insertion order, with
+// ok=false if i is out of range or d is nil. This is the non-panicking
+// companion to [Doc.At] (TASK-0004).
+func (d *Doc) TryAt(i int) (k string, v Value, ok bool) {
+	if d == nil || i < 0 || i >= len(d.keys) {
+		return "", Value{}, false
+	}
+	return d.keys[i], d.vals[i], true
+}
+
+// Entries iterates (key, value) pairs in insertion order and invokes
+// yield for each. Iteration stops early when yield returns false. The
+// callable shape matches Go 1.23 range-over-func — once the module
+// targets Go 1.23+, `for k, v := range d.Entries` will work without any
+// API change.
+//
+// Entries does not allocate a keys slice per call; format encoders that
+// walk every entry should prefer it over [Doc.Keys] + [Doc.Get].
+//
+// Safe on a nil *Doc (yields nothing).
+func (d *Doc) Entries(yield func(k string, v Value) bool) {
+	if d == nil {
+		return
+	}
+	for i, k := range d.keys {
+		if !yield(k, d.vals[i]) {
+			return
+		}
+	}
 }

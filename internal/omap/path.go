@@ -71,6 +71,40 @@ func isBareKey(k string) bool {
 	return true
 }
 
+// EncodeErrorKind names the representability-failure kind reported by
+// [EncodeError]. Today's four kinds are EncodeKindNull (only TOML rejects
+// null) plus the three non-finite numeric tokens EncodeKindNaN,
+// EncodeKindPosInf, EncodeKindNegInf. The enum is the single source of
+// truth for these tokens and is designed to absorb the NFR-10 stderr
+// event taxonomy (heterogeneous array, cross-format incompat, etc.) as
+// later stories extend the set.
+//
+// Declared as a type alias to `string` so existing format-package call
+// sites that write `Kind: "null"` keep compiling while new callers use
+// the typed constants below. A later migration promotes this to a
+// defined string type once every call site uses the constants (see
+// TASK-0004 Followups).
+type EncodeErrorKind = string
+
+// Exported EncodeErrorKind constants for the kinds currently emitted by
+// the JSON, YAML, and TOML encoders (TASK-0004). Values match the
+// historical free-form strings so the error rendering and FR-19/NFR-5
+// acceptance tests are unchanged.
+const (
+	// EncodeKindNull marks a KindNull encountered by a format that cannot
+	// represent null (TOML).
+	EncodeKindNull EncodeErrorKind = "null"
+	// EncodeKindNaN marks a numeric NaN in a format that rejects it
+	// (JSON per RFC 8259 §6, YAML-strict, TOML).
+	EncodeKindNaN EncodeErrorKind = "NaN"
+	// EncodeKindPosInf marks a numeric +Inf in a format that rejects it
+	// (JSON, YAML-strict, TOML).
+	EncodeKindPosInf EncodeErrorKind = "+Inf"
+	// EncodeKindNegInf marks a numeric -Inf in a format that rejects it
+	// (JSON, YAML-strict, TOML).
+	EncodeKindNegInf EncodeErrorKind = "-Inf"
+)
+
 // EncodeError is the canonical path-aware encode error used by the JSON,
 // YAML, and TOML encoders when a value cannot be represented in the target
 // format (FR-19, NFR-5).
@@ -78,8 +112,12 @@ func isBareKey(k string) bool {
 // Error renders as "<path>: <kind> is not representable in <format>" where
 // <path> is a JSON-path (FR-19 convention) like "$.users[2].score".
 type EncodeError struct {
-	Path   Path
-	Kind   string // human description: "null", "NaN", "+Inf", "-Inf", "yaml !!binary", etc.
+	Path Path
+	// Kind is the typed representability-failure kind (TASK-0004).
+	// Use the Encode* constants — free-form strings still compile via
+	// the type alias but are deprecated and will break once the type
+	// is promoted to a defined type.
+	Kind   EncodeErrorKind
 	Format string // "json", "yaml", "toml"
 	Cause  error  // optional underlying error
 }
@@ -121,9 +159,9 @@ func WalkValue(p Path, v Value, check func(Path, Value) *EncodeError) *EncodeErr
 		if v.Map == nil {
 			return nil
 		}
-		for _, k := range v.Map.Keys() {
-			sub, _ := v.Map.Get(k)
-			if err := WalkValue(p.MapStep(k), sub, check); err != nil {
+		// Walk internal slices directly to avoid per-call Keys() clones.
+		for i, k := range v.Map.keys {
+			if err := WalkValue(p.MapStep(k), v.Map.vals[i], check); err != nil {
 				return err
 			}
 		}
