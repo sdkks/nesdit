@@ -79,12 +79,16 @@ func isBareKey(k string) bool {
 // event taxonomy (heterogeneous array, cross-format incompat, etc.) as
 // later stories extend the set.
 //
-// Declared as a type alias to `string` so existing format-package call
-// sites that write `Kind: "null"` keep compiling while new callers use
-// the typed constants below. A later migration promotes this to a
-// defined string type once every call site uses the constants (see
-// TASK-0004 Followups).
-type EncodeErrorKind = string
+// This is a defined string type (not an alias): any value typed as
+// plain `string` (e.g., a variable returned from a helper or read from
+// a map) cannot be assigned to [EncodeError.Kind] without an explicit
+// conversion. New kinds MUST be added as exported Encode* constants
+// below — the compiler rejects struct literals like
+// `EncodeError{Kind: s}` when `s string` (TASK-0004 rework). Untyped
+// string constants still convert silently per the Go spec, but the
+// realistic drift path (helper functions returning `string`) is
+// blocked.
+type EncodeErrorKind string
 
 // Exported EncodeErrorKind constants for the kinds currently emitted by
 // the JSON, YAML, and TOML encoders (TASK-0004). Values match the
@@ -114,13 +118,25 @@ const (
 type EncodeError struct {
 	Path Path
 	// Kind is the typed representability-failure kind (TASK-0004).
-	// Use the Encode* constants — free-form strings still compile via
-	// the type alias but are deprecated and will break once the type
-	// is promoted to a defined type.
+	// Must be one of the Encode* constants — raw string literals no
+	// longer compile because [EncodeErrorKind] is a defined string
+	// type, not an alias.
 	Kind   EncodeErrorKind
 	Format string // "json", "yaml", "toml"
 	Cause  error  // optional underlying error
 }
+
+// Compile-time assertion that the exported constants keep the declared
+// type (TASK-0004). Removing `EncodeErrorKind` from any constant's
+// declaration would demote it to an untyped constant and break the
+// strongly-typed contract for `EncodeError.Kind` — this guard catches
+// that regression at `go build` time.
+var (
+	_ EncodeErrorKind = EncodeKindNull
+	_ EncodeErrorKind = EncodeKindNaN
+	_ EncodeErrorKind = EncodeKindPosInf
+	_ EncodeErrorKind = EncodeKindNegInf
+)
 
 // Error satisfies the error interface.
 func (e *EncodeError) Error() string {

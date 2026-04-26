@@ -129,22 +129,23 @@ func checkJSONRepresentable(v omap.Value) *omap.EncodeError {
 	})
 }
 
-// nonFiniteJSONKind reports the canonical error kind string ("NaN", "+Inf",
-// "-Inf") for a json.Number lexical form that represents a non-finite value.
-// Returns "" for finite numerics. Recognises both Go's strconv form ("NaN",
-// "+Inf", "-Inf") and common YAML/JSON5 spellings ("Infinity", "-Infinity").
-func nonFiniteJSONKind(s string) string {
+// nonFiniteJSONKind reports the canonical [omap.EncodeErrorKind] for a
+// json.Number lexical form that represents a non-finite value. Returns
+// "" for finite numerics. Recognises both Go's strconv form ("NaN",
+// "+Inf", "-Inf") and common YAML/JSON5 spellings ("Infinity",
+// "-Infinity").
+func nonFiniteJSONKind(s string) omap.EncodeErrorKind {
 	// Fast path: consult strconv. It accepts "NaN", "Inf", "+Inf", "-Inf",
 	// "Infinity", "-Infinity" (case-insensitive) and rejects the rest.
 	if f, err := strconv.ParseFloat(s, 64); err == nil {
 		if math.IsNaN(f) {
-			return "NaN"
+			return omap.EncodeKindNaN
 		}
 		if math.IsInf(f, 1) {
-			return "+Inf"
+			return omap.EncodeKindPosInf
 		}
 		if math.IsInf(f, -1) {
-			return "-Inf"
+			return omap.EncodeKindNegInf
 		}
 		return ""
 	}
@@ -153,11 +154,11 @@ func nonFiniteJSONKind(s string) string {
 	low := strings.ToLower(strings.TrimSpace(s))
 	switch low {
 	case "nan", "+nan", "-nan":
-		return "NaN"
+		return omap.EncodeKindNaN
 	case "inf", "+inf", "infinity", "+infinity":
-		return "+Inf"
+		return omap.EncodeKindPosInf
 	case "-inf", "-infinity":
-		return "-Inf"
+		return omap.EncodeKindNegInf
 	}
 	return ""
 }

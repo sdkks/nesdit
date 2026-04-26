@@ -348,11 +348,11 @@ func checkYAMLRepresentable(v omap.Value) *omap.EncodeError {
 		}
 		switch {
 		case math.IsNaN(f):
-			return &omap.EncodeError{Path: p, Kind: "NaN", Format: "yaml"}
+			return &omap.EncodeError{Path: p, Kind: omap.EncodeKindNaN, Format: "yaml"}
 		case math.IsInf(f, 1):
-			return &omap.EncodeError{Path: p, Kind: "+Inf", Format: "yaml"}
+			return &omap.EncodeError{Path: p, Kind: omap.EncodeKindPosInf, Format: "yaml"}
 		case math.IsInf(f, -1):
-			return &omap.EncodeError{Path: p, Kind: "-Inf", Format: "yaml"}
+			return &omap.EncodeError{Path: p, Kind: omap.EncodeKindNegInf, Format: "yaml"}
 		}
 		return nil
 	})
