@@ -41,3 +41,11 @@ linters-settings:
     disabled-checks:
       - ifElseChain
       - singleCaseSwitch
+      # omap.Value is a tagged union (~96 bytes); passing by value is the
+      # intended calling convention across the three format encoders and
+      # the omaptest equality helper. Chasing pointer-passing for gocritic's
+      # hugeParam gains no measurable perf in a CLI tool and costs readability.
+      - hugeParam
+      # EqualDocs returns (bool, string) where the semantics are obvious at
+      # the call site; adding names does not improve readability.
+      - unnamedResult

@@ -2,7 +2,11 @@ module github.com/sdkks/nesdit
 
 go 1.22.0
 
-require github.com/rogpeppe/go-internal v1.13.1
+require (
+	github.com/pelletier/go-toml/v2 v2.3.0
+	github.com/rogpeppe/go-internal v1.13.1
+	gopkg.in/yaml.v3 v3.0.1
+)
 
 require (
 	golang.org/x/sys v0.26.0 // indirect

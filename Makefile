@@ -21,13 +21,18 @@ test-e2e: build
 test-all: test test-e2e
 
 lint:
-	@if ! command -v golangci-lint >/dev/null; then \
-		echo "golangci-lint not found on PATH."; \
-		echo "Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1"; \
-		echo "(CI pins v1.59.1 via golangci/golangci-lint-action; local dev can use a newer v1.x)"; \
-		exit 1; \
+	@LINT=golangci-lint; \
+	if ! command -v $$LINT >/dev/null; then \
+		if [ -x "$$(go env GOPATH)/bin/golangci-lint" ]; then \
+			LINT="$$(go env GOPATH)/bin/golangci-lint"; \
+		else \
+			echo "golangci-lint not found on PATH or in \$$(go env GOPATH)/bin."; \
+			echo "Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2"; \
+			echo "(CI pins v1.59.1 via golangci/golangci-lint-action; local dev on newer Go toolchains may need a newer v1.x)"; \
+			exit 1; \
+		fi; \
 	fi; \
-	golangci-lint run
+	$$LINT run
 
 docs:
 	$(GO) run ./cmd/gendocs --out docs/reference
