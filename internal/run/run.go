@@ -156,7 +156,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		// mandates that flag-interaction rejection happens BEFORE any
 		// file read or stdin byte — this is where we enforce it.
 		PreRunE: func(cmd *cobra.Command, _ []string) error {
-			return validateFlagInteraction(opts.Logger, cmd, queryExpr, queryFile)
+			return validateFlagInteraction(opts.Logger, cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Build the jq engine's arg list (string args + JSON args).
@@ -196,18 +196,70 @@ STORY-0003 ships the file→stdout path with --query / --from-file,
 in-place (-i), STDIN stream, --edit, --dry-run, --check, and --timeout
 flags land in later stories.`
 
-// validateFlagInteraction enforces the FR-21 / DR-001 matrix for the
-// flags STORY-0003 actually parses. Today that is just --query vs -f
-// (FR-13 mutual exclusion). As later stories add -i, --edit, --check,
-// --dry-run, --backup, this function grows; keeping it in one place
-// is the explicit contract from DR-001.
-func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command, _, _ string) error {
-	qSet := cmd.Flag("query").Changed
-	fSet := cmd.Flag("from-file").Changed
-	if qSet && fSet {
-		msg := "--query and --from-file are mutually exclusive: provide the query inline OR via a file, not both"
-		log.ErrorGlobal(logx.EventFlagConflict, msg)
-		return &emittedError{cause: errors.New(msg)}
+// flagConflictRule is one row of the FR-21 / DR-001 flag-interaction
+// matrix. If every flag in IfSet is explicitly set, and any flag in
+// ThenNotSet is also explicitly set, the invocation is rejected with
+// Event/Msg in canonical stderr shape, BEFORE any file read or stdin
+// byte consumed.
+//
+// Each rule matches cobra's `Flag.Changed` — defaults do not trigger.
+// Flag names are the long forms registered on the root command.
+//
+// STORY-0004 will extend this table with `-i` / `--edit` / `--check` /
+// `--dry-run` / `--backup` cells without adding new branches; each new
+// row is an additive entry. Keep rows sorted by primary flag for easy
+// reading.
+type flagConflictRule struct {
+	IfSet      []string
+	ThenNotSet []string
+	Event      logx.Event
+	Msg        string
+}
+
+// flagConflictRules is the FR-21 matrix STORY-0003 enforces. Today
+// there is exactly one cell: `--query` and `-f/--from-file` are
+// mutually exclusive (FR-13 acceptance).
+var flagConflictRules = []flagConflictRule{
+	{
+		IfSet:      []string{"query"},
+		ThenNotSet: []string{"from-file"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--query and --from-file are mutually exclusive: provide the query inline OR via a file, not both",
+	},
+}
+
+// validateFlagInteraction enforces the FR-21 / DR-001 matrix defined
+// in flagConflictRules. Returns the first rule's emittedError; logs
+// the canonical-shape error line via logx before returning. Keeps the
+// name and signature stable because the cobra PreRunE closure in
+// newRootCmd references it by name (STORY-0004 will extend the table,
+// not the function shape).
+func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command) error {
+	changed := func(name string) bool {
+		f := cmd.Flag(name)
+		return f != nil && f.Changed
+	}
+	allSet := func(names []string) bool {
+		for _, n := range names {
+			if !changed(n) {
+				return false
+			}
+		}
+		return len(names) > 0
+	}
+	anySet := func(names []string) bool {
+		for _, n := range names {
+			if changed(n) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, rule := range flagConflictRules {
+		if allSet(rule.IfSet) && anySet(rule.ThenNotSet) {
+			log.ErrorGlobal(rule.Event, rule.Msg)
+			return &emittedError{cause: errors.New(rule.Msg)}
+		}
 	}
 	return nil
 }

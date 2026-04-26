@@ -1,0 +1,20 @@
+# fr08_argjson_bigint.txtar — FR-8 + NFR-4: `--argjson` preserves
+# int64 values beyond 2^53 through the arg-binding → gojq → omap path.
+#
+# GIVEN `--argjson big=9007199254740993` (2^53 + 1, the smallest
+# positive int64 that cannot be represented exactly as an IEEE-754
+# float64), THEN `.n = $big` round-trips the value verbatim in the
+# encoded JSON output. This closes the STORY-0002 Tech #4 coverage gap:
+# the unit Test_Bridge_BigIntRHS_RoundTrips proves the bridge contract
+# in isolation, but no E2E fixture previously exercised the full
+# flag→jq→omap→encode path for a >2^53 literal.
+
+nesdit a.json --argjson big=9007199254740993 --query '.n = $big'
+stdout '^{"n":9007199254740993}$'
+
+# Negative int64 below -2^53 — same invariant on the sign-symmetric side.
+nesdit a.json --argjson big=-9007199254740993 --query '.n = $big'
+stdout '^{"n":-9007199254740993}$'
+
+-- a.json --
+{}

@@ -353,6 +353,36 @@ func bridgeCorpus() []bridgeCase {
 				},
 			},
 		},
+		// Tech #4 — DR-007 heterogeneous-key sort_by: the "surprising
+		// but deterministic" case DR-007 calls out by name. The source
+		// array has elements with DIFFERENT key sets ({name,x} and
+		// {name,y}); sort_by(.name) reverses the two elements. Under
+		// positional reconciliation, result[0] inherits prev[0]'s
+		// map-order slot (name-then-x) and result[1] inherits
+		// prev[1]'s (name-then-y). The element swapped INTO slot 0
+		// ({name:"a",y:2}) has a key set that is neither a subset nor
+		// a superset of prev[0]'s key set — so:
+		//   - "name" is the common key and stays in the slot prev[0]
+		//     had for it (first).
+		//   - "y" is a new-to-slot-0 key — it lex-sorts among the
+		//     new keys (fromAnyMap's "new keys" branch) and appears
+		//     after "name".
+		// Symmetric logic applies to slot 1 (gets {name:"z",x:1}).
+		// Pinning these exact bytes guards against any silent drift
+		// from positional to identity matching or a key-set heuristic.
+		{
+			Name:    "json_dr007_reshape_heterogeneous",
+			Format:  "json",
+			Source:  []byte(`{"items":[{"name":"z","x":1},{"name":"a","y":2}]}`),
+			Queries: id,
+			Reshape: []reshapeCase{
+				{
+					Name:   "reshape_sortby_heterogeneous_keys",
+					Query:  ".items |= sort_by(.name)",
+					Expect: []byte(`{"items":[{"name":"a","y":2},{"name":"z","x":1}]}`),
+				},
+			},
+		},
 
 		// --- YAML ---
 		{
