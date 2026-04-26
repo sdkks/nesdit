@@ -83,3 +83,31 @@ the older toolchain so the merge gate remains stable. See `EPIC-0001`
 risks ("TASK-0005 canary bump introduces upstream breakage — off
 critical path; defer bump to post-epic if canary fails") for the
 accepted-risk framing.
+
+## golangci-lint version split (TASK-0007)
+
+`golangci-lint` also runs on two tracks, for the same reason the Go
+toolchain does: CI wants a reproducible, fast binary; local dev wants
+a version that actually builds under whatever Go the contributor has
+installed.
+
+- **CI** pins **v1.59.1** via
+  `golangci/golangci-lint-action@v6.5.2`, which downloads the prebuilt
+  release binary — no `go install` from source, so the CI Go version
+  is irrelevant to the lint binary itself.
+- **Local install** (the install hint in `make lint` and the
+  `Makefile`) points at **v1.62.2** via `go install`. v1.59.1's
+  transitive dependencies do not build from source under Go 1.23+, so
+  contributors on a modern Go toolchain need a newer v1.x. v1.62.2 is
+  the current floor that builds cleanly.
+- Both versions honour the **same v1 config schema**, so a single
+  `.golangci.yml` works for CI and local runs without branching.
+
+### Pre-staged v2 migration
+
+v1.59 deprecated `run.skip-dirs` in favour of `issues.exclude-dirs`;
+v2 removes the old key entirely. This commit makes the key hop early
+— `.golangci.yml` now declares exclusions under a top-level
+`issues.exclude-dirs`. The v1 schema still accepts it, so nothing
+changes behaviourally today, but the eventual v2 bump will no longer
+need a config edit in the same commit as the tool upgrade.
