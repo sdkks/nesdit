@@ -1,0 +1,17 @@
+# identity_yaml.txtar — STORY-0002 NFR-2 identity invariant (YAML).
+#
+# Two consecutive runs of the identity query on the same input produce
+# byte-identical stdout. The source is hand-shaped to match nesdit's
+# encoder style (2-space indent per yaml.v3 default).
+
+nesdit-idempotent --query '.' in.yaml
+
+-- in.yaml --
+a:
+  b: 1
+  c: 2
+items:
+  - x: 10
+    y: 20
+  - x: 30
+big: 9007199254740993

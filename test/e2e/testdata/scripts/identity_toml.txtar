@@ -1,0 +1,12 @@
+# identity_toml.txtar — STORY-0002 NFR-2 identity invariant (TOML).
+#
+# Per DR-006, nesdit emits TOML as flat key-values with inline tables for
+# every nested mapping (so omap key order is byte-stable across round-trip).
+# The source matches that shape.
+
+nesdit-idempotent --query '.' in.toml
+
+-- in.toml --
+a = {b = 1, c = 2}
+items = [{x = 10, y = 20}, {x = 30}]
+big = 9007199254740993

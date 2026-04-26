@@ -26,7 +26,6 @@ package e2e_test
 
 import (
 	"bytes"
-	"io"
 	"os"
 	"testing"
 
@@ -80,37 +79,18 @@ func nesditIdempotent(ts *testscript.TestScript, neg bool, args []string) {
 	}
 }
 
-// captureRun redirects os.Stdout around run.Run and returns the captured
-// bytes, the exit code, and any capture-infrastructure error. Used only
-// inside the idempotency harness — the `nesdit` script command (registered
-// via RunMain) goes through the normal testscript stdout path.
+// captureRun runs nesdit via run.RunWithIO with per-call buffers, so
+// the idempotency harness does not mutate the global os.Stdout. The
+// original pipe-swap implementation was not goroutine-safe and caused
+// data races when testscript ran multiple scripts in parallel.
 //
-// Fail-closed contract: if we cannot set up the capture pipe, we MUST return
-// a non-nil error so the harness fails the fixture explicitly. Silently
-// falling back to an uncaptured run would produce a false-positive on the
-// NFR-2 idempotency invariant (bytes.Equal(nil, nil) == true).
-//
-// Not goroutine-safe: this function mutates the global os.Stdout and is
-// therefore incompatible with parallel fixtures. testscript runs script
-// commands sequentially per-script today, so this is fine for TASK-0003;
-// flag before STORY-0003 lands fixtures that use testscript -parallel.
+// Fail-closed contract retained: captureRun always returns a non-nil
+// error ONLY for true capture-infrastructure failures; normal run
+// failures still produce exit code != 0 with captured stdout/stderr.
 func captureRun(args []string) ([]byte, int, error) {
-	orig := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return nil, 0, err
-	}
-	os.Stdout = w
-	done := make(chan []byte, 1)
-	go func() {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, r)
-		done <- buf.Bytes()
-	}()
-	code := run.Run(args)
-	_ = w.Close()
-	os.Stdout = orig
-	return <-done, code, nil
+	var stdout, stderr bytes.Buffer
+	code := run.WithIO(args, &stdout, &stderr)
+	return stdout.Bytes(), code, nil
 }
 
 // fakeEditor implements the $EDITOR stub described in this file's doc

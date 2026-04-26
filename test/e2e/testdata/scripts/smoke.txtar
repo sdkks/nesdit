@@ -1,19 +1,18 @@
-# smoke.txtar — minimal sanity for the testscript harness itself.
+# smoke.txtar — minimal sanity for the testscript harness + STORY-0002 CLI.
 #
-# Exercises both custom commands against the STORY-0003 stub `nesdit`:
-#   - `nesdit` runs and exits 0 with empty stdout
-#   - `nesdit-idempotent` runs nesdit twice and asserts byte-identical stdout
-#   - `fake-editor` rewrites a file from a scripted replacement
+# Exercises both custom commands against the STORY-0002 minimal CLI:
+#   - `nesdit --query '.' <file>` runs, writes to stdout
+#   - `nesdit-idempotent --query '.' <file>` runs twice, asserts byte-identity
+#   - `fake-editor` rewrites a file from a scripted replacement (STORY-0007 prep)
 #
-# Real feature fixtures land with STORY-0003+. This file exists to keep
-# `make test-e2e` green from day one.
+# Real --edit / --in-place / multi-file fixtures land with STORY-0003+.
 
-# 1. Bare nesdit exits 0.
-nesdit
-! stderr .
+# 1. Bare nesdit errors because it requires a file argument.
+! nesdit
+stderr 'accepts 1 arg'
 
-# 2. Idempotency harness is callable; stub returns identical (empty) stdout.
-nesdit-idempotent help
+# 2. Idempotency harness: two runs of the identity query produce identical output.
+nesdit-idempotent --query '.' basic.json
 
 # 3. fake-editor: no replacement configured -> target unchanged.
 cp before.txt target.txt
@@ -25,6 +24,8 @@ env FAKE_EDITOR_REPLACE=after.txt
 fake-editor target.txt
 cmp target.txt after.txt
 
+-- basic.json --
+{"a":{"b":1,"c":2},"items":[{"x":10},{"x":20}]}
 -- before.txt --
 original contents
 -- after.txt --

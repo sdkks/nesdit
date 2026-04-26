@@ -1,0 +1,9 @@
+# identity_json.txtar — STORY-0002 NFR-2 identity invariant (JSON).
+#
+# The identity query "." decode→encode produces byte-identical output
+# to its input, and two consecutive runs produce byte-identical stdout.
+
+nesdit-idempotent --query '.' in.json
+
+-- in.json --
+{"a":{"b":1,"c":2},"items":[{"x":10,"y":20},{"x":30}],"big":9007199254740993}
