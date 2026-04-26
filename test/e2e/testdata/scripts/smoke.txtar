@@ -1,0 +1,33 @@
+# smoke.txtar — minimal sanity for the testscript harness itself.
+#
+# Exercises both custom commands against the STORY-0003 stub `nesdit`:
+#   - `nesdit` runs and exits 0 with empty stdout
+#   - `nesdit-idempotent` runs nesdit twice and asserts byte-identical stdout
+#   - `fake-editor` rewrites a file from a scripted replacement
+#
+# Real feature fixtures land with STORY-0003+. This file exists to keep
+# `make test-e2e` green from day one.
+
+# 1. Bare nesdit exits 0.
+nesdit
+! stderr .
+
+# 2. Idempotency harness is callable; stub returns identical (empty) stdout.
+nesdit-idempotent help
+
+# 3. fake-editor: no replacement configured -> target unchanged.
+cp before.txt target.txt
+fake-editor target.txt
+cmp target.txt before.txt
+
+# 4. fake-editor: replacement configured -> target overwritten.
+env FAKE_EDITOR_REPLACE=after.txt
+fake-editor target.txt
+cmp target.txt after.txt
+
+-- before.txt --
+original contents
+-- after.txt --
+edited contents
+-- target.txt --
+placeholder — cp overwrites before each assertion

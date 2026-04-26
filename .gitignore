@@ -1,6 +1,13 @@
 /bin/
 /dist/
+/tmp/
 *.test
 coverage.out
 coverage.html
 .DS_Store
+site/
+vendor/
+*.out
+*.prof
+.vscode/
+.idea/

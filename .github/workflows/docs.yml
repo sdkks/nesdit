@@ -1,0 +1,40 @@
+# docs.yml — path-filtered docs build placeholder.
+#
+# v1 ships the gendocs CLI as a stub (see cmd/gendocs/main.go). This workflow
+# runs `make docs` on docs/** changes so the pipeline exercises the build,
+# but it does NOT publish anything.
+#
+# v1.1 brings the real mkdocs build + gh-pages deploy. Track the upgrade in
+# SPEC-0001 §5 (Manpage & CLI reference workflow). When deploy lands, also
+# widen `permissions:` (pages: write, id-token: write).
+name: docs
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'cmd/gendocs/**'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'cmd/gendocs/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.22'
+          cache: true
+      - name: make docs (stub until STORY-0003 / v1.1)
+        run: make docs

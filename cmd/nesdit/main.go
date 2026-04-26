@@ -1,4 +1,11 @@
 package main
 
-// TODO(STORY-0003): cobra root command wiring, flag parsing, dispatch into internal/run.
-func main() {}
+import (
+	"os"
+
+	"github.com/sakkas-zendesk/nesdit/internal/run"
+)
+
+func main() {
+	os.Exit(run.Run(os.Args[1:]))
+}

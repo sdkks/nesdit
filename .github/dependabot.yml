@@ -1,0 +1,19 @@
+# Dependabot config — weekly updates for GitHub Actions and Go modules.
+# Paired with SHA-pinned actions in .github/workflows/*.yml so upstream
+# changes arrive as reviewable PRs rather than floating into CI.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps

@@ -1,6 +1,9 @@
 package main
 
-// TODO(TASK-0003): scaffold skeleton that reads the cobra tree from cmd/nesdit
-// and emits manpages under docs/reference/ via cobra/doc. Real cobra tree
-// populated by STORY-0003.
-func main() {}
+import "fmt"
+
+// TODO(STORY-0003): read the cobra command tree from cmd/nesdit and emit
+// manpages + markdown reference under docs/reference/ via cobra/doc.
+func main() {
+	fmt.Println("gendocs: placeholder until STORY-0003 adds the cobra tree")
+}
