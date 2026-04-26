@@ -55,3 +55,31 @@ Notes:
   is fine (same schema).
 - Zero unit tests and zero e2e fixtures ship at this stage — both
   commands exit green. Real fixtures arrive with the feature stories.
+
+## Toolchain version split (TASK-0005)
+
+Go CI runs on two parallel toolchain tracks — the **primary** gate stays
+conservative; a **canary** gate watches upstream drift without blocking
+merges.
+
+- **Primary CI** (`.github/workflows/ci.yml`, the merge gate) stays
+  pinned to the Go version declared in `go.mod` (currently Go 1.22) and
+  runs an `['1.22', '1.23']` matrix. `gojq` is pinned to v0.12.17 and
+  `pelletier/go-toml/v2` to v2.3.0 because newer releases of either
+  raise the required Go toolchain beyond what the primary gate runs.
+- **Canary CI** (`.github/workflows/canary.yml`, **non-blocking**) runs
+  on Go 1.24 and uses `go get -u` to bump both `gojq` and
+  `pelletier/go-toml/v2` to `@latest` before running
+  `make test-all lint`. It is triggered on a weekly schedule, on any PR
+  that touches `go.mod` / `go.sum`, and on `workflow_dispatch`. Failure
+  surfaces as a visible red job but does not block merges
+  (`continue-on-error: true`).
+
+When the canary flips red, that is the signal to schedule a joint bump:
+move the primary matrix to `['1.23', '1.24']`, refresh the pinned
+dependencies to `@latest`, and cite the triggering upstream release(s)
+in the commit body. Until the canary flips, the main branch stays on
+the older toolchain so the merge gate remains stable. See `EPIC-0001`
+risks ("TASK-0005 canary bump introduces upstream breakage — off
+critical path; defer bump to post-epic if canary fails") for the
+accepted-risk framing.

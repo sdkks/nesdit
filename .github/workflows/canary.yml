@@ -1,0 +1,77 @@
+# canary.yml — non-blocking toolchain/dependency canary.
+#
+# Purpose (TASK-0005 / EPIC-0001):
+#   Two coupled dependencies currently pin the project below upstream head
+#   specifically to stay on the Go 1.22/1.23 primary toolchain:
+#     - github.com/itchyny/gojq          (v0.12.18 needs Go 1.23, v0.12.19 Go 1.24)
+#     - github.com/pelletier/go-toml/v2  (we use /unstable — API may break any minor)
+#
+#   Both risks have the same shape: "upstream moves and breaks us silently."
+#   This workflow runs a joint bump against the latest versions on the
+#   *next* Go toolchain (1.24) and is marked non-blocking. A red canary
+#   signals the main branch that it's time to schedule the joint bump;
+#   it does NOT gate merges.
+#
+# Split:
+#   - Primary CI (`ci.yml`): stays on the pinned toolchain in `go.mod`
+#     (currently go 1.22 across a 1.22/1.23 matrix). This is the merge gate.
+#   - Canary CI (this file):  Go 1.24 + `go get -u` of gojq & go-toml/v2
+#     + `go mod tidy` + `make test-all lint`. Non-blocking.
+#
+# See README.md "Toolchain version split (TASK-0005)" for the rationale.
+name: canary
+
+on:
+  schedule:
+    # Weekly Monday 06:00 UTC — picks up upstream drift between PR bursts.
+    - cron: '0 6 * * 1'
+  pull_request:
+    # Any dependabot bump or hand-edited module graph change is exercised.
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/canary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  toolchain-bump:
+    name: canary (Go 1.24 + gojq@latest + go-toml/v2@latest)
+    runs-on: ubuntu-latest
+    # Non-blocking: a red canary must not block the main merge gate.
+    # The job still surfaces as a visible red check on the repo.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: '1.24'
+          cache: true
+      - name: Bump coupled dependencies to @latest
+        # One atomic step: both bumps land together so the canary reflects
+        # the joint upgrade path the main branch will take when it flips.
+        run: |
+          set -eux
+          go get -u \
+            github.com/pelletier/go-toml/v2@latest \
+            github.com/itchyny/gojq@latest
+          go mod tidy
+          echo "--- go.mod after bump ---"
+          cat go.mod
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v6.5.2
+        with:
+          # Newer linter version required for Go 1.24 source builds. The
+          # primary CI still pins v1.59.1; see README for rationale.
+          version: v1.62.2
+          args: --timeout=5m
+      - name: make lint
+        run: make lint
+      - name: make test-all
+        run: make test-all
