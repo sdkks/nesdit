@@ -3,7 +3,6 @@ package format_test
 import (
 	"bytes"
 	"errors"
-	"io"
 	"strings"
 	"testing"
 
@@ -22,8 +21,8 @@ func TestDefaultLimits_Nonzero(t *testing.T) {
 	if l.MaxDepth <= 0 {
 		t.Errorf("MaxDepth=%d; want > 0", l.MaxDepth)
 	}
-	if l.MaxAliasExpansions <= 0 {
-		t.Errorf("MaxAliasExpansions=%d; want > 0", l.MaxAliasExpansions)
+	if l.MaxYAMLNodes <= 0 {
+		t.Errorf("MaxYAMLNodes=%d; want > 0", l.MaxYAMLNodes)
 	}
 }
 
@@ -125,6 +124,4 @@ func TestLimitError_Unwrap_Sentinel(t *testing.T) {
 	if lim != e {
 		t.Errorf("errors.As did not preserve pointer identity")
 	}
-	// Silence unused io import in some build configurations.
-	_ = io.EOF
 }

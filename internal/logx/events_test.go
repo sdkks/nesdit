@@ -42,7 +42,7 @@ func Test_Logx_EventEnum(t *testing.T) {
 		// STORY-0008 decoder hardening (M1/M2/M3 + M4 timeout).
 		logx.EventDecoderLimitInputSize,
 		logx.EventDecoderLimitDepth,
-		logx.EventDecoderLimitAliasExpansion,
+		logx.EventDecoderLimitYAMLNodeCount,
 		logx.EventQueryTimeout,
 	}
 

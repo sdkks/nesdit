@@ -1,0 +1,22 @@
+# story0008_query_size_cap.txtar — STORY-0008 review MUST-FIX #2.
+#
+# --from-file reads are capped by --max-query-bytes (default 1 MiB) so a
+# pathological multi-gigabyte jq file cannot OOM the CLI. The rejection
+# surfaces as a decoder.limit.input_size event with Format "query".
+
+# Oversize query file is rejected before it is parsed.
+! nesdit doc.json --from-file big.jq --max-query-bytes 10
+stderr '^nesdit: error: decoder\.limit\.input_size: big\.jq: query: input_size limit exceeded: observed [0-9]+, limit 10$'
+! stdout .
+
+# Sub-cap query file passes through cleanly.
+nesdit doc.json --from-file small.jq
+stdout '^42$'
+! stderr .
+
+-- doc.json --
+{"x":42}
+-- big.jq --
+.x + .x + .x + .x + .x
+-- small.jq --
+.x

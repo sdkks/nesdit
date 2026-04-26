@@ -92,9 +92,9 @@ const (
 	// from internal/format/{json,yaml,toml} when an input exceeds a
 	// configured Limits bound. Each token corresponds to a distinct
 	// bound so operators can alert/triage by failure class.
-	EventDecoderLimitInputSize      Event = "decoder.limit.input_size"
-	EventDecoderLimitDepth          Event = "decoder.limit.depth_exceeded"
-	EventDecoderLimitAliasExpansion Event = "decoder.limit.alias_expansion"
+	EventDecoderLimitInputSize     Event = "decoder.limit.input_size"
+	EventDecoderLimitDepth         Event = "decoder.limit.depth_exceeded"
+	EventDecoderLimitYAMLNodeCount Event = "decoder.limit.yaml_node_count"
 
 	// STORY-0008 — fired when a query run is cancelled because the
 	// user-supplied `--timeout` deadline fired before gojq produced
@@ -129,10 +129,10 @@ var knownEvents = map[Event]struct{}{
 	EventFlagPrecedence:     {},
 	EventBatchSummary:       {},
 
-	EventDecoderLimitInputSize:      {},
-	EventDecoderLimitDepth:          {},
-	EventDecoderLimitAliasExpansion: {},
-	EventQueryTimeout:               {},
+	EventDecoderLimitInputSize:     {},
+	EventDecoderLimitDepth:         {},
+	EventDecoderLimitYAMLNodeCount: {},
+	EventQueryTimeout:              {},
 }
 
 // IsKnownEvent reports whether e is a registered event token. Callers

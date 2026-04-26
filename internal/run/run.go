@@ -134,22 +134,24 @@ func (e *emittedError) Unwrap() error { return e.cause }
 // calls in parallel.
 func newRootCmd(opts RunOptions) *cobra.Command {
 	var (
-		queryExpr          string
-		queryFile          string
-		formatName         string
-		argPairs           []string
-		argJSONPairs       []string
-		timeout            time.Duration
-		maxBytes           int64
-		maxDepth           int
-		maxAliasExpansions int
+		queryExpr     string
+		queryFile     string
+		formatName    string
+		argPairs      []string
+		argJSONPairs  []string
+		timeout       time.Duration
+		maxBytes      int64
+		maxDepth      int
+		maxYAMLNodes  int
+		maxQueryBytes int64
 	)
 	// STORY-0008 defaults come from the format package so the CLI and
 	// tests share one source of truth.
 	defaults := format.DefaultLimits()
 	maxBytes = defaults.MaxBytes
 	maxDepth = defaults.MaxDepth
-	maxAliasExpansions = defaults.MaxAliasExpansions
+	maxYAMLNodes = defaults.MaxYAMLNodes
+	maxQueryBytes = format.DefaultQueryMaxBytes
 
 	cmd := &cobra.Command{
 		Use:           "nesdit [flags] <file>",
@@ -177,7 +179,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 				return err
 			}
 			// Resolve the query text: either --query or file contents.
-			qText, err := resolveQueryText(opts.Logger, queryExpr, queryFile)
+			qText, err := resolveQueryText(opts.Logger, queryExpr, queryFile, maxQueryBytes)
 			if err != nil {
 				return err
 			}
@@ -186,9 +188,9 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 			qText = unescapeDollarBrace(qText)
 
 			limits := format.Limits{
-				MaxBytes:           maxBytes,
-				MaxDepth:           maxDepth,
-				MaxAliasExpansions: maxAliasExpansions,
+				MaxBytes:     maxBytes,
+				MaxDepth:     maxDepth,
+				MaxYAMLNodes: maxYAMLNodes,
 			}
 			return runOnce(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout)
 		},
@@ -204,7 +206,8 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap")
 	cmd.Flags().Int64Var(&maxBytes, "max-bytes", defaults.MaxBytes, "reject inputs larger than this many bytes; 0 disables the cap")
 	cmd.Flags().IntVar(&maxDepth, "max-depth", defaults.MaxDepth, "reject documents nested deeper than this; 0 disables the cap")
-	cmd.Flags().IntVar(&maxAliasExpansions, "max-alias-expansions", defaults.MaxAliasExpansions, "YAML alias-expansion cap (billion-laughs mitigation); 0 disables the cap")
+	cmd.Flags().IntVar(&maxYAMLNodes, "max-yaml-nodes", defaults.MaxYAMLNodes, "YAML node-materialisation cap (billion-laughs mitigation); 0 disables the cap")
+	cmd.Flags().Int64Var(&maxQueryBytes, "max-query-bytes", format.DefaultQueryMaxBytes, "reject query files (--from-file) larger than this many bytes; 0 disables the cap")
 
 	cmd.SetOut(opts.Stdout)
 	cmd.SetErr(opts.Stderr)
@@ -214,10 +217,17 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 const longDesc = `nesdit reads a single JSON, YAML, or TOML document, applies a jq-style
 query, and writes the result to stdout.
 
-STORY-0003 ships the file→stdout path with --query / --from-file,
---arg / --argjson, --format override, and $${VAR} literal-escape. The
-in-place (-i), STDIN stream, --edit, --dry-run, --check, and --timeout
-flags land in later stories.`
+Supported today:
+  - File input with --query '<jq>' or --from-file / -f <path>.
+  - --arg K=V (string) and --argjson K=V (JSON-decoded) bindings.
+  - --format <json|yaml|toml> to override extension-based detection.
+  - $${VAR} literal escape in a query (nesdit never expands shell env).
+  - --timeout <dur> to cancel a runaway query on a deadline.
+  - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
+    resource caps for decode-phase hardening.
+
+The in-place (-i), STDIN stream, --edit, --dry-run, and --check modes
+are still future work.`
 
 // flagConflictRule is one row of the FR-21 / DR-001 flag-interaction
 // matrix. If every flag in IfSet is explicitly set, and any flag in
@@ -362,10 +372,31 @@ func isJQName(s string) bool {
 // --query nor --from-file is set, returns the identity query ".".
 // Mutual exclusion is enforced by validateFlagInteraction already;
 // this function trusts that invariant.
-func resolveQueryText(log *logx.Logger, queryExpr, queryFile string) (string, error) {
+//
+// STORY-0008 MUST-FIX: the --from-file read is capped by maxQueryBytes
+// so a pathological 10 GB .jq file cannot OOM the CLI. The cap is
+// applied via format.ReadAllLimited streaming — the file is never fully
+// materialised before the cap runs. A LimitError surfaces as the
+// canonical decoder.limit.input_size event with Format "query" so
+// operators can distinguish query-size rejections from document-size
+// rejections. maxQueryBytes <= 0 disables the cap.
+func resolveQueryText(log *logx.Logger, queryExpr, queryFile string, maxQueryBytes int64) (string, error) {
 	if queryFile != "" {
-		data, err := os.ReadFile(queryFile) //nolint:gosec // user-supplied path by design
+		f, err := os.Open(queryFile) //nolint:gosec // user-supplied path by design
 		if err != nil {
+			msg := fmt.Sprintf("%s: %s", queryFile, err.Error())
+			log.ErrorGlobal(logx.EventFromFileRead, msg)
+			return "", &emittedError{cause: errors.New(msg)}
+		}
+		defer f.Close()
+		data, err := format.ReadAllLimited(f, maxQueryBytes, "query")
+		if err != nil {
+			var lim *format.LimitError
+			if errors.As(err, &lim) {
+				msg := fmt.Sprintf("%s: %s", queryFile, err.Error())
+				log.ErrorGlobal(classifyDecodeErr(err), msg)
+				return "", &emittedError{cause: errors.New(msg)}
+			}
 			msg := fmt.Sprintf("%s: %s", queryFile, err.Error())
 			log.ErrorGlobal(logx.EventFromFileRead, msg)
 			return "", &emittedError{cause: errors.New(msg)}
@@ -406,17 +437,20 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 		return &emittedError{cause: errors.New(msg)}
 	}
 
-	// Read file without a pre-decode byte cap — the decoder applies the
-	// byte cap itself via format.ReadAllLimited on the reader. Reading
-	// the whole file first matches STORY-0003 behaviour and keeps the
-	// code path simple; future streaming I/O can revisit.
-	data, err := os.ReadFile(path) //nolint:gosec // CLI reads a user-supplied path by design.
+	// Open the file as a stream. The decoder applies the byte cap via
+	// format.ReadAllLimited on the reader, so a file larger than
+	// limits.MaxBytes surfaces a LimitError after consuming at most
+	// MaxBytes+1 bytes — we never buffer the whole file in memory
+	// before the cap runs. This matters: pre-fix a 10 GB YAML would
+	// OOM at os.ReadFile, long before the cap got a chance.
+	f, err := os.Open(path) //nolint:gosec // CLI reads a user-supplied path by design.
 	if err != nil {
 		opts.Logger.Error(logx.EventIORead, path, err.Error())
 		return &emittedError{cause: err}
 	}
+	defer f.Close()
 
-	val, err := decodeFormatValueWithLimits(fmtName, data, limits)
+	val, err := decodeFormatValueWithLimits(fmtName, f, limits)
 	if err != nil {
 		opts.Logger.Error(classifyDecodeErr(err), path, err.Error())
 		return &emittedError{cause: err}
@@ -501,8 +535,8 @@ func classifyDecodeErr(err error) logx.Event {
 			return logx.EventDecoderLimitInputSize
 		case format.LimitDepth:
 			return logx.EventDecoderLimitDepth
-		case format.LimitAliasExpansion:
-			return logx.EventDecoderLimitAliasExpansion
+		case format.LimitYAMLNodeCount:
+			return logx.EventDecoderLimitYAMLNodeCount
 		}
 	}
 	return logx.EventParseError
@@ -527,14 +561,19 @@ func detectFormatByExt(path string) string {
 // carrying STORY-0008 resource bounds. BUG-0001: JSON/YAML allow any
 // top-level value; TOML still requires a table (enforced by the TOML
 // decoder itself).
-func decodeFormatValueWithLimits(fmtName string, data []byte, limits format.Limits) (omap.Value, error) {
+//
+// STORY-0008 MUST-FIX: takes an io.Reader (not []byte). The decoder
+// layer wraps the reader in ReadAllLimited internally, so a caller
+// feeding a *os.File will surface a LimitError after reading at most
+// MaxBytes+1 bytes rather than after buffering the full file.
+func decodeFormatValueWithLimits(fmtName string, r io.Reader, limits format.Limits) (omap.Value, error) {
 	switch fmtName {
 	case "json":
-		return jsonfmt.DecodeValueWithLimits(bytes.NewReader(data), limits)
+		return jsonfmt.DecodeValueWithLimits(r, limits)
 	case "yaml":
-		return yamlfmt.DecodeValueWithLimits(bytes.NewReader(data), limits)
+		return yamlfmt.DecodeValueWithLimits(r, limits)
 	case "toml":
-		return tomlfmt.DecodeValueWithLimits(bytes.NewReader(data), limits)
+		return tomlfmt.DecodeValueWithLimits(r, limits)
 	default:
 		return omap.Value{}, fmt.Errorf("unknown format %q", fmtName)
 	}

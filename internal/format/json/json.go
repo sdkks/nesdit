@@ -62,8 +62,8 @@ func DecodeValue(r io.Reader) (omap.Value, error) {
 
 // DecodeValueWithLimits is DecodeValue with STORY-0008 resource bounds.
 // Applies limits.MaxBytes via format.ReadAllLimited before parsing, then
-// enforces limits.MaxDepth while walking the token stream. Alias expansion
-// (MaxAliasExpansions) is YAML-specific and is ignored here.
+// enforces limits.MaxDepth while walking the token stream. The YAML node
+// count cap (MaxYAMLNodes) is YAML-specific and is ignored here.
 //
 // A zero Limits value means "no bounds" — useful for tests.
 func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error) {

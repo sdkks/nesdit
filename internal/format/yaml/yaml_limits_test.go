@@ -78,19 +78,19 @@ func Test_YAMLDecoder_BillionLaughs_Rejected(t *testing.T) {
 		t.Fatalf("billion-laughs fixture is %d bytes; spec requires < 1KB", len(bomb))
 	}
 	_, err := yamlfmt.DecodeValueWithLimits(bytes.NewReader([]byte(bomb)), format.Limits{
-		MaxBytes:           int64(len(bomb) + 100),
-		MaxDepth:           100,
-		MaxAliasExpansions: 100_000,
+		MaxBytes:     int64(len(bomb) + 100),
+		MaxDepth:     100,
+		MaxYAMLNodes: 100_000,
 	})
 	if err == nil {
-		t.Fatalf("expected alias-expansion rejection, got nil (memory was exhausted or aliases ignored)")
+		t.Fatalf("expected yaml-node-count rejection, got nil (memory was exhausted or aliases ignored)")
 	}
 	var lim *format.LimitError
 	if !errors.As(err, &lim) {
 		t.Fatalf("want *format.LimitError, got %T: %v", err, err)
 	}
-	if lim.Kind != format.LimitAliasExpansion || lim.Format != "yaml" {
-		t.Errorf("LimitError Kind=%q Format=%q want alias_expansion/yaml", lim.Kind, lim.Format)
+	if lim.Kind != format.LimitYAMLNodeCount || lim.Format != "yaml" {
+		t.Errorf("LimitError Kind=%q Format=%q want yaml_node_count/yaml", lim.Kind, lim.Format)
 	}
 }
 
@@ -104,7 +104,7 @@ func Test_YAMLDecoder_AliasBelowCap_Passes(t *testing.T) {
 		"b: *a\n" +
 		"c: *a\n"
 	if _, err := yamlfmt.DecodeValueWithLimits(bytes.NewReader([]byte(src)), format.Limits{
-		MaxAliasExpansions: 1000,
+		MaxYAMLNodes: 1000,
 	}); err != nil {
 		t.Fatalf("small-alias doc unexpectedly rejected: %v", err)
 	}

@@ -71,11 +71,11 @@ func DecodeValue(r io.Reader) (omap.Value, error) {
 //
 //   - limits.MaxBytes via format.ReadAllLimited before parsing.
 //   - limits.MaxDepth while walking the node tree.
-//   - limits.MaxAliasExpansions while materialising aliases (billion-
-//     laughs mitigation, M1). Each alias resolution counts as a fresh
-//     node materialisation — so a small input that references a deeply
-//     nested anchor 10000 times is rejected with
-//     &format.LimitError{Kind: LimitAliasExpansion}.
+//   - limits.MaxYAMLNodes while materialising nodes (billion-laughs
+//     mitigation, M1). Every node materialisation — alias-driven or
+//     not — counts, so a small input that references a deeply nested
+//     anchor 10000 times is rejected with
+//     &format.LimitError{Kind: LimitYAMLNodeCount}.
 //
 // A zero Limits value means "no bounds" — useful for tests.
 func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error) {
@@ -99,7 +99,7 @@ func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error
 	}
 	w := &yamlWalker{
 		maxDepth: limits.MaxDepth,
-		maxNodes: limits.MaxAliasExpansions,
+		maxNodes: limits.MaxYAMLNodes,
 	}
 	return w.node(content, 0)
 }
@@ -139,10 +139,12 @@ func EncodeValue(w io.Writer, v omap.Value) error {
 // yaml.Node tree into an omap.Value. Each materialisation of a node
 // increments the counter; aliases are resolved by recursing into their
 // Alias target, so a billion-laughs input naturally explodes the count
-// and trips the alias-expansion cap long before OOM.
+// and trips the yaml-node cap long before OOM. The counter covers all
+// node materialisations, not only alias-driven ones, so the cap acts
+// as a total work-budget on the yaml walk.
 //
 // maxDepth <= 0 disables the depth cap.
-// maxNodes <= 0 disables the alias-expansion cap.
+// maxNodes <= 0 disables the yaml-node count cap.
 type yamlWalker struct {
 	maxDepth int
 	maxNodes int
@@ -156,7 +158,7 @@ func (w *yamlWalker) node(n *yaml.Node, d int) (omap.Value, error) {
 	if w.maxNodes > 0 && w.nodes > w.maxNodes {
 		return omap.Value{}, &format.LimitError{
 			Format:   "yaml",
-			Kind:     format.LimitAliasExpansion,
+			Kind:     format.LimitYAMLNodeCount,
 			Limit:    int64(w.maxNodes),
 			Observed: int64(w.nodes),
 		}

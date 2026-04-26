@@ -1,0 +1,31 @@
+# story0008_yaml_node_count_cap.txtar — STORY-0008 M1.
+#
+# A YAML billion-laughs input (< 1KB, expanding to ~10^7 node
+# materialisations) is rejected before memory is exhausted, via the
+# `decoder.limit.yaml_node_count` canonical event. The counter covers
+# every node materialisation (alias-driven or not); the billion-laughs
+# class is the canonical reason to trip the cap.
+
+# Billion-laughs bomb — rejected with yaml_node_count cap event.
+! nesdit bomb.yaml --query '.' --max-yaml-nodes 100000
+stderr '^nesdit: error: bomb\.yaml: decoder\.limit\.yaml_node_count: yaml: yaml_node_count limit exceeded: observed [0-9]+, limit 100000$'
+! stdout .
+
+# A small doc with a couple of harmless aliases passes.
+nesdit harmless.yaml --query '.' --max-yaml-nodes 10000
+! stderr .
+
+-- bomb.yaml --
+a: &a [0,0,0,0,0,0,0,0,0,0]
+b: &b [*a,*a,*a,*a,*a,*a,*a,*a,*a,*a]
+c: &c [*b,*b,*b,*b,*b,*b,*b,*b,*b,*b]
+d: &d [*c,*c,*c,*c,*c,*c,*c,*c,*c,*c]
+e: &e [*d,*d,*d,*d,*d,*d,*d,*d,*d,*d]
+f: &f [*e,*e,*e,*e,*e,*e,*e,*e,*e,*e]
+g: [*f,*f,*f,*f,*f,*f,*f,*f,*f,*f]
+-- harmless.yaml --
+base: &b
+  x: 1
+  y: 2
+first: *b
+second: *b

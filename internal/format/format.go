@@ -10,10 +10,14 @@
 //     input, and stdin input uniformly.
 //   - MaxDepth       — nesting depth cap (M3). Enforced during node-
 //     tree walks by JSON/YAML/TOML decoders.
-//   - MaxAliasExpansions — YAML-only alias materialisation cap (M1).
-//     Counts node materialisations while walking a decoded yaml.Node
-//     tree; aliases that resolve to already-counted nodes expand
-//     multiplicatively, so a small input can trigger a huge count.
+//   - MaxYAMLNodes   — YAML-only node materialisation cap (M1, billion-
+//     laughs mitigation). Counts every node materialisation while
+//     walking a decoded yaml.Node tree — aliases that resolve to
+//     already-counted nodes expand multiplicatively, so a small input
+//     can trigger a huge count. The cap name is "yaml_nodes" rather
+//     than "alias_expansion" because the counter counts ALL node
+//     materialisations, not only alias-driven ones; the defensive
+//     mechanism is identical.
 //
 // Zero values on Limits mean "no limit for this field". DefaultLimits
 // returns the safe defaults the CLI uses when no flag overrides are
@@ -39,13 +43,15 @@ type Limits struct {
 	// adds 1. Values <= 0 disable the cap.
 	MaxDepth int
 
-	// MaxAliasExpansions is the maximum number of node materialisations
+	// MaxYAMLNodes is the maximum number of node materialisations
 	// permitted while walking a YAML node tree. Each alias resolution
 	// counts as a fresh materialisation — so a 1KB billion-laughs input
-	// that materialises 10^7 nodes is rejected here, not after OOM.
+	// that materialises 10^7 nodes is rejected here, not after OOM. The
+	// counter covers all node materialisations, not just alias-driven
+	// ones, so the name reflects what is measured.
 	// YAML-only; ignored by JSON and TOML decoders.
 	// Values <= 0 disable the cap.
-	MaxAliasExpansions int
+	MaxYAMLNodes int
 }
 
 // Default cap values chosen for SPEC-0001 NFR-3. Rationale:
@@ -56,22 +62,26 @@ type Limits struct {
 //   - Depth 1000 is the stdlib encoding/json effective ceiling; TOML
 //     and YAML cap at the same point so behaviour is uniform across
 //     formats.
-//   - Alias cap 100_000 gives real-world YAML anchors room to expand
-//     (Helm values, Kustomize overlays) while rejecting billion-laughs
-//     constructions that materialise millions of nodes.
+//   - YAML node cap 100_000 gives real-world YAML anchors room to
+//     expand (Helm values, Kustomize overlays) while rejecting billion-
+//     laughs constructions that materialise millions of nodes.
+//   - DefaultQueryMaxBytes is a dedicated tight cap for --from-file
+//     reads: 1 MiB is generous for any realistic jq query text while
+//     still preventing a 10 GB .jq file from OOM-ing the CLI.
 const (
-	DefaultMaxBytes           int64 = 10 * 1024 * 1024
-	DefaultMaxDepth           int   = 1000
-	DefaultMaxAliasExpansions int   = 100_000
+	DefaultMaxBytes      int64 = 10 * 1024 * 1024
+	DefaultMaxDepth      int   = 1000
+	DefaultMaxYAMLNodes  int   = 100_000
+	DefaultQueryMaxBytes int64 = 1 << 20 // 1 MiB
 )
 
 // DefaultLimits returns the safe-by-default Limits the nesdit CLI
 // applies when no flag override is supplied.
 func DefaultLimits() Limits {
 	return Limits{
-		MaxBytes:           DefaultMaxBytes,
-		MaxDepth:           DefaultMaxDepth,
-		MaxAliasExpansions: DefaultMaxAliasExpansions,
+		MaxBytes:     DefaultMaxBytes,
+		MaxDepth:     DefaultMaxDepth,
+		MaxYAMLNodes: DefaultMaxYAMLNodes,
 	}
 }
 
@@ -82,9 +92,9 @@ func DefaultLimits() Limits {
 type LimitKind string
 
 const (
-	LimitInputSize      LimitKind = "input_size"
-	LimitDepth          LimitKind = "depth"
-	LimitAliasExpansion LimitKind = "alias_expansion"
+	LimitInputSize     LimitKind = "input_size"
+	LimitDepth         LimitKind = "depth"
+	LimitYAMLNodeCount LimitKind = "yaml_node_count"
 )
 
 // LimitError is returned by a decoder when an input violates a Limits
