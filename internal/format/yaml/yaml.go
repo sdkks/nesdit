@@ -34,25 +34,14 @@ import (
 // top-level node (mapping, sequence, or scalar). This function is retained
 // for tests and callers that specifically want a map root.
 func Decode(r io.Reader) (*omap.Doc, error) {
-	var root yaml.Node
-	dec := yaml.NewDecoder(r)
-	if err := dec.Decode(&root); err != nil {
-		return nil, fmt.Errorf("yaml: %w", err)
+	v, err := DecodeValue(r)
+	if err != nil {
+		return nil, err
 	}
-	// root is DocumentNode wrapping the real content.
-	var content *yaml.Node
-	if root.Kind == yaml.DocumentNode {
-		if len(root.Content) != 1 {
-			return nil, fmt.Errorf("yaml: document has %d content nodes, want 1", len(root.Content))
-		}
-		content = root.Content[0]
-	} else {
-		content = &root
+	if v.Kind != omap.KindMap {
+		return nil, fmt.Errorf("yaml: top-level value must be a mapping, got kind=%v", v.Kind)
 	}
-	if content.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("yaml: top-level value must be a mapping, got kind=%v", content.Kind)
-	}
-	return nodeToMap(content)
+	return v.Map, nil
 }
 
 // DecodeValue reads a single YAML document from r and returns its top-level
@@ -220,54 +209,6 @@ func (w *yamlWalker) node(n *yaml.Node, d int) (omap.Value, error) {
 		items := make([]omap.Value, 0, len(n.Content))
 		for _, c := range n.Content {
 			v, err := w.node(c, d+1)
-			if err != nil {
-				return omap.Value{}, err
-			}
-			items = append(items, v)
-		}
-		return omap.Value{Kind: omap.KindSeq, Seq: items}, nil
-	case yaml.ScalarNode:
-		return scalarNodeToValue(n), nil
-	default:
-		return omap.Value{}, fmt.Errorf("yaml: unsupported node kind %v at line %d", n.Kind, n.Line)
-	}
-}
-
-func nodeToMap(n *yaml.Node) (*omap.Doc, error) {
-	if n.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("yaml: expected mapping, got kind=%v at line %d", n.Kind, n.Line)
-	}
-	d := omap.New()
-	for i := 0; i+1 < len(n.Content); i += 2 {
-		kn, vn := n.Content[i], n.Content[i+1]
-		if kn.Kind != yaml.ScalarNode {
-			return nil, fmt.Errorf("yaml: non-scalar map key at line %d (kind=%v)", kn.Line, kn.Kind)
-		}
-		v, err := nodeToValue(vn)
-		if err != nil {
-			return nil, err
-		}
-		d.Set(kn.Value, v)
-	}
-	return d, nil
-}
-
-func nodeToValue(n *yaml.Node) (omap.Value, error) {
-	// Resolve aliases transparently on decode (anchors not re-emitted per NFR-6 sibling).
-	if n.Kind == yaml.AliasNode && n.Alias != nil {
-		return nodeToValue(n.Alias)
-	}
-	switch n.Kind {
-	case yaml.MappingNode:
-		d, err := nodeToMap(n)
-		if err != nil {
-			return omap.Value{}, err
-		}
-		return omap.MapValue(d), nil
-	case yaml.SequenceNode:
-		items := make([]omap.Value, 0, len(n.Content))
-		for _, c := range n.Content {
-			v, err := nodeToValue(c)
 			if err != nil {
 				return omap.Value{}, err
 			}

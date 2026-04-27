@@ -28,22 +28,14 @@ import (
 // (object, array, string, number, boolean, null). Decode is retained for
 // callers that specifically require a map-rooted result.
 func Decode(r io.Reader) (*omap.Doc, error) {
-	dec := stdjson.NewDecoder(r)
-	dec.UseNumber()
-
-	tok, err := dec.Token()
-	if err != nil {
-		return nil, fmt.Errorf("json: %w", err)
-	}
-	delim, ok := tok.(stdjson.Delim)
-	if !ok || delim != '{' {
-		return nil, fmt.Errorf("json: top-level value must be an object, got %v", tok)
-	}
-	d, err := decodeObject(dec)
+	v, err := DecodeValue(r)
 	if err != nil {
 		return nil, err
 	}
-	return d, nil
+	if v.Kind != omap.KindMap {
+		return nil, fmt.Errorf("json: top-level value must be an object, got %v", v.Kind)
+	}
+	return v.Map, nil
 }
 
 // DecodeValue reads a single JSON document from r and returns its top-level
@@ -255,85 +247,6 @@ func decodeArrayBounded(dec *stdjson.Decoder, depth, maxDepth int) ([]omap.Value
 		return nil, fmt.Errorf("json: %w", err)
 	}
 	return out, nil
-}
-
-// At entry, dec has just consumed the object-open '{' token.
-func decodeObject(dec *stdjson.Decoder) (*omap.Doc, error) {
-	d := omap.New()
-	for dec.More() {
-		tok, err := dec.Token()
-		if err != nil {
-			return nil, fmt.Errorf("json: %w", err)
-		}
-		key, ok := tok.(string)
-		if !ok {
-			return nil, fmt.Errorf("json: expected string key, got %T: %v", tok, tok)
-		}
-		v, err := decodeValue(dec)
-		if err != nil {
-			return nil, err
-		}
-		d.Set(key, v)
-	}
-	// consume '}'
-	if _, err := dec.Token(); err != nil {
-		return nil, fmt.Errorf("json: %w", err)
-	}
-	return d, nil
-}
-
-// At entry, dec has just consumed the array-open '[' token.
-func decodeArray(dec *stdjson.Decoder) ([]omap.Value, error) {
-	var out []omap.Value
-	for dec.More() {
-		v, err := decodeValue(dec)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, v)
-	}
-	if _, err := dec.Token(); err != nil {
-		return nil, fmt.Errorf("json: %w", err)
-	}
-	return out, nil
-}
-
-// decodeValue reads the next JSON value (which may recurse for objects
-// or arrays).
-func decodeValue(dec *stdjson.Decoder) (omap.Value, error) {
-	tok, err := dec.Token()
-	if err != nil {
-		return omap.Value{}, fmt.Errorf("json: %w", err)
-	}
-	switch t := tok.(type) {
-	case stdjson.Delim:
-		switch t {
-		case '{':
-			sub, err := decodeObject(dec)
-			if err != nil {
-				return omap.Value{}, err
-			}
-			return omap.MapValue(sub), nil
-		case '[':
-			items, err := decodeArray(dec)
-			if err != nil {
-				return omap.Value{}, err
-			}
-			return omap.Value{Kind: omap.KindSeq, Seq: items}, nil
-		default:
-			return omap.Value{}, fmt.Errorf("json: unexpected delim %q", t)
-		}
-	case string:
-		return omap.StrValue(t), nil
-	case bool:
-		return omap.BoolValue(t), nil
-	case stdjson.Number:
-		return omap.NumValue(t), nil
-	case nil:
-		return omap.NullValue(), nil
-	default:
-		return omap.Value{}, fmt.Errorf("json: unexpected token type %T", tok)
-	}
 }
 
 // ----------------------------- encode -----------------------------
