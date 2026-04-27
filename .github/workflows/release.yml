@@ -63,13 +63,15 @@ jobs:
           manifest-file: .release-please-manifest.json
 
       - name: Auto-merge Release PR
-        # steps.release.outputs.pr is a JSON object; extract .number into an
-        # env var to avoid shell interpolation issues with the raw JSON string.
+        # steps.release.outputs.pr is a JSON object. Put it in an env var and
+        # parse with jq — fromJSON() in env: blows up when the output is empty.
         if: ${{ steps.release.outputs.pr }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
-        run: gh pr merge --auto --squash --repo "$GITHUB_REPOSITORY" "$PR_NUMBER"
+          PR_JSON: ${{ steps.release.outputs.pr }}
+        run: |
+          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
+          gh pr merge --auto --squash --repo "$GITHUB_REPOSITORY" "$PR_NUMBER"
 
   goreleaser:
     needs: release-please
