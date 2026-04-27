@@ -12,6 +12,8 @@ on:
       - "go.mod"
       - "go.sum"
       - ".github/workflows/ci.yml"
+      - ".goreleaser.yml"
+      - ".releaserc.yml"
       - "Makefile"
       - "scripts/**"
       - ".golangci.yml"
