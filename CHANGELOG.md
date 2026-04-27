@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.2](https://github.com/sdkks/nesdit/compare/v0.0.1...v0.0.2) (2026-04-27)
+
+
+### Bug Fixes
+
+* **release:** split goreleaser to tag trigger; optimize release binaries ([952f88f](https://github.com/sdkks/nesdit/commit/952f88f949c963a54e5de43565fef0ba9d6093e6))
+
 ## [0.0.1](https://github.com/sdkks/nesdit/compare/v0.0.0...v0.0.1) (2026-04-27)
 
 
