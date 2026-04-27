@@ -61,14 +61,8 @@ func nesditIdempotent(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("nesdit-idempotent requires at least one argument")
 	}
 
-	first, code1, err := captureRun(args)
-	if err != nil {
-		ts.Fatalf("nesdit-idempotent: capture first run: %v", err)
-	}
-	second, code2, err := captureRun(args)
-	if err != nil {
-		ts.Fatalf("nesdit-idempotent: capture second run: %v", err)
-	}
+	first, code1 := captureRun(args)
+	second, code2 := captureRun(args)
 
 	if code1 != code2 {
 		ts.Fatalf("nesdit-idempotent: exit code drift: first=%d second=%d", code1, code2)
@@ -84,10 +78,10 @@ func nesditIdempotent(ts *testscript.TestScript, neg bool, args []string) {
 // original pipe-swap implementation was not goroutine-safe and caused
 // data races when testscript ran multiple scripts in parallel.
 //
-// Fail-closed contract retained: captureRun always returns a non-nil
-// error ONLY for true capture-infrastructure failures; normal run
-// failures still produce exit code != 0 with captured stdout/stderr.
-func captureRun(args []string) ([]byte, int, error) {
+// The function cannot fail: Execute always returns an exit code and
+// buffers stdout; there is no capture infrastructure to break. Normal
+// run failures surface as a non-zero code with captured stderr.
+func captureRun(args []string) ([]byte, int) {
 	var stdout, stderr bytes.Buffer
 	code := run.Execute(run.RunOptions{
 		Args:   args,
@@ -95,7 +89,7 @@ func captureRun(args []string) ([]byte, int, error) {
 		Stdout: &stdout,
 		Stderr: &stderr,
 	})
-	return stdout.Bytes(), code, nil
+	return stdout.Bytes(), code
 }
 
 // fakeEditor implements the $EDITOR stub described in this file's doc
