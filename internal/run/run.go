@@ -665,11 +665,11 @@ func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command, args []string
 	// predicate is silently ignored by runOnce — reject it before any IO so
 	// the user gets a clear diagnostic rather than a silent no-op.
 	//
-	// STDIN mode is len(args)==0 or args[0]=="-"; --edit and -i are valid
-	// modes but already handled by the flagConflictRules table (--edit
-	// rejects --where via the existing dry-run/check rules) or legitimately
-	// pass wherePredicate through. Only the plain single-file path is wrong.
-	if changed("where") && !changed("in-place") && !changed("edit") {
+	// STDIN mode: len(args)==0 or args[0]=="-". The --edit case cannot reach
+	// here with --where set: --edit requires a query (--query or -f) and both
+	// are mutually exclusive with --edit, so --edit + --where is rejected by
+	// the "where requires --query/--from-file" check earlier in this function.
+	if changed("where") && !changed("in-place") {
 		stdinMode := len(args) == 0 || (len(args) == 1 && args[0] == "-")
 		if !stdinMode {
 			msg := "--where is a batch/stream filter and is not supported in single-file mode (use -i for multi-file or omit the file argument for STDIN stream mode)"

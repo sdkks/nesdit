@@ -1,0 +1,31 @@
+# task0027_where_single_file_rejected.txtar — TASK-0027 / FR-21:
+# --where on a plain single-file invocation (no -i, no STDIN) must be
+# rejected at flag-parse time (PreRunE), BEFORE any file read, with exit 1
+# and a canonical flag.conflict error on stderr.
+#
+# --where is a batch/stream filter; in single-file mode the predicate is
+# silently ignored by runOnce. FR-21 requires that silent-ignore is replaced
+# by a hard error so the user gets a clear diagnostic.
+#
+# CRITICAL: rejection MUST happen before any file read. We use a nonexistent
+# file path and assert the error is flag.conflict, NOT an IO error. That
+# proves the check fires at flag-parse time per DR-001.
+
+# 1. Single non-existent file — must fail before any IO.
+! nesdit does-not-exist.json --where '.type == "service"' --query '.'
+stderr '^nesdit: error: flag\.conflict: '
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+# 2. Same rejection applies when the file exists — the error fires before open.
+! nesdit f.json --where '.type == "service"' --query '.'
+stderr '^nesdit: error: flag\.conflict: --where is a batch/stream filter'
+! stdout .
+
+# 3. Combining --where with -i (multi-file mode) IS valid — must succeed.
+nesdit -i --create-missing f.json --where '.type == "service"' --query '.patched = true'
+! stderr 'flag\.conflict'
+
+-- f.json --
+{"type":"service"}
