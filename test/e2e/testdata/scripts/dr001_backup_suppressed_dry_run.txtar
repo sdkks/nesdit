@@ -1,0 +1,34 @@
+# dr001_backup_suppressed_dry_run.txtar — DR-001 / FR-14: --backup is silently
+# suppressed when -n/--dry-run overrides -i.
+#
+# When -i --dry-run --backup are all set, --dry-run dominates (-i is ignored
+# with a flag.precedence warning). Because effectiveInPlace is false, the
+# file-write path (which would create the backup) is never reached. The run
+# must succeed, emit a diff to stdout, and leave NO backup file on disk.
+#
+# This fixture closes a regression gap: a bug in effectiveInPlace logic could
+# cause runFiles to be called even under --dry-run, writing an unexpected backup.
+
+# 1. -i + -n + --backup on a drifting file: diff emitted, no backup created.
+nesdit -i a.json -n --backup --query '.x = 99'
+stdout '---'
+stdout '\+\+\+'
+stderr 'flag\.precedence'
+stderr '-i ignored because --dry-run is set'
+# File MUST NOT be written.
+cmp a.json a.json.orig
+# Backup MUST NOT exist.
+! exists a.json.bak
+
+# 2. Long form --dry-run.
+nesdit -i a.json --dry-run --backup --query '.x = 99'
+stdout '---'
+stdout '\+\+\+'
+stderr 'flag\.precedence'
+# Backup MUST NOT exist.
+! exists a.json.bak
+
+-- a.json --
+{"x":1,"y":2}
+-- a.json.orig --
+{"x":1,"y":2}

@@ -1,0 +1,32 @@
+# dr001_backup_suppressed_check.txtar — DR-001 / FR-14: --backup is silently
+# suppressed when --check overrides -i.
+#
+# When -i --check --backup are all set, --check dominates (-i is ignored with
+# a flag.precedence warning). Because effectiveInPlace is false, the file-write
+# path (which would create the backup) is never reached. No backup file must
+# appear on disk in either the drifting-file or clean-file case.
+#
+# This fixture closes a regression gap: a bug in effectiveInPlace logic could
+# cause runFiles to be called even under --check, writing an unexpected backup.
+
+# 1. -i + --check + --backup on a drifting file: exit 2, warning, no backup.
+! nesdit -i a.json --check --backup --query '.x = 99'
+! stdout .
+stderr 'flag\.precedence'
+stderr '-i ignored because --check is set'
+# File MUST NOT be written.
+cmp a.json a.json.orig
+# Backup MUST NOT exist.
+! exists a.json.bak
+
+# 2. -i + --check + --backup on a clean file: exit 0, warning, no backup.
+nesdit -i a.json --check --backup --query '.'
+! stdout .
+stderr 'flag\.precedence'
+# Backup MUST NOT exist.
+! exists a.json.bak
+
+-- a.json --
+{"x":1}
+-- a.json.orig --
+{"x":1}
