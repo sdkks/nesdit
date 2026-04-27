@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sdkks/nesdit/internal/format"
+	yamlfmt "github.com/sdkks/nesdit/internal/format/yaml"
 	"github.com/sdkks/nesdit/internal/logx"
 	"github.com/sdkks/nesdit/internal/omap"
 	"github.com/sdkks/nesdit/internal/query"
@@ -44,9 +45,10 @@ const stdinFilename = "-"
 //
 // timeout (when > 0) wraps ctx with a per-document deadline for the query
 // phase only (consistent with runOnce).
-func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing, createMissing bool) error {
-	// Wire the reader (always in input format).
-	reader, err := stream.NewReader(fmtName, opts.Stdin, limits)
+func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing, createMissing bool, yamlVersion string) error {
+	// Wire the reader (always in input format). FR-18: pass yamlVersion via
+	// DecodeOpts; silently ignored for non-YAML formats.
+	reader, err := stream.NewReaderWithOpts(fmtName, opts.Stdin, limits, yamlfmt.DecodeOpts{YAMLVersion: yamlVersion})
 	if err != nil {
 		opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, err.Error())
 		return &emittedError{cause: err}

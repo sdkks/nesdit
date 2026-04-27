@@ -82,6 +82,7 @@ func runFiles(
 	keepGoing bool,
 	backupSuffix string,
 	createMissing bool,
+	yamlVersion string,
 ) error {
 	// Deduplicate paths so two symlinks pointing to the same real file
 	// do not cause double writes.
@@ -97,7 +98,7 @@ func runFiles(
 	hasEncodeFailure := false
 
 	for i, p := range paths {
-		res := processOneFile(ctx, opts, p, queryExpr, wherePredicate, overrideFormat, outputFmtOverride, args, limits, timeout, createMissing)
+		res := processOneFile(ctx, opts, p, queryExpr, wherePredicate, overrideFormat, outputFmtOverride, args, limits, timeout, createMissing, yamlVersion)
 		results[i] = res
 		if res.encErr != nil {
 			hasEncodeFailure = true
@@ -233,6 +234,7 @@ func processOneFile(
 	limits format.Limits,
 	timeout time.Duration,
 	createMissing bool,
+	yamlVersion string,
 ) fileResult {
 	res := fileResult{path: path}
 
@@ -267,7 +269,7 @@ func processOneFile(
 		return res
 	}
 	// Decode.
-	val, err := decodeFormatValueWithLimits(fmtName, bytes.NewReader(origBytes), limits)
+	val, err := decodeFormatValueWithLimitsAndVersion(fmtName, bytes.NewReader(origBytes), limits, yamlVersion)
 	if err != nil {
 		opts.Logger.Error(classifyDecodeErr(err), path, err.Error())
 		res.encErr = err

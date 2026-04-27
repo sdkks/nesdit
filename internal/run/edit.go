@@ -53,7 +53,9 @@ func resolveEditor() string {
 
 // runEdit implements the --edit expression-builder mode.
 // path is the input file; fmtName may be empty (auto-detect from extension).
-func runEdit(opts RunOptions, path, fmtName string, limits format.Limits) error {
+// yamlVersion is passed through to the YAML decoder (FR-18); it is silently
+// ignored for non-YAML formats.
+func runEdit(opts RunOptions, path, fmtName string, limits format.Limits, yamlVersion string) error {
 	// 1. TTY pre-check (M1).
 	skipTTY := os.Getenv("NESDIT_SKIP_TTY_CHECK") == "1"
 	if skipTTY {
@@ -92,7 +94,7 @@ func runEdit(opts RunOptions, path, fmtName string, limits format.Limits) error 
 	}
 
 	// 3. Decode to omap.Value.
-	origVal, decErr := decodeFormatValueWithLimits(fmtName, bytes.NewReader(origBytes), limits)
+	origVal, decErr := decodeFormatValueWithLimitsAndVersion(fmtName, bytes.NewReader(origBytes), limits, yamlVersion)
 	if decErr != nil {
 		opts.Logger.Error(classifyDecodeErr(decErr), path, decErr.Error())
 		return &emittedError{cause: decErr}
@@ -183,7 +185,7 @@ func runEdit(opts RunOptions, path, fmtName string, limits format.Limits) error 
 	}
 
 	// 6d. Decode edited temp file and run diff engine.
-	editedVal, editDecErr := decodeFormatValueWithLimits(fmtName, bytes.NewReader(editedBytes), limits)
+	editedVal, editDecErr := decodeFormatValueWithLimitsAndVersion(fmtName, bytes.NewReader(editedBytes), limits, yamlVersion)
 	if editDecErr != nil {
 		opts.Logger.Error(classifyDecodeErr(editDecErr), tmpPath, editDecErr.Error())
 		return &emittedError{cause: editDecErr}

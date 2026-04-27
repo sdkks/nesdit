@@ -11,6 +11,23 @@
 //
 // NaN and +/-Inf in numeric values are rejected at encode time with a
 // path-aware omap.EncodeError (FR-19).
+//
+// FR-18 YAML dialect selection (--yaml-version):
+//
+// gopkg.in/yaml.v3 (v3.0.1) implements YAML 1.2 resolution. It does NOT
+// tag `yes`, `no`, `on`, `off` as !!bool — those arrive as plain !!str
+// scalars. Only `true`/`True`/`TRUE`/`false`/`False`/`FALSE` are tagged
+// !!bool by the library.
+//
+// In 1.1 mode, DecodeValueWithLimitsAndOpts post-processes !!str scalars:
+// if the unquoted value matches the YAML 1.1 boolean vocabulary it is
+// converted to an omap.BoolValue before the pipeline sees it. Quoted values
+// (single or double) bypass this conversion — a `"yes"` is always a string.
+//
+// Spec deviation note (FR-18): go-yaml v3 has no first-class version
+// switch. Octal literal handling (0777 vs 0o777) and anchor-alias
+// semantics differences between YAML 1.1 and 1.2 are NOT implemented.
+// Only the boolean vocabulary is affected.
 package yaml
 
 import (
@@ -26,6 +43,26 @@ import (
 	"github.com/sdkks/nesdit/internal/format"
 	"github.com/sdkks/nesdit/internal/omap"
 )
+
+// DecodeOpts controls optional decoder behaviour beyond resource limits.
+// The zero value is the strict YAML 1.2 default.
+type DecodeOpts struct {
+	// YAMLVersion selects the boolean vocabulary used during scalar
+	// interpretation. Accepted values: "1.1" and "1.2" (default "1.2").
+	//
+	// In 1.2 mode (default), only true/false/True/False/TRUE/FALSE are
+	// treated as booleans — this matches the YAML 1.2 core schema.
+	//
+	// In 1.1 mode the extended YAML 1.1 boolean vocabulary is recognised:
+	// yes/no/on/off and their case variants are mapped to bool values.
+	// This is needed for legacy Kubernetes/Helm files that rely on that
+	// coercion.
+	//
+	// Spec deviation: go-yaml v3 has no formal version switch; octal
+	// literal and anchor-alias behavioural differences between 1.1 and 1.2
+	// are NOT implemented. Only the boolean vocabulary is affected.
+	YAMLVersion string
+}
 
 // Decode reads a single YAML document from r and returns its top-level
 // mapping as *omap.Doc.
@@ -68,6 +105,13 @@ func DecodeValue(r io.Reader) (omap.Value, error) {
 //
 // A zero Limits value means "no bounds" — useful for tests.
 func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error) {
+	return DecodeValueWithLimitsAndOpts(r, limits, DecodeOpts{})
+}
+
+// DecodeValueWithLimitsAndOpts extends DecodeValueWithLimits with FR-18
+// dialect control. The opts.YAMLVersion field selects "1.1" or "1.2"
+// boolean vocabulary; all other behaviour is unchanged.
+func DecodeValueWithLimitsAndOpts(r io.Reader, limits format.Limits, opts DecodeOpts) (omap.Value, error) {
 	data, err := format.ReadAllLimited(r, limits.MaxBytes, "yaml")
 	if err != nil {
 		return omap.Value{}, err
@@ -97,8 +141,9 @@ func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error
 		content = &root
 	}
 	w := &yamlWalker{
-		maxDepth: limits.MaxDepth,
-		maxNodes: limits.MaxYAMLNodes,
+		maxDepth:    limits.MaxDepth,
+		maxNodes:    limits.MaxYAMLNodes,
+		yamlVersion: opts.YAMLVersion,
 	}
 	return w.node(content, 0)
 }
@@ -150,11 +195,14 @@ func EncodeValue(w io.Writer, v omap.Value) error {
 //
 // maxDepth <= 0 disables the depth cap.
 // maxNodes <= 0 disables the yaml-node count cap.
+// yamlVersion "" or "1.2" selects YAML 1.2 boolean vocabulary (default).
+// yamlVersion "1.1" enables the extended YAML 1.1 boolean vocabulary.
 type yamlWalker struct {
-	maxDepth int
-	maxNodes int
-	nodes    int                 // node materialisations so far
-	visiting map[*yaml.Node]bool // cycle detection for alias resolution
+	maxDepth    int
+	maxNodes    int
+	nodes       int                 // node materialisations so far
+	visiting    map[*yaml.Node]bool // cycle detection for alias resolution
+	yamlVersion string              // "" | "1.1" | "1.2"
 }
 
 // node materialises a single yaml.Node at tree-depth d. Follows aliases
@@ -226,7 +274,7 @@ func (w *yamlWalker) node(n *yaml.Node, d int) (omap.Value, error) {
 		}
 		return omap.Value{Kind: omap.KindSeq, Seq: items}, nil
 	case yaml.ScalarNode:
-		return scalarNodeToValue(n), nil
+		return scalarNodeToValue(n, w.yamlVersion), nil
 	default:
 		return omap.Value{}, fmt.Errorf("yaml: unsupported node kind %v at line %d", n.Kind, n.Line)
 	}
@@ -235,7 +283,12 @@ func (w *yamlWalker) node(n *yaml.Node, d int) (omap.Value, error) {
 // scalarNodeToValue interprets a YAML scalar, resolving the implicit tag
 // when none was explicit. Records the resolved tag on the omap.Value so
 // round-trip encoders can re-assert it.
-func scalarNodeToValue(n *yaml.Node) omap.Value {
+//
+// yamlVersion controls boolean vocabulary:
+//   - "" or "1.2": only true/false (canonical forms) are booleans.
+//   - "1.1": the extended YAML 1.1 vocabulary (yes/no/on/off and case
+//     variants) is also treated as boolean.
+func scalarNodeToValue(n *yaml.Node, yamlVersion string) omap.Value {
 	tag := n.Tag
 	if tag == "" {
 		tag = inferScalarTag(n)
@@ -258,6 +311,16 @@ func scalarNodeToValue(n *yaml.Node) omap.Value {
 	case "!!float":
 		return omap.NumValue(jsonNumber(n.Value))
 	case "!!str":
+		// In YAML 1.1 mode, check whether the scalar is a YAML 1.1 boolean
+		// token. gopkg.in/yaml.v3 uses YAML 1.2 resolution (only true/false
+		// are booleans), so `yes`/`no`/`on`/`off` arrive here with tag !!str.
+		// The style check guards against explicitly-quoted values: a quoted
+		// `"yes"` is unambiguously a string even in YAML 1.1.
+		if yamlVersion == "1.1" && n.Style != yaml.SingleQuotedStyle && n.Style != yaml.DoubleQuotedStyle {
+			if b, ok := yaml11Bool(n.Value); ok {
+				return omap.BoolValue(b)
+			}
+		}
 		// Tag explicitly !!str — either the YAML had a quoted form or
 		// the source carried an explicit tag. Retain so round-trip
 		// doesn't re-infer timestamp/int/etc.
@@ -268,6 +331,26 @@ func scalarNodeToValue(n *yaml.Node) omap.Value {
 		// Unknown custom tag — treat as string but retain tag.
 		return omap.StrValueTagged(n.Value, tag)
 	}
+}
+
+// yaml11Bool maps the extended YAML 1.1 boolean vocabulary to Go booleans.
+// Returns (value, true) when s is a recognised 1.1 boolean token, or
+// (false, false) when s is not in the 1.1 boolean set.
+//
+// Truthy: y, Y, yes, Yes, YES, true, True, TRUE, on, On, ON
+// Falsy:  n, N, no, No, NO, false, False, FALSE, off, Off, OFF
+//
+// The canonical YAML 1.2 forms (true/True/TRUE/false/False/FALSE) are
+// handled by the caller before yaml11Bool is invoked; they are included
+// here for completeness but would not reach this function in practice.
+func yaml11Bool(s string) (bool, bool) {
+	switch s {
+	case "y", "Y", "yes", "Yes", "YES", "on", "On", "ON":
+		return true, true
+	case "n", "N", "no", "No", "NO", "off", "Off", "OFF":
+		return false, true
+	}
+	return false, false
 }
 
 // inferScalarTag is a best-effort default when yaml.v3 did not populate a tag

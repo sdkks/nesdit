@@ -71,23 +71,31 @@ type DocWriter interface {
 // It uses gopkg.in/yaml.v3's streaming decoder which consumes one document
 // per Decode call, so each Next() call reads exactly one YAML document.
 type yamlDocReader struct {
-	scanner *bufio.Scanner
-	limits  format.Limits
-	buf     []string // lines for current document
-	val     omap.Value
-	err     error
-	eof     bool
+	scanner    *bufio.Scanner
+	limits     format.Limits
+	decodeOpts yamlfmt.DecodeOpts
+	buf        []string // lines for current document
+	val        omap.Value
+	err        error
+	eof        bool
 }
 
 // NewYAMLReader returns a DocReader that reads `---`-separated YAML documents
 // from r, applying limits at decode time.
 func NewYAMLReader(r io.Reader, limits format.Limits) DocReader {
+	return NewYAMLReaderWithOpts(r, limits, yamlfmt.DecodeOpts{})
+}
+
+// NewYAMLReaderWithOpts returns a DocReader that reads `---`-separated YAML
+// documents from r, applying limits and decode opts (e.g. FR-18 YAMLVersion).
+func NewYAMLReaderWithOpts(r io.Reader, limits format.Limits, opts yamlfmt.DecodeOpts) DocReader {
 	scanner := bufio.NewScanner(r)
 	// Allow lines up to 1 MiB (generous for config files).
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	return &yamlDocReader{
-		scanner: scanner,
-		limits:  limits,
+		scanner:    scanner,
+		limits:     limits,
+		decodeOpts: opts,
 	}
 }
 
@@ -120,7 +128,7 @@ func (yr *yamlDocReader) Next() bool {
 		return false
 	}
 	src := strings.Join(yr.buf, "\n") + "\n"
-	val, err := yamlfmt.DecodeValueWithLimits(strings.NewReader(src), yr.limits)
+	val, err := yamlfmt.DecodeValueWithLimitsAndOpts(strings.NewReader(src), yr.limits, yr.decodeOpts)
 	if err != nil {
 		yr.err = err
 		return false
@@ -305,9 +313,15 @@ func (tw *tomlDocWriter) WriteDoc(v omap.Value) error {
 // an alias for "jsonl" because format.Detect may return "json" for
 // single-document JSON input that should be treated as a JSONL stream.
 func NewReader(fmtName string, r io.Reader, limits format.Limits) (DocReader, error) {
+	return NewReaderWithOpts(fmtName, r, limits, yamlfmt.DecodeOpts{})
+}
+
+// NewReaderWithOpts extends NewReader with FR-18 decode opts. The opts are
+// passed to the YAML reader; they are silently ignored for JSONL and TOML.
+func NewReaderWithOpts(fmtName string, r io.Reader, limits format.Limits, opts yamlfmt.DecodeOpts) (DocReader, error) {
 	switch fmtName {
 	case "yaml":
-		return NewYAMLReader(r, limits), nil
+		return NewYAMLReaderWithOpts(r, limits, opts), nil
 	case "json", "jsonl":
 		return NewJSONLReader(r, limits), nil
 	case "toml":

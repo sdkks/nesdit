@@ -54,6 +54,7 @@ func runDryRun(
 	limits format.Limits,
 	timeout time.Duration,
 	createMissing bool,
+	yamlVersion string,
 ) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
@@ -82,7 +83,7 @@ func runDryRun(
 		return &emittedError{cause: readErr}
 	}
 
-	val, decErr := decodeFormatValueWithLimits(fmtName, bytes.NewReader(origBytes), limits)
+	val, decErr := decodeFormatValueWithLimitsAndVersion(fmtName, bytes.NewReader(origBytes), limits, yamlVersion)
 	if decErr != nil {
 		opts.Logger.Error(classifyDecodeErr(decErr), path, decErr.Error())
 		return &emittedError{cause: decErr}
@@ -182,6 +183,7 @@ func runCheck(
 	limits format.Limits,
 	timeout time.Duration,
 	createMissing bool,
+	yamlVersion string,
 ) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
@@ -210,7 +212,7 @@ func runCheck(
 		return &emittedError{cause: readErr}
 	}
 
-	val, decErr := decodeFormatValueWithLimits(fmtName, bytes.NewReader(origBytes), limits)
+	val, decErr := decodeFormatValueWithLimitsAndVersion(fmtName, bytes.NewReader(origBytes), limits, yamlVersion)
 	if decErr != nil {
 		opts.Logger.Error(classifyDecodeErr(decErr), path, decErr.Error())
 		return &emittedError{cause: decErr}

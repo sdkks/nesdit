@@ -164,6 +164,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		strict         bool
 		createMissing  bool
 		backupSuffix   string
+		yamlVersion    string
 		timeout        time.Duration
 		maxBytes       int64
 		maxDepth       int
@@ -255,6 +256,14 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					return &emittedError{cause: fmt.Errorf("%s", msg)}
 				}
 			}
+			// FR-18: validate --yaml-version before any IO.
+			if cmd.Flag("yaml-version").Changed {
+				if yamlVersion != "1.1" && yamlVersion != "1.2" {
+					msg := "--yaml-version must be 1.1 or 1.2"
+					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
+					return &emittedError{cause: errors.New(msg)}
+				}
+			}
 			return validateFlagInteraction(opts.Logger, cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -274,7 +283,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
 					return &emittedError{cause: errors.New(msg)}
 				}
-				return runEdit(opts, args[0], formatName, limits)
+				return runEdit(opts, args[0], formatName, limits, yamlVersion)
 			}
 
 			// Build the jq engine's arg list (string args + JSON args).
@@ -313,7 +322,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
 					return &emittedError{cause: errors.New(msg)}
 				}
-				return runDryRun(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing)
+				return runDryRun(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing, yamlVersion)
 			}
 
 			// --check (FR-12): compare encoded result to re-encoded original.
@@ -324,12 +333,12 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
 					return &emittedError{cause: errors.New(msg)}
 				}
-				return runCheck(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing)
+				return runCheck(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing, yamlVersion)
 			}
 
 			// -i / --in-place: route through the two-pass file orchestrator.
 			if effectiveInPlace {
-				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, outputFormat, jqArgs, limits, timeout, keepGoing, backupSuffix, createMissing)
+				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, outputFormat, jqArgs, limits, timeout, keepGoing, backupSuffix, createMissing, yamlVersion)
 			}
 
 			// STDIN mode (FR-3, STORY-0005): no file args, or explicit "-".
@@ -339,14 +348,14 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFormatUnknown, fmtErr.Error())
 					return &emittedError{cause: fmtErr}
 				}
-				return runStdin(cmd.Context(), resolvedOpts, fmtName, outputFormat, qText, wherePredicate, jqArgs, limits, timeout, keepGoing, createMissing)
+				return runStdin(cmd.Context(), resolvedOpts, fmtName, outputFormat, qText, wherePredicate, jqArgs, limits, timeout, keepGoing, createMissing, yamlVersion)
 			}
 
 			// Default: single-file file→stdout path (STORY-0003).
 			// --where is not meaningful in single-file mode (there's nothing to
 			// filter against a batch), so wherePredicate is intentionally not
 			// passed to runOnce.
-			return runOnce(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing)
+			return runOnce(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing, yamlVersion)
 		},
 	}
 
@@ -394,6 +403,10 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	// query.missing_path error. With the flag, absent intermediate nodes are
 	// created as empty objects (mirrors jq's native `=` assignment semantics).
 	cmd.Flags().BoolVar(&createMissing, "create-missing", false, "allow queries to create keys/paths that do not exist in the input document; by default, absent paths are rejected")
+	// FR-18: --yaml-version selects the YAML boolean vocabulary. Default is "1.2"
+	// (only true/false recognised as booleans). "1.1" enables the extended vocabulary
+	// (yes/no/on/off and case variants). Silently ignored for non-YAML formats.
+	cmd.Flags().StringVar(&yamlVersion, "yaml-version", "1.2", "YAML dialect for boolean coercion: 1.1 (yes/no/on/off as bools) or 1.2 (true/false only; default)")
 	// STORY-0008 flags. Defaults come from format.DefaultLimits() so the
 	// safe-by-default semantics live in one place.
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap")
@@ -775,7 +788,7 @@ func unescapeDollarBrace(q string) string {
 // STORY-0015: outputFmtOverride, when non-empty, selects the encode
 // format independently of the input format. When empty, the encode format
 // equals the detected/overridden input format (no behaviour change).
-func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat, outputFmtOverride string, args []query.Arg, limits format.Limits, timeout time.Duration, createMissing bool) error {
+func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat, outputFmtOverride string, args []query.Arg, limits format.Limits, timeout time.Duration, createMissing bool, yamlVersion string) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
 		fmtName = detectFormatByExt(path)
@@ -804,7 +817,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 	}
 	defer func() { _ = f.Close() }()
 
-	val, err := decodeFormatValueWithLimits(fmtName, f, limits)
+	val, err := decodeFormatValueWithLimitsAndVersion(fmtName, f, limits, yamlVersion)
 	if err != nil {
 		opts.Logger.Error(classifyDecodeErr(err), path, err.Error())
 		return &emittedError{cause: err}
@@ -932,21 +945,24 @@ func detectFormatByExt(path string) string {
 	}
 }
 
-// decodeFormatValueWithLimits is the top-level-agnostic decoder
-// carrying STORY-0008 resource bounds. BUG-0001: JSON/YAML allow any
-// top-level value; TOML still requires a table (enforced by the TOML
-// decoder itself).
+// decodeFormatValueWithLimitsAndVersion is the top-level-agnostic decoder
+// carrying STORY-0008 resource bounds and FR-18 yamlVersion dialect
+// selection. BUG-0001: JSON/YAML allow any top-level value; TOML still
+// requires a table (enforced by the TOML decoder itself).
 //
 // STORY-0008 MUST-FIX: takes an io.Reader (not []byte). The decoder
 // layer wraps the reader in ReadAllLimited internally, so a caller
 // feeding a *os.File will surface a LimitError after reading at most
 // MaxBytes+1 bytes rather than after buffering the full file.
-func decodeFormatValueWithLimits(fmtName string, r io.Reader, limits format.Limits) (omap.Value, error) {
+//
+// FR-18: yamlVersion ("1.1" | "1.2" | "") selects YAML boolean vocabulary.
+// The value is silently ignored for non-YAML formats.
+func decodeFormatValueWithLimitsAndVersion(fmtName string, r io.Reader, limits format.Limits, yamlVersion string) (omap.Value, error) {
 	switch fmtName {
 	case "json":
 		return jsonfmt.DecodeValueWithLimits(r, limits)
 	case "yaml":
-		return yamlfmt.DecodeValueWithLimits(r, limits)
+		return yamlfmt.DecodeValueWithLimitsAndOpts(r, limits, yamlfmt.DecodeOpts{YAMLVersion: yamlVersion})
 	case "toml":
 		return tomlfmt.DecodeValueWithLimits(r, limits)
 	default:

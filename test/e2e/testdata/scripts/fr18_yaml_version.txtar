@@ -1,0 +1,62 @@
+# fr18_yaml_version.txtar — FR-18: --yaml-version <1.1|1.2> dialect selection.
+#
+# YAML 1.1 treats `yes`/`no`/`on`/`off` (and case variants) as booleans.
+# YAML 1.2 (the default) only recognises `true`/`false` as booleans;
+# `yes`/`no`/`on`/`off` are plain strings.
+#
+# Spec deviation note: go-yaml v3 has no formal version switch. Only the
+# boolean vocabulary is affected; octal and anchor-alias differences between
+# 1.1 and 1.2 are not implemented.
+
+# Sub-test 1 (default / 1.2): `yes` and `no` are decoded as strings.
+# The identity query re-emits them as quoted strings because yaml.v3 would
+# otherwise re-infer the !!bool tag for a plain `yes` on round-trip.
+nesdit --query '.enabled' input.yaml
+stdout '^yes$'
+! stderr .
+
+# Sub-test 2 (explicit 1.2): same as default.
+nesdit --yaml-version 1.2 --query '.enabled' input.yaml
+stdout '^yes$'
+! stderr .
+
+# Sub-test 3 (1.1): `yes` is decoded as a boolean true.
+# The query `.enabled` on a bool true emits `true` (canonical 1.2 form on
+# output — encode is always YAML 1.2 regardless of --yaml-version).
+nesdit --yaml-version 1.1 --query '.enabled' input.yaml
+stdout '^true$'
+! stderr .
+
+# Sub-test 4 (1.1): `no` is decoded as a boolean false.
+nesdit --yaml-version 1.1 --query '.disabled' input.yaml
+stdout '^false$'
+! stderr .
+
+# Sub-test 5 (1.1): `on`/`off` are decoded as booleans.
+nesdit --yaml-version 1.1 --query '.switch_on' input.yaml
+stdout '^true$'
+! stderr .
+
+nesdit --yaml-version 1.1 --query '.switch_off' input.yaml
+stdout '^false$'
+! stderr .
+
+# Sub-test 6: --yaml-version is silently ignored for non-YAML formats.
+# A JSON input with --yaml-version 1.1 must still succeed and produce the
+# same result as without the flag.
+nesdit --yaml-version 1.1 --query '.x' input.json
+stdout '^1$'
+! stderr .
+
+# Sub-test 7: invalid --yaml-version value must fail with exit 1.
+! nesdit --yaml-version 1.0 --query '.' input.yaml
+stderr 'flag.invalid'
+stderr '1\.1 or 1\.2'
+
+-- input.yaml --
+enabled: yes
+disabled: no
+switch_on: on
+switch_off: off
+-- input.json --
+{"x":1}
