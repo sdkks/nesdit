@@ -66,10 +66,10 @@ Notes:
   contract so the real gendocs implementation plugs in without Makefile
   churn.
 - `make lint` prints an install hint pointing at
-  `go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2`
-  when `golangci-lint` is absent. CI and canary both pin `v1.62.2` via
-  `golangci/golangci-lint-action@v6.5.2`, so the local install hint and
-  CI resolve to the same binary version.
+  `go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.11.4`
+  when `golangci-lint` is absent. CI and canary both pin `v2.11.4` via
+  `golangci/golangci-lint-action@v8.0.0` (SHA `4afd733a`), so the local
+  install hint and CI resolve to the same binary version.
 - Zero unit tests and zero e2e fixtures ship at this stage — both
   commands exit green. Real fixtures arrive with the feature stories.
 
@@ -89,8 +89,12 @@ merges.
   `pelletier/go-toml/v2` to `@latest` before running
   `make test-all lint`. It is triggered on a weekly schedule, on any PR
   that touches `go.mod` / `go.sum`, and on `workflow_dispatch`. Failure
-  surfaces as a visible red job but does not block merges
-  (`continue-on-error: true`).
+  surfaces as visible red steps but does not block merges
+  (`continue-on-error: true` on individual steps, not the job).
+  **Important:** the `canary / toolchain-bump` job MUST NOT be added as a
+  required branch-protection check — `continue-on-error` on steps makes
+  the job always exit 0, which would silently make branch protection
+  vacuous.
 
 When the canary flips red, that is the signal to schedule a joint bump:
 move the primary matrix to `['1.23', '1.24']`, refresh the pinned
@@ -114,21 +118,9 @@ locally on v1.62.2.
 
 - **Everywhere** — CI (`.github/workflows/ci.yml`), canary
   (`.github/workflows/canary.yml`), and the `make lint` install hint —
-  pins **v1.62.2** via `golangci/golangci-lint-action@v6.5.2`. v6.x is
-  the last action major that supports golangci-lint v1.x; v7.0.0+ is
-  v2-only.
-- v1.61.0 is the first v1.x release with Go 1.23 loader support;
-  v1.62.2 is the current v1.x floor the project runs. Both CI and
-  local runs resolve to the same binary, so reproduction is trivial.
-- The `.golangci.yml` v1 schema still applies; no per-environment
-  config branching is needed.
-
-### Pre-staged v2 migration
-
-v1.59 deprecated `run.skip-dirs` in favour of `issues.exclude-dirs`;
-v2 removes the old key entirely. `.golangci.yml` now declares
-exclusions under a top-level `issues.exclude-dirs`. The v1 schema
-still accepts it, so nothing changes behaviourally today, but the
-eventual v2 bump (action v8, linter v2) will no longer need a config
-edit in the same commit as the tool upgrade. The v2 migration itself
-is tracked as a separate follow-up under EPIC-0001.
+  pins **v2.11.4** via `golangci/golangci-lint-action@v8.0.0`
+  (SHA `4afd733a84b1f43292c63897423277bb7f4313a9`, verified on 2026-04-27).
+  All environments resolve to the same binary; local and CI lint results
+  are directly comparable.
+- The `.golangci.yml` v2 schema is in use (`run:` block removed; timeout
+  passed via CLI `--timeout=5m`). Migrated as part of TASK-0021.
