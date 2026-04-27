@@ -1,15 +1,40 @@
 package main
 
-import "fmt"
+import (
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
-// TODO(docs-generation): read the cobra command tree from cmd/nesdit
-// and emit manpages + markdown reference under docs/reference/ via
-// cobra/doc. STORY-0003 delivered the cobra tree but the docs
-// generator itself is owned by a future docs-focused story (the
-// Makefile `docs` target and `.github/workflows/docs.yml` already
-// invoke this binary, so it remains a no-op stub rather than being
-// deleted — once the docs story is filed, replace this body with the
-// real generator and drop this TODO).
+	cobradoc "github.com/spf13/cobra/doc"
+
+	"github.com/sdkks/nesdit/internal/run"
+)
+
 func main() {
-	fmt.Println("gendocs: placeholder; cobra tree landed in STORY-0003, real generator pending a docs-focused story")
+	outDir := flag.String("out", "docs/reference", "output directory for generated markdown")
+	flag.Parse()
+
+	if err := os.MkdirAll(*outDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "gendocs: mkdir %s: %v\n", *outDir, err)
+		os.Exit(1)
+	}
+
+	root := run.NewRootCmd()
+	// Suppress the auto-generated completion subcommand from docs.
+	root.CompletionOptions.DisableDefaultCmd = true
+
+	filePrepender := func(_ string) string { return "" }
+	// linkHandler rewrites cross-doc links to relative .md paths for mkdocs.
+	linkHandler := func(ref string) string {
+		return strings.TrimSuffix(filepath.Base(ref), ".md") + ".md"
+	}
+
+	if err := cobradoc.GenMarkdownTreeCustom(root, *outDir, filePrepender, linkHandler); err != nil {
+		fmt.Fprintf(os.Stderr, "gendocs: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("gendocs: written to %s\n", *outDir)
 }

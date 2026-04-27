@@ -1,0 +1,39 @@
+site_name: nesdit
+site_description: Edit structured config (JSON/YAML/TOML) with jq-style queries
+site_url: https://sdkks.github.io/nesdit/
+repo_url: https://github.com/sdkks/nesdit
+repo_name: sdkks/nesdit
+edit_uri: ""
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - navigation.sections
+    - navigation.top
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - admonition
+
+nav:
+  - Home: index.md
+  - Reference:
+    - nesdit: reference/nesdit.md

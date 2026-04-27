@@ -59,6 +59,17 @@ func validateJSON(s string) error {
 
 // Run is the process-level entrypoint used by cmd/nesdit/main.go. It
 // constructs a RunOptions backed by os.Stdin/out/err and delegates to
+// NewRootCmd returns the root cobra.Command for use by doc generators
+// (e.g. cmd/gendocs). The returned command is pre-wired with all flags
+// but is not yet executed.
+func NewRootCmd() *cobra.Command {
+	return newRootCmd(RunOptions{
+		Stdin:  os.Stdin,
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
+	})
+}
+
 // Execute. Exit code matches Execute's contract:
 //   - 0 — success
 //   - 1 — any error
