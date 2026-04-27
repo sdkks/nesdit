@@ -122,6 +122,49 @@ func Test_Run_ContextCancelled_EmitsQueryCancelled(t *testing.T) {
 	}
 }
 
+// Test_Run_ParentDeadline_EmitsQueryTimeout verifies that a deadline on
+// the caller's context (without --timeout) also routes to query.timeout.
+// This guards the TASK-0019 removal of the `timeout > 0 &&` guard in
+// classifyQueryErr: a parent-supplied DeadlineExceeded must classify as
+// query.timeout, not query.runtime.
+func Test_Run_ParentDeadline_EmitsQueryTimeout(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.json")
+	if err := os.WriteFile(path, []byte(`{"x":0}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Provide a deadline via the parent context — NO --timeout flag.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	var stdout, stderr bytes.Buffer
+	code := run.Execute(run.RunOptions{
+		Args:   []string{path, "--query", "[range(1000000000000)]"},
+		Ctx:    ctx,
+		Stdin:  bytes.NewReader(nil),
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Logger: logx.New(&stderr),
+	})
+
+	if code == 0 {
+		t.Fatalf("expected non-zero exit on parent deadline; got 0\nstderr: %s", stderr.String())
+	}
+	stderrStr := stderr.String()
+	// The canonical log line format is:
+	//   nesdit: error: <file>: <event>: <message>
+	// Verify the event slot (the field right after "<file>:") is
+	// query.timeout. gojq's error message body may itself contain
+	// "query.runtime" as text, so we check positively for query.timeout
+	// rather than asserting absence of query.runtime from all of stderr.
+	if !strings.Contains(stderrStr, "query.timeout") {
+		t.Errorf("stderr missing query.timeout event: %q", stderrStr)
+	}
+}
+
 // Test_Run_DecoderInputSizeCap_CLIEvent verifies the CLI's
 // classifyDecodeErr maps *format.LimitError{Kind: InputSize} to the
 // decoder.limit.input_size event on stderr. Stands in for a full e2e

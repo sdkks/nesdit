@@ -314,8 +314,17 @@ func astValue(p *tomlunstable.Parser, n *tomlunstable.Node, depth, maxDepth int)
 		}
 		return omap.Value{Kind: omap.KindSeq, Seq: items}, nil
 	case tomlunstable.InlineTable:
-		// An inline table IS the value at `depth`; its keys sit at
-		// depth+1. applyKeyValue's cursorDepth is the depth of the
+		// No upfront depth+1 > maxDepth check here (contrast: Array
+		// branch above). An inline table IS the value at `depth`; it
+		// does not advance the depth counter itself — its children do.
+		// applyKeyValue enforces the cap at each leaf via its own
+		// leafDepth = cursorDepth + len(parts) calculation, so the
+		// first key that would land beyond maxDepth is rejected there.
+		// A redundant container-level check would trip one level too
+		// early for single-key inline tables: `{x = 1}` at depth=max
+		// is a valid leaf assignment, not a boundary violation.
+		//
+		// applyKeyValue's cursorDepth is the depth of the
 		// containing table (so `leafDepth = cursorDepth + len(parts)`
 		// lands on the key's actual depth). Pass `depth` itself, not
 		// `depth+1`, so a single-part child of an inline table at

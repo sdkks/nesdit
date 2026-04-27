@@ -5,6 +5,22 @@ documents.
 
 Upstream: <https://github.com/sdkks/nesdit>.
 
+## Limit flags and escape hatches
+
+`nesdit` enforces per-run resource caps by default. Every cap can be
+raised or disabled on a per-invocation basis:
+
+- `--max-bytes <n>` — reject inputs larger than `n` bytes (default 10 MiB).
+  Set to `0` to disable the cap entirely — useful for legitimately large
+  inputs such as Terraform state files or generated Kustomize overlays.
+- `--max-depth <n>` — reject documents nested more than `n` levels deep
+  (default 1000). Set to `0` to disable.
+- `--max-yaml-nodes <n>` — YAML alias-expansion cap; rejects inputs that
+  would materialise more than `n` nodes (default 100 000, billion-laughs
+  mitigation). Set to `0` to disable.
+- `--timeout <dur>` — cancel a runaway query after `dur` (e.g. `500ms`,
+  `30s`). Disabled by default (0).
+
 ## Commit trailer convention
 
 Every commit and PR that lands for a tracked ticket MUST carry a

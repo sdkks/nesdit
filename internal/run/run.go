@@ -496,13 +496,19 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 // event token. Unknown shapes fall through to query.runtime as a safe
 // default.
 //
-// STORY-0008: when a timeout was configured and the query context
-// finished with DeadlineExceeded, classify as query.timeout so
-// operators can filter timeouts distinctly from generic runtime errors.
-// ctx.Err() is authoritative because gojq wraps the deadline-exceeded
-// error in its own runtime-error shape before it reaches callers.
+// STORY-0008: when the query context finished with DeadlineExceeded,
+// classify as query.timeout so operators can filter timeouts distinctly
+// from generic runtime errors. ctx.Err() is authoritative because gojq
+// wraps the deadline-exceeded error in its own runtime-error shape
+// before it reaches callers.
+//
+// The ctx.Err() check is intentionally NOT gated on timeout > 0: a
+// parent-supplied deadline (e.g. a test harness or an upstream request
+// context) should also classify as query.timeout, not query.runtime.
+// The secondary errors.Is(err, ...) check covers the case where gojq
+// wraps the context error inside its own error type.
 func classifyQueryErr(ctx context.Context, err error, timeout time.Duration) logx.Event {
-	if timeout > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return logx.EventQueryTimeout
 	}
 	if errors.Is(err, context.DeadlineExceeded) {

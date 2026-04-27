@@ -59,9 +59,12 @@ type Limits struct {
 //   - 10 MiB matches the widely-used nginx / envoy default for a
 //     "large config file" — generous for real configs, far below the
 //     typical CI runner heap budget.
-//   - Depth 1000 is the stdlib encoding/json effective ceiling; TOML
-//     and YAML cap at the same point so behaviour is uniform across
-//     formats.
+//   - Depth 1000 is a conservative, operationally safe ceiling for
+//     real-world config files. stdlib encoding/json's effective depth
+//     limit is ~10 000 (it recurses without an explicit cap), so 1000
+//     is tighter — the goal is defence-in-depth for nesdit, not parity
+//     with encoding/json. TOML and YAML cap at the same point so
+//     behaviour is uniform across formats.
 //   - YAML node cap 100_000 gives real-world YAML anchors room to
 //     expand (Helm values, Kustomize overlays) while rejecting billion-
 //     laughs constructions that materialise millions of nodes.

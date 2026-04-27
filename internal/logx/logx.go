@@ -161,24 +161,19 @@ const (
 )
 
 // Field is a structured key/value pair carried alongside a Record. The
-// text formatter in STORY-0003 ignores Fields — they exist so STORY-0008
-// (`decoder.limit.bytes_in`, `decoder.limit.limit`) and FR-15 NDJSON
-// mode can extend the emitter additively rather than through a parallel
-// rendering path.
+// text formatter ignores Fields today — they are reserved for the
+// FR-15 NDJSON emitter, which will use them for structured per-record
+// context without changing the caller API.
 type Field struct {
 	Key   string
 	Value any
 }
 
 // Record is the in-memory representation of one log line before
-// rendering. Introducing the record type now (even though STORY-0003
-// only renders text and Fields is always empty) lets FR-15 NDJSON mode
-// and STORY-0008's structured decoder fields plug in without touching
-// caller signatures.
-//
-// Fields remains unused in STORY-0003. Callers MUST NOT populate it
-// until STORY-0008 wires the structured-field-aware surface; the text
-// renderer drops Fields today.
+// rendering. The text renderer drops Fields; callers MUST NOT populate
+// it until an NDJSON emitter is wired (FR-15). The field exists now so
+// that adding structured output later does not require touching every
+// Logger callsite.
 type Record struct {
 	Sev    Severity
 	Event  Event

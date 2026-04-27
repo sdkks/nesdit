@@ -3,6 +3,7 @@ package yaml_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -121,5 +122,29 @@ func Test_YAMLDecoder_ZeroLimits_NoBound(t *testing.T) {
 	t.Parallel()
 	if _, err := yamlfmt.DecodeValueWithLimits(bytes.NewReader([]byte("a: 1\n")), format.Limits{}); err != nil {
 		t.Fatalf("unbounded decode should accept a trivial doc: %v", err)
+	}
+}
+
+// Test_YAMLDecoder_LargeDocument_Passes is a positive-path regression
+// guard: a legitimate ~5000-key Helm-values-style YAML mapping must
+// decode without error at the default MaxYAMLNodes = 100_000.  Guards
+// against a future accidental tightening of the node cap.
+func Test_YAMLDecoder_LargeDocument_Passes(t *testing.T) {
+	t.Parallel()
+
+	// Synthesise a flat mapping with 5000 distinct keys.
+	// Each entry is "keyN: valueN\n" — well within normal config size.
+	const keyCount = 5000
+	var sb strings.Builder
+	sb.Grow(keyCount * 20) // approximate
+	for i := range keyCount {
+		fmt.Fprintf(&sb, "key%d: value%d\n", i, i)
+	}
+	src := []byte(sb.String())
+
+	if _, err := yamlfmt.DecodeValueWithLimits(bytes.NewReader(src), format.Limits{
+		MaxYAMLNodes: 100_000, // default cap
+	}); err != nil {
+		t.Fatalf("5000-key YAML document unexpectedly rejected at MaxYAMLNodes=100_000: %v", err)
 	}
 }
