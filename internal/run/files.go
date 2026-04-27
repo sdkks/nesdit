@@ -74,7 +74,7 @@ func runFiles(
 	args []query.Arg,
 	limits format.Limits,
 	timeout time.Duration,
-	keepGoing    bool,
+	keepGoing bool,
 	backupSuffix string,
 	createMissing bool,
 ) error {

@@ -143,13 +143,11 @@ const (
 	// --backup is set. FR-14 / SPEC-0001 Solution §2 event list.
 	EventFileBackupWritten Event = "file.backup_written"
 
-
 	// STORY-0012 --create-missing (FR-16): fired when a query creates a path
 	// that did not exist in the input document and --create-missing is not set.
 	// Distinct from query.runtime so operators can filter missing-path rejections
 	// from generic runtime errors and surface clear remediation hints.
 	EventQueryMissingPath Event = "query.missing_path"
-
 
 	// STORY-0007 --edit mode events.
 

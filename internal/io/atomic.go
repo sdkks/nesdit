@@ -139,7 +139,7 @@ func copyFile(src, dst string) error {
 		return err
 	}
 
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode().Perm()) //nolint:gosec
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode().Perm()) //nolint:gosec // user-supplied path by design
 	if err != nil {
 		return err
 	}

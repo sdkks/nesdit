@@ -39,7 +39,7 @@ const stdinFilename = "-"
 //
 // timeout (when > 0) wraps ctx with a per-document deadline for the query
 // phase only (consistent with runOnce).
-func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing bool, createMissing bool) error {
+func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing, createMissing bool) error {
 	// Wire the reader.
 	reader, err := stream.NewReader(fmtName, opts.Stdin, limits)
 	if err != nil {

@@ -38,69 +38,62 @@ import (
 
 // CheckNoMissingPaths returns a descriptive error (listing the first new
 // path found) if out contains any map keys or array index positions that
-// do not exist in in_. Returns nil when no new paths are detected, i.e.
+// do not exist in orig. Returns nil when no new paths are detected, i.e.
 // the query only modified, deleted, or left unchanged existing paths.
 //
 // Both values must be the result of a single gojq query application on the
-// same input: in_ is the pre-query value and out is the post-query value.
+// same input: orig is the pre-query value and out is the post-query value.
 //
 // The function is deliberately conservative: it only flags KindMap keys that
-// are new relative to in_. It does NOT flag:
+// are new relative to orig. It does NOT flag:
 //   - Type changes on existing keys (e.g. null→string on .x if .x existed).
-//   - Deletions (keys in in_ absent from out).
+//   - Deletions (keys in orig absent from out).
 //   - Array index changes within existing bounds.
-func CheckNoMissingPaths(in_, out omap.Value) error {
+func CheckNoMissingPaths(orig, out omap.Value) error {
 	path := make([]string, 0, 8)
-	return checkValue(in_, out, path)
+	return checkValue(orig, out, path)
 }
 
-// checkValue recursively compares in_ and out at path and returns the first
+// checkValue recursively compares orig and out at path and returns the first
 // new-path error found, or nil.
 //
-// The check is deliberately narrow: it only fires when BOTH in_ and out are
+// The check is deliberately narrow: it only fires when BOTH orig and out are
 // the same structural kind at a given position. If the kind changes (e.g.,
 // map → seq via `.items`, or map → scalar via `.x`), the output is a
 // reshape / extraction — not an absent-path assignment — and is not flagged.
-func checkValue(in_, out omap.Value, path []string) error {
-	// Only proceed when both sides are the same structural kind.
-	// A kind change means the query reshaped / extracted the value, which is
-	// legitimate and does not constitute creating a missing path.
-	if in_.Kind != out.Kind {
+func checkValue(orig, out omap.Value, path []string) error {
+	if orig.Kind != out.Kind {
 		return nil
 	}
 	switch out.Kind {
 	case omap.KindMap:
-		return checkMap(in_, out, path)
+		return checkMap(orig, out, path)
 	case omap.KindSeq:
-		return checkSeq(in_, out, path)
+		return checkSeq(orig, out, path)
 	default:
-		// Scalar or null: no sub-keys possible; nothing to check.
 		return nil
 	}
 }
 
-// checkMap checks that every key in out.Map existed in in_.Map (which is
+// checkMap checks that every key in out.Map existed in orig.Map (which is
 // always KindMap at this point, since checkValue enforces kind parity before
 // calling checkMap). It recursively checks nested values.
-func checkMap(in_, out omap.Value, path []string) error {
-	// in_ is guaranteed to be KindMap by checkValue's kind-parity guard.
-	inMap := in_.Map
+func checkMap(orig, out omap.Value, path []string) error {
+	origMap := orig.Map
 
 	var newKeyErr error
 	out.Map.Entries(func(k string, outVal omap.Value) bool {
-		if !inMap.Has(k) {
-			// This key did not exist at all in the input; it is new.
+		if !origMap.Has(k) {
 			fullPath := buildPath(path, k)
 			newKeyErr = fmt.Errorf(
 				"path %s does not exist in the input document; use --create-missing to allow creating new paths",
 				fullPath,
 			)
-			return false // stop iteration
+			return false
 		}
-		// Key existed in input; recurse into the value.
-		inVal, _ := inMap.Get(k)
+		origVal, _ := origMap.Get(k)
 		keyPath := append(append([]string(nil), path...), k)
-		if err := checkValue(inVal, outVal, keyPath); err != nil {
+		if err := checkValue(origVal, outVal, keyPath); err != nil {
 			newKeyErr = err
 			return false
 		}
@@ -109,27 +102,24 @@ func checkMap(in_, out omap.Value, path []string) error {
 	return newKeyErr
 }
 
-// checkSeq checks array elements. in_ is guaranteed to be KindSeq by
+// checkSeq checks array elements. orig is guaranteed to be KindSeq by
 // checkValue's kind-parity guard. Elements within the original length are
 // recursed into. Elements appended beyond the original length are new
 // (they don't correspond to any position in the input).
-func checkSeq(in_, out omap.Value, path []string) error {
-	// in_ is guaranteed to be KindSeq by checkValue's kind-parity guard.
-	inSeq := in_.Seq
-	inLen := len(inSeq)
+func checkSeq(orig, out omap.Value, path []string) error {
+	origSeq := orig.Seq
+	origLen := len(origSeq)
 
 	for i, outElem := range out.Seq {
 		idxPath := append(append([]string(nil), path...), fmt.Sprintf("[%d]", i))
-		if i >= inLen {
-			// New element appended beyond original array length.
+		if i >= origLen {
 			return fmt.Errorf(
 				"path %s does not exist in the input document; use --create-missing to allow creating new paths",
 				buildPath(nil, strings.Join(idxPath, "")),
 			)
 		}
-		// Element within original bounds: recurse into map/seq elements.
-		inElem := inSeq[i]
-		if err := checkValue(inElem, outElem, idxPath); err != nil {
+		origElem := origSeq[i]
+		if err := checkValue(origElem, outElem, idxPath); err != nil {
 			return err
 		}
 	}
