@@ -262,10 +262,14 @@ func (tr *tomlDocReader) Next() bool {
 		tr.err = err
 		return false
 	}
-	// Reject `---` anywhere in TOML input — that is a multi-doc signal.
-	if bytes.Contains(data, []byte("\n---")) || bytes.HasPrefix(data, []byte("---")) {
-		tr.err = ErrTOMLMultiDoc
-		return false
+	// Reject `---` as a standalone line (whole line equals `---` after
+	// trimming \r). This avoids false positives on `---` inside TOML string
+	// values (e.g. desc = "---") or comments (e.g. # --- section).
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if bytes.Equal(bytes.TrimRight(line, "\r"), []byte("---")) {
+			tr.err = ErrTOMLMultiDoc
+			return false
+		}
 	}
 	val, err := tomlfmt.DecodeValueWithLimits(bytes.NewReader(data), format.Limits{MaxDepth: tr.limits.MaxDepth, MaxYAMLNodes: 0})
 	if err != nil {
@@ -284,9 +288,8 @@ type tomlDocWriter struct {
 	w io.Writer
 }
 
-// NewTOMLWriter returns a DocWriter for TOML. Only one WriteDoc call is
-// meaningful; subsequent calls produce a second TOML document in the output
-// which is not valid TOML streaming (callers should ensure single-doc use).
+// NewTOMLWriter returns a DocWriter for TOML. TOML does not support
+// multi-document streams; callers must ensure exactly one WriteDoc call.
 func NewTOMLWriter(w io.Writer) DocWriter {
 	return &tomlDocWriter{w: w}
 }
@@ -298,12 +301,14 @@ func (tw *tomlDocWriter) WriteDoc(v omap.Value) error {
 // --- Factory helpers ---
 
 // NewReader returns the DocReader for fmtName, applying limits.
-// fmtName must be "yaml", "jsonl", or "toml".
+// fmtName must be "yaml", "jsonl", "json", or "toml". "json" is accepted as
+// an alias for "jsonl" because format.Detect may return "json" for
+// single-document JSON input that should be treated as a JSONL stream.
 func NewReader(fmtName string, r io.Reader, limits format.Limits) (DocReader, error) {
 	switch fmtName {
 	case "yaml":
 		return NewYAMLReader(r, limits), nil
-	case "jsonl":
+	case "json", "jsonl":
 		return NewJSONLReader(r, limits), nil
 	case "toml":
 		return NewTOMLReader(r, limits), nil
@@ -313,12 +318,13 @@ func NewReader(fmtName string, r io.Reader, limits format.Limits) (DocReader, er
 }
 
 // NewWriter returns the DocWriter for fmtName.
-// fmtName must be "yaml", "jsonl", or "toml".
+// fmtName must be "yaml", "jsonl", "json", or "toml". "json" is accepted as
+// an alias for "jsonl" to match the alias in NewReader.
 func NewWriter(fmtName string, w io.Writer) (DocWriter, error) {
 	switch fmtName {
 	case "yaml":
 		return NewYAMLWriter(w), nil
-	case "jsonl":
+	case "json", "jsonl":
 		return NewJSONLWriter(w), nil
 	case "toml":
 		return NewTOMLWriter(w), nil

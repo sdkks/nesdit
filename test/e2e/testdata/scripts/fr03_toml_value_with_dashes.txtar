@@ -1,0 +1,20 @@
+# fr03_toml_value_with_dashes.txtar — TOML `---` inside a string value or
+# comment must NOT trigger ErrTOMLMultiDoc (regression test for false-positive
+# detection that used bytes.Contains on "\n---").
+#
+# Inputs contain `---` in:
+#   - a string value:  desc = "---"
+#   - a comment:       # --- section marker
+# Neither is a standalone `---` line, so the TOML reader must accept the input
+# and nesdit must exit 0.
+
+stdin input.toml
+nesdit --format toml --query '.'
+! stderr .
+stdout 'desc = "---"'
+
+-- input.toml --
+# --- section marker (comment, not a separator)
+title = "test doc"
+desc = "---"
+count = 42

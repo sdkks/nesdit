@@ -25,6 +25,11 @@ const detectPeekSize = 512
 //
 // Returns "" when detection is inconclusive.
 //
+// Note: Detect may return "json" for single-document JSON input. Callers
+// passing the result to stream.NewReader or stream.NewWriter should treat
+// "json" and "jsonl" equivalently — both factory functions accept "json" as
+// an alias for "jsonl".
+//
 // r is not consumed: Detect wraps the peeked bytes in a new reader that the
 // caller MUST use instead of r. The returned io.Reader replays the peeked
 // bytes before handing off to r.
