@@ -75,10 +75,15 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 	// Wire a pass-through writer (always in input format) for --where
 	// unmatched documents. Pass-through docs are emitted "unchanged" in
 	// the input format even when --output-format specifies a different format.
-	passthroughWriter, ptErr := stream.NewWriter(fmtName, opts.Stdout)
-	if ptErr != nil {
-		opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, ptErr.Error())
-		return &emittedError{cause: ptErr}
+	// Only constructed when --where is active, since it is never called otherwise.
+	var passthroughWriter stream.DocWriter
+	if wherePredicate != "" {
+		var ptErr error
+		passthroughWriter, ptErr = stream.NewWriter(fmtName, opts.Stdout)
+		if ptErr != nil {
+			opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, ptErr.Error())
+			return &emittedError{cause: ptErr}
+		}
 	}
 
 	docIndex := 0

@@ -161,15 +161,20 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		editMode       bool
 		wherePredicate string
 		keepGoing      bool
-		strict         bool
-		createMissing  bool
-		backupSuffix   string
-		yamlVersion    string
-		timeout        time.Duration
-		maxBytes       int64
-		maxDepth       int
-		maxYAMLNodes   int
-		maxQueryBytes  int64
+		// strict is intentionally never read after flag parse. It exists solely
+		// so cobra's flagConflictRules can detect Flag.Changed("strict") and
+		// reject the --keep-going + --strict combination as a usage error.
+		// The flag value itself has no effect: default behaviour is already
+		// strict (halt on first error) whether or not the flag is passed.
+		strict        bool
+		createMissing bool
+		backupSuffix  string
+		yamlVersion   string
+		timeout       time.Duration
+		maxBytes      int64
+		maxDepth      int
+		maxYAMLNodes  int
+		maxQueryBytes int64
 	)
 	// STORY-0008 defaults come from the format package so the CLI and
 	// tests share one source of truth.
@@ -224,7 +229,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		// contract for flag-parse rejections. After validation, the
 		// Logger is re-constructed with the requested format (if the
 		// caller did not supply a Logger explicitly via RunOptions).
-		PreRunE: func(cmd *cobra.Command, _ []string) error {
+		PreRunE: func(cmd *cobra.Command, args []string) error {
 			// FR-15: validate --log-format before any IO.
 			if cmd.Flag("log-format").Changed {
 				switch logx.Format(logFormatStr) {
@@ -264,7 +269,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					return &emittedError{cause: errors.New(msg)}
 				}
 			}
-			return validateFlagInteraction(opts.Logger, cmd)
+			return validateFlagInteraction(opts.Logger, cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			limits := format.Limits{
@@ -388,7 +393,10 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	// STORY-0013 flags: --keep-going (FR-17) and --strict (explicit default alias).
 	// Default behaviour is --strict (halt on first error). --keep-going opts in to
 	// continue-on-error: errored documents are skipped, processing continues.
-	// Both flags are mutually exclusive; enforced by validateFlagInteraction.
+	// Both flags are mutually exclusive; enforced by flagConflictRules.
+	// Note: the strict variable is bound here only for the conflict check
+	// (Flag.Changed detection); its value is never read in the run path.
+	// See the declaration comment in the var block above for rationale.
 	cmd.Flags().BoolVar(&keepGoing, "keep-going", false, "continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred")
 	cmd.Flags().BoolVar(&strict, "strict", false, "halt on the first document error (default behaviour; explicit alias for documentation)")
 	// STORY-0010 flag: --backup[=.bak] (FR-14). Optional-value string flag:
