@@ -18,7 +18,7 @@ test:
 test-e2e: build
 	$(GO) test -tags=e2e -race -count=1 ./test/e2e/...
 
-test-all: test test-e2e
+test-all: lint test test-e2e
 
 lint:
 	@LINT=golangci-lint; \
