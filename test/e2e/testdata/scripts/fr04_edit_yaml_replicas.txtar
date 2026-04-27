@@ -1,0 +1,33 @@
+# fr04_edit_yaml_replicas.txtar — FR-4 acceptance: editing a YAML file via
+# --edit produces (1) an invocation example, (2) a suggested query, and
+# (3) a source-format (YAML) preview, in that output order (H2).
+#
+# Protocol:
+#   env EDITOR=fake-editor            — resolved editor
+#   env FAKE_EDITOR_REPLACE=edited.yaml — fake-editor writes edited.yaml
+#                                         over the temp file (simulates user
+#                                         changing replicas: 3 → 5)
+#   env NESDIT_SKIP_TTY_CHECK=1       — bypass TTY pre-check in testscript
+#                                       (testscript stdin is not a real TTY)
+#
+# Acceptance criteria from FR-4:
+#   (a) suggested query contains `.replicas = 5`
+#   (b) output contains at least one invocation example (nesdit <file> --query ...)
+#   (c) output contains a YAML preview with `# yaml` language hint (N5)
+
+env EDITOR=fake-editor
+env FAKE_EDITOR_REPLACE=edited.yaml
+env NESDIT_SKIP_TTY_CHECK=1
+
+nesdit --edit input.yaml
+stdout '\.replicas = 5'
+stdout 'nesdit'
+stdout '# yaml'
+stdout 'replicas: 5'
+
+-- input.yaml --
+replicas: 3
+image: nginx
+-- edited.yaml --
+replicas: 5
+image: nginx

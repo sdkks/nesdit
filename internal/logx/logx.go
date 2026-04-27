@@ -107,6 +107,25 @@ const (
 	// query.timeout (deadline exceeded) and query.runtime (execution error)
 	// so operators can filter clean cancellations separately.
 	EventQueryCancelled Event = "query.cancelled"
+
+	// STORY-0007 --edit mode events.
+
+	// EventEditNoTTY is emitted when --edit is invoked but stdin (or the
+	// process TTY) is not a terminal. --edit is an interactive mode and
+	// requires a TTY to spawn the editor. M1.
+	EventEditNoTTY Event = "edit.no_tty"
+
+	// EventEditEditorFailed is emitted when the editor process exits with
+	// a non-zero exit code. FR-4 step 4.
+	EventEditEditorFailed Event = "edit.editor_failed"
+
+	// EventEditEmptySave is emitted when the user saves an empty file in
+	// the editor. FR-4 step 6: no overwrite; exit 1.
+	EventEditEmptySave Event = "edit.empty_save"
+
+	// EventEditNoChange is emitted (as info) when the editor exits with
+	// no change to the temp file. FR-4 step 5: exit 0. Informational.
+	EventEditNoChange Event = "edit.no_change"
 )
 
 // knownEvents is the closed-enum registry. Every token declared above
@@ -140,6 +159,11 @@ var knownEvents = map[Event]struct{}{
 	EventDecoderLimitYAMLNodeCount: {},
 	EventQueryTimeout:              {},
 	EventQueryCancelled:            {},
+
+	EventEditNoTTY:        {},
+	EventEditEditorFailed: {},
+	EventEditEmptySave:    {},
+	EventEditNoChange:     {},
 }
 
 // IsKnownEvent reports whether e is a registered event token. Callers

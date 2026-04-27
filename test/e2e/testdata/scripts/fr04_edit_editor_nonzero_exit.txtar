@@ -1,0 +1,41 @@
+# fr04_edit_editor_nonzero_exit.txtar — FR-4 acceptance: when the editor
+# exits with a non-zero exit code, nesdit MUST emit an error on stderr and
+# exit 1 without writing any output.
+#
+# Protocol: set NESDIT_FAKE_EDITOR_EXIT_CODE=1 to make fake-editor exit 1.
+# We need a separate mechanism for making fake-editor exit non-zero. The
+# main_test.go fakeEditor command uses FAKE_EDITOR_REPLACE for file ops;
+# for the nonzero-exit case we use a special env var that fake-editor
+# checks. However, main_test.go's fakeEditor always exits 0.
+#
+# Since fake-editor (testscript command) exits 0 unconditionally, we use
+# a different approach: set EDITOR to a shell command that exits 1.
+# But testscript doesn't have a shell. Instead, we register a new
+# testscript helper "fail-editor" that exits 1.
+#
+# Actually: since fakeEditor in main_test.go always returns success (no
+# explicit exit code path), we need to use a different mechanism. The
+# simplest: set EDITOR=exit-1-editor where exit-1-editor is also
+# registered in TestMain as a command that always exits 1.
+#
+# This test uses NESDIT_FAKE_EDITOR_FAIL=1 env var. The main_test.go
+# fakeEditor implementation checks this and calls ts.Fatalf... but that
+# would fail the test, not the editor. We need fakeEditor to *exit 1*.
+#
+# Since fake-editor is a testscript Cmd (not registered via RunMain),
+# it runs in-process and can't return a non-zero exit code in the normal
+# way. The test must use an editor registered via RunMain.
+#
+# Looking at main_test.go: RunMain registers "nesdit" with a run function.
+# We need to also register a "fail-editor" command that returns 1.
+# That's an implementation detail for main_test.go — add it there.
+
+env EDITOR=fail-editor
+env NESDIT_SKIP_TTY_CHECK=1
+
+! nesdit --edit input.yaml
+stderr 'editor'
+
+-- input.yaml --
+replicas: 3
+image: nginx

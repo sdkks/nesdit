@@ -1,0 +1,17 @@
+# fr04_edit_saved_empty_no_overwrite.txtar — FR-4 acceptance: when the
+# user saves an empty file, nesdit MUST NOT overwrite the original, emit
+# an error message, and exit 1.
+#
+# fake-editor writes empty.yaml (zero bytes) over the temp file.
+
+env EDITOR=fake-editor
+env FAKE_EDITOR_REPLACE=empty.yaml
+env NESDIT_SKIP_TTY_CHECK=1
+
+! nesdit --edit input.yaml
+stderr 'empty'
+
+-- input.yaml --
+replicas: 3
+image: nginx
+-- empty.yaml --

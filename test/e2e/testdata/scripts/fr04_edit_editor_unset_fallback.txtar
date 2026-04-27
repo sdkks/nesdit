@@ -1,0 +1,19 @@
+# fr04_edit_editor_unset_fallback.txtar — FR-4 / M2 acceptance: when
+# $EDITOR is unset (or empty), try $VISUAL; when $VISUAL is set, use it.
+# This exercises the VISUAL fallback path in the editor resolution chain:
+#   $EDITOR → $VISUAL → vi
+#
+# Here we clear EDITOR and set VISUAL=fake-editor. fake-editor is a no-op
+# (no FAKE_EDITOR_REPLACE set), so the file is unchanged → exit 0 with
+# "no change detected".
+
+env EDITOR=
+env VISUAL=fake-editor
+env NESDIT_SKIP_TTY_CHECK=1
+
+nesdit --edit input.yaml
+stdout 'no change detected'
+
+-- input.yaml --
+replicas: 3
+image: nginx

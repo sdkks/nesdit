@@ -6,7 +6,7 @@
 // internal/run.Run entrypoint as the real CLI — fast, coverage-friendly,
 // no PATH lookup.
 //
-// Two custom commands extend the script vocabulary:
+// Three commands extend the script vocabulary:
 //
 //   - nesdit-idempotent <args...>
 //     NFR-2 enforcement. Runs nesdit(args) twice with identical argv via the
@@ -22,10 +22,16 @@
 //     is a no-op ("opened and saved, no changes"). The protocol is documented
 //     here and in the package doc so fixture authors can wire a deterministic
 //     editor without shell glue.
+//
+//   - fail-editor
+//     A $EDITOR stub (registered via RunMain) that always exits 1. Used to
+//     test the FR-4 acceptance: when the editor exits non-zero, nesdit must
+//     emit an error on stderr and exit 1.
 package e2e_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"testing"
 
@@ -35,7 +41,9 @@ import (
 
 func TestMain(m *testing.M) {
 	os.Exit(testscript.RunMain(m, map[string]func() int{
-		"nesdit": func() int { return run.Run(os.Args[1:]) },
+		"nesdit":      func() int { return run.Run(os.Args[1:]) },
+		"fake-editor": fakeEditorMain,
+		"fail-editor": func() int { return 1 },
 	}))
 }
 
@@ -92,14 +100,20 @@ func captureRun(args []string) ([]byte, int) {
 	return stdout.Bytes(), code
 }
 
-// fakeEditor implements the $EDITOR stub described in this file's doc
-// comment. Protocol:
+// fakeEditor implements the $EDITOR stub for use as a testscript in-process
+// command (invoked from within a .txtar script as `fake-editor <target>`).
+// It is kept for scripts that need to drive fake-editor directly — but for
+// --edit mode tests, fakeEditorMain (registered via RunMain) is what nesdit
+// actually calls via exec.Command("fake-editor", tmpfile).
+//
+// Protocol (both fakeEditor and fakeEditorMain share the same env-var contract):
 //
 //	env FAKE_EDITOR_REPLACE=<src>
 //	fake-editor <target>
 //
-// With FAKE_EDITOR_REPLACE set, <target> is overwritten with <src>'s bytes.
-// Without it, fake-editor is a no-op.
+// With FAKE_EDITOR_REPLACE set, <target> is overwritten with <src>'s bytes
+// (simulating "user edited the buffer and saved"). Without the env var,
+// fake-editor is a no-op ("opened and saved, no changes").
 func fakeEditor(ts *testscript.TestScript, neg bool, args []string) {
 	if neg {
 		ts.Fatalf("fake-editor does not support negation")
@@ -119,4 +133,35 @@ func fakeEditor(ts *testscript.TestScript, neg bool, args []string) {
 	if err := os.WriteFile(target, data, 0o644); err != nil {
 		ts.Fatalf("fake-editor: writing target %s: %v", target, err)
 	}
+}
+
+// fakeEditorMain is the subprocess entry-point for fake-editor when it is
+// invoked by nesdit via exec.Command("fake-editor", tmpfile). It is
+// registered via RunMain so it runs as a real binary in the testscript PATH.
+//
+// Protocol:
+//   - FAKE_EDITOR_REPLACE: if set to an absolute path, overwrite os.Args[1]
+//     with that file's bytes (simulating a user edit). If empty, the target
+//     is left unchanged (no-op save).
+func fakeEditorMain() int {
+	if len(os.Args) < 2 {
+		_, _ = fmt.Fprintln(os.Stderr, "fake-editor: usage: fake-editor <target>")
+		return 1
+	}
+	target := os.Args[1]
+	src := os.Getenv("FAKE_EDITOR_REPLACE")
+	if src == "" {
+		// No-op: target unchanged.
+		return 0
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "fake-editor: reading %s: %v\n", src, err)
+		return 1
+	}
+	if err := os.WriteFile(target, data, 0o644); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "fake-editor: writing %s: %v\n", target, err)
+		return 1
+	}
+	return 0
 }

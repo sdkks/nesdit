@@ -1,0 +1,36 @@
+# fr21_edit_conflicts.txtar — FR-21 acceptance: --edit is mutually exclusive
+# with -i, --dry-run, and --check. Each combination MUST be rejected at
+# flag-parse time, before any file read or editor spawn, with exit 1 and
+# the named flag.conflict event on stderr.
+#
+# Per FR-21 acceptance: rejection MUST happen before any file read. We use
+# a nonexistent path and assert the error is flag.conflict, NOT io.read.
+
+# --edit + -i
+! nesdit --edit -i does-not-exist.yaml
+stderr '^nesdit: error: flag\.conflict: '
+stderr '\-\-edit'
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+# --edit + --dry-run
+! nesdit --edit --dry-run does-not-exist.yaml
+stderr '^nesdit: error: flag\.conflict: '
+stderr '\-\-edit'
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+# --edit + --check
+! nesdit --edit --check does-not-exist.yaml
+stderr '^nesdit: error: flag\.conflict: '
+stderr '\-\-edit'
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+# -e is NOT --edit (DR-003): cobra rejects -e as unknown short flag.
+! nesdit -e does-not-exist.yaml
+stderr 'unknown shorthand flag'
+! stdout .

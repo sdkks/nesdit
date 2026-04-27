@@ -146,6 +146,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		inPlace       bool
 		dryRun        bool
 		check         bool
+		editMode      bool
 		timeout       time.Duration
 		maxBytes      int64
 		maxDepth      int
@@ -167,6 +168,14 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
+			// --edit mode requires exactly one file argument (FR-4).
+			if cmd.Flag("edit").Changed {
+				if len(args) != 1 {
+					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, "--edit requires exactly one file argument")
+					return &emittedError{cause: fmt.Errorf("--edit accepts 1 arg(s), received %d", len(args))}
+				}
+				return nil
+			}
 			// -i mode accepts one or more file arguments (multi-file / glob).
 			// Non-i mode requires exactly one file argument OR no arguments
 			// (STDIN mode, STORY-0005 FR-3).
@@ -195,6 +204,25 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 			return validateFlagInteraction(opts.Logger, cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			limits := format.Limits{
+				MaxBytes:     maxBytes,
+				MaxDepth:     maxDepth,
+				MaxYAMLNodes: maxYAMLNodes,
+			}
+
+			// --edit (FR-4, STORY-0007): interactive expression-builder mode.
+			// --edit is mutually exclusive with every query flag (--query,
+			// --from-file, --arg, --argjson) and mode flag (-i, -n, --check).
+			// Flag conflicts are already validated by validateFlagInteraction.
+			if editMode {
+				if len(args) != 1 {
+					msg := "--edit requires exactly one file argument"
+					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
+					return &emittedError{cause: errors.New(msg)}
+				}
+				return runEdit(opts, args[0], formatName, limits)
+			}
+
 			// Build the jq engine's arg list (string args + JSON args).
 			jqArgs, err := parseArgPairs(opts.Logger, argPairs, argJSONPairs)
 			if err != nil {
@@ -208,12 +236,6 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 			// Apply FR-9 `$${VAR}` → `${VAR}` literal escape before
 			// handing the text to gojq.
 			qText = unescapeDollarBrace(qText)
-
-			limits := format.Limits{
-				MaxBytes:     maxBytes,
-				MaxDepth:     maxDepth,
-				MaxYAMLNodes: maxYAMLNodes,
-			}
 
 			// DR-001 precedence: -i + -n → -n wins with warning.
 			// DR-001 precedence: -i + --check → --check wins with warning.
@@ -281,6 +303,8 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	// STORY-0006 flags: --dry-run (-n, FR-11) and --check (FR-12).
 	cmd.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "emit a unified diff of before/after to stdout; do not write any file")
 	cmd.Flags().BoolVar(&check, "check", false, "exit 2 if the query would change the input; exit 0 if identical; exit 1 on error")
+	// STORY-0007 flag: --edit (FR-4). Long-only per DR-003; -e is reserved.
+	cmd.Flags().BoolVar(&editMode, "edit", false, "open $EDITOR on a temp copy of the file; diff before/after and emit suggested query")
 	// STORY-0008 flags. Defaults come from format.DefaultLimits() so the
 	// safe-by-default semantics live in one place.
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap")
@@ -341,6 +365,7 @@ type flagPrecedenceRule struct {
 // flagConflictRules is the FR-21 ERROR matrix. Today there is one cell:
 // `--query` and `-f/--from-file` are mutually exclusive (FR-13).
 // STORY-0006 adds: `--dry-run` and `--check` are mutually exclusive.
+// STORY-0007 adds: `--edit` is mutually exclusive with -i, --dry-run, --check.
 var flagConflictRules = []flagConflictRule{
 	{
 		IfSet:      []string{"query"},
@@ -354,6 +379,27 @@ var flagConflictRules = []flagConflictRule{
 		ThenNotSet: []string{"check"},
 		Event:      logx.EventFlagConflict,
 		Msg:        "--dry-run and --check are mutually exclusive: --dry-run prints a diff, --check only signals drift via exit code",
+	},
+	{
+		// FR-21: --edit and -i are mutually exclusive.
+		IfSet:      []string{"edit"},
+		ThenNotSet: []string{"in-place"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--edit and -i are mutually exclusive: --edit always prints to stdout; use the emitted query with -i in a second invocation",
+	},
+	{
+		// FR-21: --edit and --dry-run are mutually exclusive.
+		IfSet:      []string{"edit"},
+		ThenNotSet: []string{"dry-run"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--edit is interactive and emits its own preview; --dry-run is not compatible",
+	},
+	{
+		// FR-21: --edit and --check are mutually exclusive.
+		IfSet:      []string{"edit"},
+		ThenNotSet: []string{"check"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--edit is interactive; --check is for non-interactive drift detection",
 	},
 }
 

@@ -1,0 +1,14 @@
+# fr04_edit_no_change_exit0.txtar — FR-4 acceptance: when the user saves
+# without making changes (fake-editor is a no-op), exit code is 0 and
+# stdout explicitly states "no change detected".
+
+env EDITOR=fake-editor
+env NESDIT_SKIP_TTY_CHECK=1
+
+# No FAKE_EDITOR_REPLACE → fake-editor is a no-op (temp file unchanged).
+nesdit --edit input.yaml
+stdout 'no change detected'
+
+-- input.yaml --
+replicas: 3
+image: nginx

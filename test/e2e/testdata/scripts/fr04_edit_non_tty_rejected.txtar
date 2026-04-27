@@ -1,0 +1,15 @@
+# fr04_edit_non_tty_rejected.txtar — FR-4 / M1 acceptance: when stdin is
+# not a TTY (as in CI / piped invocations), --edit MUST reject before
+# spawning any editor, emit an actionable error on stderr, and exit 1.
+#
+# No NESDIT_SKIP_TTY_CHECK set → TTY check runs → testscript stdin is not
+# a real TTY → nesdit rejects.
+
+env EDITOR=fake-editor
+
+! nesdit --edit input.yaml
+stderr 'edit'
+stderr 'tty'
+
+-- input.yaml --
+replicas: 3
