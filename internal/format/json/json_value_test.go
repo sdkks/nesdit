@@ -15,6 +15,14 @@ import (
 // to fix BUG-0001 — and confirm that arrays, strings, numbers, booleans, and
 // nulls round-trip through the pipeline.
 
+func TestDecodeValue_EmptyInput(t *testing.T) {
+	t.Parallel()
+	_, err := jsonfmt.DecodeValue(strings.NewReader(""))
+	if err == nil {
+		t.Fatal("expected non-nil error on empty input, got nil")
+	}
+}
+
 func TestDecodeValue_TopLevelArray(t *testing.T) {
 	t.Parallel()
 	src := `[1,2,3]`

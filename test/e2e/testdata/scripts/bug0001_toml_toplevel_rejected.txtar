@@ -7,7 +7,7 @@
 # reject it. We assert exit 1 with a parse error on stderr.
 
 ! nesdit --query '.' bad.toml
-stderr '^nesdit: error: '
+stderr '^nesdit: error: [^:]+: parse\.error: '
 
 -- bad.toml --
 [1, 2, 3]

@@ -79,14 +79,26 @@ func Encode(w io.Writer, d *omap.Doc) error {
 
 // EncodeValue writes any omap.Value as a TOML document. Because TOML spec
 // requires a top-level table, non-map roots (sequences, scalars, null) are
-// rejected with a clear error — this preserves the TOML constraint while
-// matching the format-neutral API added for BUG-0001 on JSON/YAML.
+// rejected with an *omap.EncodeError (Kind: EncodeKindNonTableRoot) so
+// errors.Is/As routing in run.go classifies the failure as
+// format.incompatible (FR-19 cross-format incompatibility, NFR-7).
 func EncodeValue(w io.Writer, v omap.Value) error {
 	if v.Kind != omap.KindMap {
-		return fmt.Errorf("toml: top-level value must be a table, got %s (TOML spec does not permit top-level %s)", kindName(v.Kind), kindName(v.Kind))
+		kind := kindName(v.Kind)
+		return &omap.EncodeError{
+			Path:   omap.RootPath(),
+			Kind:   omap.EncodeKindNonTableRoot,
+			Format: "toml",
+			Cause:  fmt.Errorf("top-level value must be a table, got %s (TOML spec does not permit top-level %s)", kind, kind),
+		}
 	}
 	if v.Map == nil {
-		return fmt.Errorf("toml: top-level table is nil")
+		return &omap.EncodeError{
+			Path:   omap.RootPath(),
+			Kind:   omap.EncodeKindNonTableRoot,
+			Format: "toml",
+			Cause:  fmt.Errorf("top-level table is nil"),
+		}
 	}
 	return Encode(w, v.Map)
 }

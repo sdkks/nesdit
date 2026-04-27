@@ -24,10 +24,9 @@ import (
 // representation as *omap.Doc. The top level MUST be a JSON object; arrays
 // and scalars at the root are rejected with a typed error.
 //
-// Deprecated for CLI use: prefer DecodeValue, which accepts any RFC 8259
-// top-level value (object, array, string, number, boolean, null). This
-// function is retained for tests and callers that specifically want a map
-// root.
+// Deprecated: Use DecodeValue, which accepts any RFC 8259 top-level value
+// (object, array, string, number, boolean, null). Decode is retained for
+// callers that specifically require a map-rooted result.
 func Decode(r io.Reader) (*omap.Doc, error) {
 	dec := stdjson.NewDecoder(r)
 	dec.UseNumber()
