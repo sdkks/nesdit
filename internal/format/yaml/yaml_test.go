@@ -167,3 +167,66 @@ func TestYAML_IntPrecisionPreserved(t *testing.T) {
 		t.Fatalf("big=%q want exact", v.Num.String())
 	}
 }
+
+// TestDecodeValue_TrailingDocumentRejected verifies that DecodeValue returns an
+// error when the input contains more than one YAML document. This mirrors the
+// equivalent check in json.DecodeValueWithLimits (TASK-0017 / BUG-0001
+// symmetry).
+func TestDecodeValue_TrailingDocumentRejected(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "multi_doc",
+			src:  "foo: bar\n---\nbaz: qux\n",
+		},
+		{
+			name: "trailing_separator_only",
+			src:  "foo: bar\n---\n",
+		},
+		{
+			name: "three_documents",
+			src:  "a: 1\n---\nb: 2\n---\nc: 3\n",
+		},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := yamlfmt.DecodeValue(strings.NewReader(tc.src))
+			if err == nil {
+				t.Fatalf("expected error for trailing content, got nil")
+			}
+			if !strings.Contains(err.Error(), "trailing content") {
+				t.Fatalf("error %q does not mention 'trailing content'", err.Error())
+			}
+		})
+	}
+}
+
+// TestDecodeValue_SingleDocAccepted verifies that a valid single-document YAML
+// input is still accepted after the trailing-document check is in place.
+func TestDecodeValue_SingleDocAccepted(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		src  string
+	}{
+		{name: "plain_mapping", src: "foo: bar\n"},
+		{name: "with_leading_separator", src: "---\nfoo: bar\n"},
+		{name: "sequence_root", src: "- a\n- b\n"},
+		{name: "scalar_root", src: "hello\n"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := yamlfmt.DecodeValue(strings.NewReader(tc.src))
+			if err != nil {
+				t.Fatalf("unexpected error for valid single-doc %q: %v", tc.src, err)
+			}
+		})
+	}
+}

@@ -27,6 +27,7 @@ import (
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
+
 // Decode reads a single YAML document from r and returns its top-level
 // mapping as *omap.Doc.
 //
@@ -75,6 +76,16 @@ func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error
 	var root yaml.Node
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&root); err != nil {
+		return omap.Value{}, fmt.Errorf("yaml: %w", err)
+	}
+	// TASK-0017: reject trailing documents so single-doc callers get a clear
+	// error rather than silently discarding content. Mirrors the equivalent
+	// check in json.DecodeValueWithLimits (BUG-0001 symmetry).
+	var trailing yaml.Node
+	if err := dec.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return omap.Value{}, fmt.Errorf("yaml: unexpected trailing content after top-level document")
+		}
 		return omap.Value{}, fmt.Errorf("yaml: %w", err)
 	}
 	var content *yaml.Node
