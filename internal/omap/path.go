@@ -72,9 +72,10 @@ func isBareKey(k string) bool {
 }
 
 // EncodeErrorKind names the representability-failure kind reported by
-// [EncodeError]. Today's four kinds are EncodeKindNull (only TOML rejects
-// null) plus the three non-finite numeric tokens EncodeKindNaN,
-// EncodeKindPosInf, EncodeKindNegInf. The enum is the single source of
+// [EncodeError]. Today's five kinds are EncodeKindNull (only TOML rejects
+// null), the three non-finite numeric tokens EncodeKindNaN,
+// EncodeKindPosInf, EncodeKindNegInf, and EncodeKindNonTableRoot (TOML
+// rejects non-map document roots). The enum is the single source of
 // truth for these tokens and is designed to absorb the NFR-10 stderr
 // event taxonomy (heterogeneous array, cross-format incompat, etc.) as
 // later stories extend the set.
@@ -107,6 +108,12 @@ const (
 	// EncodeKindNegInf marks a numeric -Inf in a format that rejects it
 	// (JSON, YAML-strict, TOML).
 	EncodeKindNegInf EncodeErrorKind = "-Inf"
+	// EncodeKindNonTableRoot marks a non-map (array or scalar) top-level
+	// value passed to a format that requires a table/object at the root.
+	// Today only TOML uses this: the TOML spec mandates a top-level table,
+	// so a reshape query that produces an array or scalar cannot be
+	// re-encoded as TOML. The error classifies as format.incompatible (FR-19).
+	EncodeKindNonTableRoot EncodeErrorKind = "non-table-root"
 )
 
 // EncodeError is the canonical path-aware encode error used by the JSON,
@@ -136,6 +143,7 @@ var (
 	_ EncodeErrorKind = EncodeKindNaN
 	_ EncodeErrorKind = EncodeKindPosInf
 	_ EncodeErrorKind = EncodeKindNegInf
+	_ EncodeErrorKind = EncodeKindNonTableRoot
 )
 
 // Error satisfies the error interface.

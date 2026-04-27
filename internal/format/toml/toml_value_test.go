@@ -2,6 +2,7 @@ package toml_test
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -43,7 +44,19 @@ func TestTOMLEncodeValue_RejectsTopLevelArray(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for TOML top-level array, got nil (output=%q)", buf.String())
 	}
-	// Error should reference TOML's table-only constraint clearly.
+	// Error must be a typed *omap.EncodeError so errors.As routing in run.go
+	// classifies this as format.incompatible (FR-19, TASK-0015).
+	var ee *omap.EncodeError
+	if !errors.As(err, &ee) {
+		t.Fatalf("want *omap.EncodeError, got %T: %v", err, err)
+	}
+	if ee.Kind != omap.EncodeKindNonTableRoot {
+		t.Fatalf("want Kind=%q, got %q", omap.EncodeKindNonTableRoot, ee.Kind)
+	}
+	if ee.Format != "toml" {
+		t.Fatalf("want Format=%q, got %q", "toml", ee.Format)
+	}
+	// Error string should still reference TOML's table-only constraint clearly.
 	if !strings.Contains(err.Error(), "toml") {
 		t.Fatalf("error %q should mention toml", err.Error())
 	}
@@ -71,6 +84,14 @@ func TestTOMLEncodeValue_RejectsTopLevelScalar(t *testing.T) {
 			err := tomlfmt.EncodeValue(&buf, c.v)
 			if err == nil {
 				t.Fatalf("expected error for TOML top-level %s, got nil", c.name)
+			}
+			// Error must be a typed *omap.EncodeError (TASK-0015).
+			var ee *omap.EncodeError
+			if !errors.As(err, &ee) {
+				t.Fatalf("want *omap.EncodeError, got %T: %v", err, err)
+			}
+			if ee.Kind != omap.EncodeKindNonTableRoot {
+				t.Fatalf("want Kind=%q, got %q", omap.EncodeKindNonTableRoot, ee.Kind)
 			}
 		})
 	}

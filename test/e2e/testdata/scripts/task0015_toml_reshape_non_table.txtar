@@ -1,0 +1,34 @@
+# task0015_toml_reshape_non_table.txtar — TASK-0015 e2e coverage.
+#
+# Exercises the EncodeKindNonTableRoot path: a TOML input is read
+# successfully (it is a valid table), then a jq query reshapes the
+# output to a non-map value (an array via .items[], a scalar via
+# .items[0].id).  EncodeValue rejects the non-table result with
+# *omap.EncodeError, which run.go classifies as format.incompatible
+# (FR-19 / TASK-0015).  Canonical NFR-10 stderr shape is asserted.
+
+# Case 1: query produces an array — cannot re-encode as TOML.
+! nesdit --query '.items' table.toml
+stderr '^nesdit: error: table\.toml: format\.incompatible: '
+! stdout .
+
+# Case 2: query produces a scalar — cannot re-encode as TOML.
+! nesdit --query '.items[0].id' table.toml
+stderr '^nesdit: error: table\.toml: format\.incompatible: '
+! stdout .
+
+# Case 3: identity on the same file succeeds — TOML table root is fine.
+nesdit --query '.' table.toml
+stdout 'title'
+! stderr .
+
+-- table.toml --
+title = "example"
+
+[[items]]
+id = 1
+name = "alpha"
+
+[[items]]
+id = 2
+name = "beta"
