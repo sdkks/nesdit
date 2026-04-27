@@ -430,12 +430,24 @@ type ndjsonRecord struct {
 // path and index are omitted when empty/zero. fields is always present as
 // {} when Record.Fields is empty.
 func renderJSON(r Record) string {
+	// Apply the same normalisation as renderText: strip C0 control bytes
+	// from path and msg, and remove trailing newlines and periods from msg.
+	// Without this, JSON mode would emit raw control bytes (e.g. \x00, \r)
+	// that could break downstream NDJSON consumers expecting clean strings,
+	// and trailing periods would produce inconsistent output across formats.
+	path := stripControls(r.File)
+	msg := r.Msg
+	msg = strings.TrimRight(msg, "\n")
+	msg = strings.ReplaceAll(msg, "\n", " ")
+	msg = strings.TrimRight(msg, ".")
+	msg = stripControls(msg)
+
 	rec := ndjsonRecord{
 		Event:    string(r.Event),
 		Severity: string(r.Sev),
-		Path:     r.File,
+		Path:     path,
 		Index:    r.Index,
-		Msg:      r.Msg,
+		Msg:      msg,
 		Fields:   make(map[string]any, len(r.Fields)),
 	}
 	for _, f := range r.Fields {
