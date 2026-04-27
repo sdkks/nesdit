@@ -3,3 +3,26 @@ repos:
     rev: v8.18.2
     hooks:
       - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint
+        entry: golangci-lint run --timeout=5m
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-test
+        name: go test
+        entry: go test -race -count=1 ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-test-e2e
+        name: go test e2e
+        entry: bash -c 'go build -ldflags="-s -w" -o bin/nesdit ./cmd/nesdit && go test -tags=e2e -race -count=1 ./test/e2e/...'
+        language: system
+        types: [go]
+        pass_filenames: false
