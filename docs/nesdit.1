@@ -1,0 +1,212 @@
+.TH NESDIT 1 "April 2026" "nesdit 0.1.0" "User Commands"
+.SH NAME
+nesdit \- edit structured config files with jq-style queries
+.SH SYNOPSIS
+.B nesdit
+[\fIOPTIONS\fR] [\fIFILE\fR...]
+.PP
+.B nesdit
+[\fIOPTIONS\fR] \fB\-\fR
+.SH DESCRIPTION
+.B nesdit
+reads a single JSON, YAML, or TOML document, applies a jq-style query,
+and writes the result to stdout or back to the file.
+.PP
+Supported input formats are JSON, YAML, and TOML; the format is detected
+from the file extension by default and may be overridden with
+.BR \-\-format .
+Output preserves key order for YAML and TOML documents.
+.PP
+Queries follow jq syntax. String variable bindings
+.RB ( \-\-arg ,
+.BR \-\-argjson )
+and query-file loading
+.RB ( \-\-from\-file )
+are supported.
+.SH OPTIONS
+.SS Run modes
+.TP
+.B \-\-edit
+Open
+.I $EDITOR
+on a temporary copy of the file, then emit a suggested query derived from
+the diff of the before and after states.
+.TP
+.BR \-i ", " \-\-in\-place
+Edit the file(s) in-place using atomic temp-and-rename writes.
+.TP
+.BR \-n ", " \-\-dry\-run
+Emit a unified diff of the before and after states to stdout; do not write
+any file.
+.TP
+.B \-\-check
+Exit 2 if the query would change the input, exit 0 if the result is
+identical, exit 1 on error.  Useful for CI drift detection.
+.SS Output control
+.TP
+.BI \-\-output\-format " format"
+Force the output format:
+.IR json ,
+.IR yaml ,
+or
+.IR toml .
+Defaults to the same format as the input.
+.TP
+.BI \-\-log\-format " mode"
+Stderr rendering mode:
+.B text
+(default, one canonical line per event) or
+.B json
+(NDJSON, one JSON object per event).
+.SS Query control
+.TP
+.BI \-\-query " query"
+A jq-style query string.  Defaults to the identity filter
+.RB ( . )
+when neither
+.B \-\-query
+nor
+.B \-f
+is given.
+.TP
+.BR \-f ", " \-\-from\-file " \fIpath\fR"
+Load the query from a file.  Mutually exclusive with
+.BR \-\-query .
+.TP
+.BI \-\-arg " K=V"
+Bind
+.I $K
+to the literal string
+.I V
+in the query.  Repeatable.
+.TP
+.BI \-\-argjson " K=V"
+Bind
+.I $K
+to the JSON-decoded value
+.I V
+in the query.  Repeatable.
+.TP
+.BI \-\-where " predicate"
+Filter documents by a jq predicate before applying the main query.  In
+stream mode, non-matching documents pass through unchanged.  In file mode,
+non-matching documents are skipped.
+.TP
+.B \-\-create\-missing
+Allow queries to create keys or paths that do not exist in the input
+document.  By default, absent paths are rejected.
+.SS Format options
+.TP
+.BI \-\-format " format"
+Force the input format:
+.IR json ,
+.IR yaml ,
+or
+.IR toml .
+Default is extension-based detection.
+.TP
+.BI \-\-yaml\-version " version"
+YAML boolean coercion dialect:
+.B 1.1
+treats
+.IR yes / no / on / off
+as booleans;
+.B 1.2
+(default) treats only
+.IR true / false
+as booleans.
+.SS Resource caps
+.TP
+.BI \-\-max\-bytes " N"
+Reject inputs larger than
+.I N
+bytes.  0 disables the cap.  Default: 10485760 (10 MiB).
+.TP
+.BI \-\-max\-depth " N"
+Reject documents nested deeper than
+.I N
+levels.  0 disables the cap.  Default: 1000.
+.TP
+.BI \-\-max\-yaml\-nodes " N"
+YAML node-materialisation cap (billion-laughs mitigation).  0 disables
+the cap.  Default: 100000.
+.TP
+.BI \-\-max\-query\-bytes " N"
+Reject query files loaded via
+.B \-\-from\-file
+larger than
+.I N
+bytes.  0 disables the cap.  Default: 1048576 (1 MiB).
+.TP
+.BI \-\-timeout " duration"
+Cancel the query after
+.I duration
+(e.g.\&
+.IR 500ms ,
+.IR 30s ).
+0 disables the cap.
+.SS Global flags
+.TP
+.B \-\-backup[=\fIsuffix\fR]
+Write a sibling backup file before each in-place edit.  Default suffix is
+.IR .bak ;
+a custom suffix may be given as
+.BR \-\-backup=.orig .
+Requires
+.BR \-i .
+.TP
+.B \-\-keep\-going
+Continue processing after per-document errors; errored documents are
+skipped.  Exits 1 at the end if any errors occurred.  Default behaviour
+halts on the first error.
+.TP
+.B \-\-strict
+Halt on the first document error.  This is the default behaviour; this
+flag is an explicit alias provided for documentation purposes.
+.TP
+.BR \-h ", " \-\-help
+Show help and exit.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Error (bad query, unreadable file, parse failure, etc.).
+.TP
+.B 2
+Drift detected: the query would change the input (only when
+.B \-\-check
+is used).
+.SH EXAMPLES
+.PP
+Print the value of a key to stdout:
+.PP
+.B "    nesdit --query '.database.host' config.yaml"
+.PP
+Edit a key in-place:
+.PP
+.B "    nesdit -i --query '.database.host = ""db.example.com""' config.yaml"
+.PP
+Preview changes as a unified diff without writing:
+.PP
+.B "    nesdit -n --query '.version = ""2.0.0""' package.json"
+.PP
+Gate a CI step — exit 2 if config has drifted from expected state:
+.PP
+.B "    nesdit --check --query '.env == ""production""' deploy.toml"
+.PP
+Read from STDIN and write to STDOUT (pipe usage):
+.PP
+.B "    cat config.json | nesdit --query '.settings.debug = true'"
+.PP
+Batch-edit multiple files in-place, skipping errors:
+.PP
+.B "    nesdit -i --keep-going --query '.version = ""1.1.0""' configs/*.yaml"
+.SH SEE ALSO
+.BR jq (1),
+.BR yq (1)
+.SH NOTES
+Full documentation and cookbook at https://sdkks.github.io/nesdit/
+.SH AUTHORS
+The nesdit authors.
