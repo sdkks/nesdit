@@ -183,12 +183,12 @@ func isSafeKey(key string) bool {
 		return false
 	}
 	first := key[0]
-	if !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first == '_') {
+	if (first < 'a' || first > 'z') && (first < 'A' || first > 'Z') && first != '_' {
 		return false
 	}
 	for i := 1; i < len(key); i++ {
 		c := key[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' {
 			return false
 		}
 	}

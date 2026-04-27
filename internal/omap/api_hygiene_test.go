@@ -107,10 +107,10 @@ func TestDoc_NilReceiver_ReadsAreUniform(t *testing.T) {
 	if d.Has("x") {
 		t.Error("nil.Has returned true")
 	}
-	if ks := d.Keys(); ks != nil && len(ks) != 0 {
+	if ks := d.Keys(); len(ks) != 0 {
 		t.Errorf("nil.Keys()=%v want nil/empty", ks)
 	}
-	if vs := d.Values(); vs != nil && len(vs) != 0 {
+	if vs := d.Values(); len(vs) != 0 {
 		t.Errorf("nil.Values()=%v want nil/empty", vs)
 	}
 }
@@ -158,7 +158,7 @@ func TestEncodeError_UsesTypedConstant(t *testing.T) {
 	// without a conversion. A raw `"NaN"` literal would require an
 	// explicit omap.EncodeErrorKind("NaN") — that's the friction this
 	// contract depends on.
-	var k omap.EncodeErrorKind = omap.EncodeKindNaN
+	k := omap.EncodeKindNaN
 	if k != e.Kind {
 		t.Fatalf("typed constant assignment mismatch: %q vs %q", k, e.Kind)
 	}

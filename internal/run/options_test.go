@@ -221,10 +221,10 @@ func findModuleRoot(t *testing.T, start string) string {
 // struct fields aren't the right interface types.
 var _ = func() bool {
 	var o run.RunOptions
-	var _ context.Context = o.Ctx
-	var _ io.Reader = o.Stdin
-	var _ io.Writer = o.Stdout
-	var _ io.Writer = o.Stderr
-	var _ *logx.Logger = o.Logger
+	var _ context.Context = o.Ctx //nolint:staticcheck // intentional: compile-time interface-assignability check
+	var _ io.Reader = o.Stdin     //nolint:staticcheck // intentional: compile-time interface-assignability check
+	var _ io.Writer = o.Stdout    //nolint:staticcheck // intentional: compile-time interface-assignability check
+	var _ io.Writer = o.Stderr    //nolint:staticcheck // intentional: compile-time interface-assignability check
+	var _ *logx.Logger = o.Logger //nolint:staticcheck // intentional: compile-time interface-assignability check
 	return true
 }

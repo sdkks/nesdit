@@ -560,7 +560,7 @@ func isJQName(s string) bool {
 		return false
 	}
 	first := s[0]
-	if !(first == '_' || (first >= 'A' && first <= 'Z') || (first >= 'a' && first <= 'z')) {
+	if first != '_' && (first < 'A' || first > 'Z') && (first < 'a' || first > 'z') {
 		return false
 	}
 	for i := 1; i < len(s); i++ {

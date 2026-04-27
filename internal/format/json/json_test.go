@@ -88,7 +88,7 @@ func TestEncode_PreservesInsertionOrder(t *testing.T) {
 	if zi < 0 || ai < 0 || mi < 0 {
 		t.Fatalf("keys missing in output: %q", s)
 	}
-	if !(zi < ai && ai < mi) {
+	if zi >= ai || ai >= mi {
 		t.Fatalf("keys out of insertion order in %q: zulu=%d alpha=%d mike=%d", s, zi, ai, mi)
 	}
 }
