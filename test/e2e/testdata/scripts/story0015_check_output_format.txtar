@@ -1,0 +1,18 @@
+# story0015_check_output_format.txtar — STORY-0015 / TASK-0036:
+# --check + --output-format interaction.
+#
+# runCheck compares "before" (re-encoded in input format) vs "after" (encoded
+# in output format). When the two formats differ, the serialisations are never
+# byte-identical — even an identity query always produces drift.
+#
+# 1. Same format (json→json): identity query → no drift → exit 0.
+nesdit input.json --check --output-format json --query '.'
+! stdout .
+! stderr .
+
+# 2. Cross format (json→yaml): identity query → always drifts → exit 2.
+! nesdit input.json --check --output-format yaml --query '.'
+! stdout .
+
+-- input.json --
+{"x":1}
