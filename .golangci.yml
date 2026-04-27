@@ -4,6 +4,8 @@
 # target. `issues.exclude-dirs` is the v2 successor of the deprecated
 # `run.skip-dirs` key (removed in v2). See README for pin rationale.
 
+version: "2"
+
 issues:
   # Skip the e2e testscript harness entirely: it uses package-level patterns
   # (custom-cmd signatures, global os.Stdout swaps) that trip several linters
