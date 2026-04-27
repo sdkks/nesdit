@@ -23,7 +23,7 @@ func Test_Run_HonorsContextCancellation(t *testing.T) {
 	t.Parallel()
 
 	src := []byte(`{"a":1}`)
-	doc, err := jsonfmt.Decode(bytes.NewReader(src))
+	val, err := jsonfmt.DecodeValue(bytes.NewReader(src))
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -35,7 +35,7 @@ func Test_Run_HonorsContextCancellation(t *testing.T) {
 	// [range(1000000000)] materializes ~10^9 ints into an array; on an
 	// uncancelled run this takes seconds and would OOM before finishing.
 	// With a 10ms deadline, gojq should abort quickly.
-	_, err = query.Run(ctx, doc, ".out = [range(1000000000)]")
+	_, err = query.RunValue(ctx, val, ".out = [range(1000000000)]")
 	elapsed := time.Since(start)
 
 	if err == nil {

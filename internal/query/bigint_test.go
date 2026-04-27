@@ -72,16 +72,16 @@ func Test_Bridge_BigIntRHS_RoundTrips(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			doc, err := jsonfmt.Decode(bytes.NewReader(tc.source))
+			val, err := jsonfmt.DecodeValue(bytes.NewReader(tc.source))
 			if err != nil {
 				t.Fatalf("decode: %v", err)
 			}
-			out, err := query.Run(context.Background(), doc, tc.query)
+			out, err := query.RunValue(context.Background(), val, tc.query)
 			if err != nil {
-				t.Fatalf("query.Run: %v", err)
+				t.Fatalf("query.RunValue: %v", err)
 			}
 			var buf bytes.Buffer
-			if err := jsonfmt.Encode(&buf, out); err != nil {
+			if err := jsonfmt.EncodeValue(&buf, out); err != nil {
 				t.Fatalf("encode: %v", err)
 			}
 			got := buf.String()

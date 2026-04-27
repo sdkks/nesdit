@@ -401,6 +401,37 @@ var flagConflictRules = []flagConflictRule{
 		Event:      logx.EventFlagConflict,
 		Msg:        "--edit is interactive; --check is for non-interactive drift detection",
 	},
+	{
+		// SF-1: --edit and --query are mutually exclusive.
+		// --edit opens the file in an editor and derives the query from the diff;
+		// --query supplies the query directly. Combining them is undefined.
+		IfSet:      []string{"edit"},
+		ThenNotSet: []string{"query"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--edit derives the query from your edits; --query is not compatible (provide one or the other)",
+	},
+	{
+		// SF-1: --edit and --from-file are mutually exclusive.
+		IfSet:      []string{"edit"},
+		ThenNotSet: []string{"from-file"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--edit derives the query from your edits; --from-file is not compatible (provide one or the other)",
+	},
+	{
+		// SF-1: --edit and --arg are mutually exclusive.
+		// --edit does not execute a query, so variable bindings have no effect.
+		IfSet:      []string{"edit"},
+		ThenNotSet: []string{"arg"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--edit does not execute a query; --arg bindings are not compatible",
+	},
+	{
+		// SF-1: --edit and --argjson are mutually exclusive.
+		IfSet:      []string{"edit"},
+		ThenNotSet: []string{"argjson"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--edit does not execute a query; --argjson bindings are not compatible",
+	},
 }
 
 // flagPrecedenceRules is the FR-21 ALLOW-with-warning matrix (DR-001).
@@ -674,7 +705,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 // context) should also classify as query.timeout, not query.runtime.
 // The secondary errors.Is(err, ...) check covers the case where gojq
 // wraps the context error inside its own error type.
-func classifyQueryErr(ctx context.Context, err error, timeout time.Duration) logx.Event {
+func classifyQueryErr(ctx context.Context, err error, _ time.Duration) logx.Event {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return logx.EventQueryTimeout
 	}

@@ -343,11 +343,11 @@ func leafName(path string) string {
 	lastBracket := strings.LastIndex(path, "[")
 	if lastBracket > lastDot {
 		// Bracket notation: extract key.
-		close := strings.LastIndex(path, "]")
-		if close < 0 {
+		closeIdx := strings.LastIndex(path, "]")
+		if closeIdx < 0 {
 			return ""
 		}
-		inner := path[lastBracket+1 : close]
+		inner := path[lastBracket+1 : closeIdx]
 		var s string
 		if err := json.Unmarshal([]byte(inner), &s); err == nil && isSafeKey(s) {
 			return s
@@ -411,11 +411,22 @@ func (r Result) Format(w io.Writer) error {
 	return nil
 }
 
+// shellescape applies a minimal POSIX single-quote escape to s: any
+// single-quote character (') is replaced with the sequence '\”, which
+// closes the current quoted string, emits a literal single-quote via
+// backslash, and re-opens the quoted string. Applied to file paths and
+// query strings embedded in single-quoted shell invocation examples so
+// that a path or query containing a single-quote does not break the
+// shell syntax of the example output.
+func shellescape(s string) string {
+	return strings.ReplaceAll(s, "'", `'\''`)
+}
+
 // BuildResult constructs a Result from a change list, the file path, the
 // format name, and the format-encoded after document.
 func BuildResult(filePath, fmtName, preview string, changes []Change) Result {
 	query := SynthesizeQuery(changes)
-	invocation := fmt.Sprintf("nesdit %s --query '%s'", filePath, query)
+	invocation := fmt.Sprintf("nesdit %s --query '%s'", shellescape(filePath), shellescape(query))
 
 	// Per-assignment lines for the "Suggested query" section.
 	var queryLines []string
@@ -434,7 +445,7 @@ func BuildResult(filePath, fmtName, preview string, changes []Change) Result {
 	for _, s := range suggestions {
 		argExamples = append(argExamples,
 			fmt.Sprintf("nesdit %s %s %s=%s --query '%s'",
-				filePath, s.Flag, s.VarName, s.VarValue, s.QueryWithVar))
+				shellescape(filePath), s.Flag, s.VarName, s.VarValue, shellescape(s.QueryWithVar)))
 	}
 
 	return Result{

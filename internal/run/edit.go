@@ -12,11 +12,11 @@
 //  6. After editor exit:
 //     a. Non-zero exit → error on stderr, exit 1 (no output).
 //     b. Temp file identical to original encoded form → "no change detected"
-//        on stdout, exit 0.
+//     on stdout, exit 0.
 //     c. Temp file empty → error on stderr ("saved file is empty — no change
-//        applied"), exit 1 (no overwrite).
+//     applied"), exit 1 (no overwrite).
 //     d. Otherwise → decode the edited temp file, diff against original,
-//        emit diff-engine output (H2 order) to stdout.
+//     emit diff-engine output (H2 order) to stdout.
 //
 // Testing bypass:
 //
@@ -56,13 +56,16 @@ func resolveEditor() string {
 func runEdit(opts RunOptions, path, fmtName string, limits format.Limits) error {
 	// 1. TTY pre-check (M1).
 	skipTTY := os.Getenv("NESDIT_SKIP_TTY_CHECK") == "1"
-	if !skipTTY {
-		if err := checkTTY(); err != nil {
-			opts.Logger.ErrorGlobal(logx.EventEditNoTTY,
-				"--edit requires an interactive terminal (stdin is not a TTY); "+
-					"pipe the result of a previous nesdit invocation or use --query directly")
-			return &emittedError{cause: err}
-		}
+	if skipTTY {
+		// Security M1: make the test-harness bypass visible in output so it
+		// cannot silently affect production runs.
+		opts.Logger.InfoGlobal(logx.EventEditTTYBypass,
+			"NESDIT_SKIP_TTY_CHECK=1 detected: TTY pre-check bypassed (test harness only)")
+	} else if err := checkTTY(); err != nil {
+		opts.Logger.ErrorGlobal(logx.EventEditNoTTY,
+			"--edit requires an interactive terminal (stdin is not a TTY); "+
+				"pipe the result of a previous nesdit invocation or use --query directly")
+		return &emittedError{cause: err}
 	}
 
 	// Detect format.

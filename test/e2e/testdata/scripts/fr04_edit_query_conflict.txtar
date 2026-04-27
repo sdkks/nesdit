@@ -1,0 +1,40 @@
+# fr04_edit_query_conflict.txtar — SF-1 acceptance: --edit is mutually
+# exclusive with --query, --from-file, --arg, and --argjson. Each combination
+# MUST be rejected at flag-parse time, before any file read or editor spawn,
+# with exit 1 and the named flag.conflict event on stderr.
+#
+# Per SF-1 / FR-21 acceptance: rejection MUST happen before any file read.
+# We use a nonexistent path and assert the error is flag.conflict, NOT io.read.
+
+# --edit + --query (the most common mistake: user wants to preview what the
+# query would do but --edit derives the query from the diff, not the other way)
+! nesdit --edit --query '.replicas = 5' does-not-exist.yaml
+stderr '^nesdit: error: flag\.conflict: '
+stderr '\-\-edit'
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+# --edit + --from-file
+! nesdit --edit --from-file query.jq does-not-exist.yaml
+stderr '^nesdit: error: flag\.conflict: '
+stderr '\-\-edit'
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+# --edit + --arg
+! nesdit --edit --arg name=nginx does-not-exist.yaml
+stderr '^nesdit: error: flag\.conflict: '
+stderr '\-\-edit'
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+# --edit + --argjson
+! nesdit --edit --argjson count=5 does-not-exist.yaml
+stderr '^nesdit: error: flag\.conflict: '
+stderr '\-\-edit'
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .

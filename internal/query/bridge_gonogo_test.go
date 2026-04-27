@@ -187,11 +187,32 @@ func sanitize(q string) string {
 func decode(format string, data []byte) (*omap.Doc, error) {
 	switch format {
 	case "json":
-		return jsonfmt.Decode(bytes.NewReader(data))
+		v, err := jsonfmt.DecodeValue(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		if v.Kind != omap.KindMap {
+			return nil, fmt.Errorf("json: top-level value must be an object, got %v", v.Kind)
+		}
+		return v.Map, nil
 	case "yaml":
-		return yamlfmt.Decode(bytes.NewReader(data))
+		v, err := yamlfmt.DecodeValue(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		if v.Kind != omap.KindMap {
+			return nil, fmt.Errorf("yaml: top-level value must be a mapping, got %v", v.Kind)
+		}
+		return v.Map, nil
 	case "toml":
-		return tomlfmt.Decode(bytes.NewReader(data))
+		v, err := tomlfmt.DecodeValue(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		if v.Kind != omap.KindMap {
+			return nil, fmt.Errorf("toml: top-level value must be a table, got %v", v.Kind)
+		}
+		return v.Map, nil
 	default:
 		return nil, fmt.Errorf("unknown format %q", format)
 	}

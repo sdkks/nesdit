@@ -21,12 +21,12 @@ func Test_Run_RejectsMultiOutput(t *testing.T) {
 	t.Parallel()
 
 	src := []byte(`{"items":[{"a":1},{"a":2},{"a":3}]}`)
-	doc, err := jsonfmt.Decode(bytes.NewReader(src))
+	val, err := jsonfmt.DecodeValue(bytes.NewReader(src))
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 
-	_, err = query.Run(context.Background(), doc, ".items[]")
+	_, err = query.RunValue(context.Background(), val, ".items[]")
 	if err == nil {
 		t.Fatalf("expected non-nil error for multi-output query; got nil")
 	}

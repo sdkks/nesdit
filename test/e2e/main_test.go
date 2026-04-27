@@ -44,6 +44,11 @@ func TestMain(m *testing.M) {
 		"nesdit":      func() int { return run.Run(os.Args[1:]) },
 		"fake-editor": fakeEditorMain,
 		"fail-editor": func() int { return 1 },
+		// "vi" is registered as a no-op editor stub so that the vi-fallback
+		// fixture (fr04_edit_editor_vi_fallback) can prove the $EDITOR →
+		// $VISUAL → "vi" resolution chain reaches "vi" without requiring a
+		// real vi installation in the test environment.
+		"vi": fakeEditorMain,
 	}))
 }
 

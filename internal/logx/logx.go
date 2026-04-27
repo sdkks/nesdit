@@ -126,6 +126,12 @@ const (
 	// EventEditNoChange is emitted (as info) when the editor exits with
 	// no change to the temp file. FR-4 step 5: exit 0. Informational.
 	EventEditNoChange Event = "edit.no_change"
+
+	// EventEditTTYBypass is emitted (as info) when NESDIT_SKIP_TTY_CHECK=1
+	// is detected and the TTY pre-check is skipped. This escape hatch is
+	// only for the test harness; the log line makes the bypass visible in
+	// debug output so it cannot silently affect production runs.
+	EventEditTTYBypass Event = "edit.tty_bypass"
 )
 
 // knownEvents is the closed-enum registry. Every token declared above
@@ -164,6 +170,7 @@ var knownEvents = map[Event]struct{}{
 	EventEditEditorFailed: {},
 	EventEditEmptySave:    {},
 	EventEditNoChange:     {},
+	EventEditTTYBypass:    {},
 }
 
 // IsKnownEvent reports whether e is a registered event token. Callers

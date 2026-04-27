@@ -1,0 +1,22 @@
+# fr04_edit_editor_vi_fallback.txtar — FR-4 / M2 acceptance: when neither
+# $EDITOR nor $VISUAL is set, nesdit falls back to "vi".
+#
+# "vi" is registered as a no-op editor stub in main_test.go (via RunMain)
+# so this fixture runs correctly regardless of whether the test machine has
+# a real vi installed. The stub leaves the temp file unchanged (no
+# FAKE_EDITOR_REPLACE set), so no change is detected and nesdit exits 0
+# with "no change detected".
+#
+# This proves the resolution chain ($EDITOR → $VISUAL → "vi") reaches "vi"
+# and that nesdit successfully invokes it.
+
+env EDITOR=
+env VISUAL=
+env NESDIT_SKIP_TTY_CHECK=1
+
+nesdit --edit input.yaml
+stdout 'no change detected'
+
+-- input.yaml --
+replicas: 3
+image: nginx

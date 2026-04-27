@@ -27,7 +27,6 @@ import (
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
-
 // Decode reads a single YAML document from r and returns its top-level
 // mapping as *omap.Doc.
 //
@@ -154,7 +153,7 @@ func EncodeValue(w io.Writer, v omap.Value) error {
 type yamlWalker struct {
 	maxDepth int
 	maxNodes int
-	nodes    int                // node materialisations so far
+	nodes    int                 // node materialisations so far
 	visiting map[*yaml.Node]bool // cycle detection for alias resolution
 }
 

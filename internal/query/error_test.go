@@ -15,8 +15,8 @@ import (
 	"github.com/sdkks/nesdit/internal/query"
 )
 
-// sentinel is a fixed underlying error used in unwrap assertions.
-var sentinel = errors.New("sentinel error")
+// errSentinel is a fixed underlying error used in unwrap assertions.
+var errSentinel = errors.New("sentinel error")
 
 // Test_Error_Error_Rendering asserts that Error.Error() returns the
 // expected "query.<op>: <underlying>" format for each valid Op value.
@@ -24,9 +24,9 @@ func Test_Error_Error_Rendering(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		op      string
-		err     error
-		want    string
+		op   string
+		err  error
+		want string
 	}{
 		{op: "parse", err: errors.New("unexpected token"), want: "query.parse: unexpected token"},
 		{op: "compile", err: errors.New("unknown function"), want: "query.compile: unknown function"},
@@ -78,13 +78,13 @@ func Test_Error_Error_NilErr(t *testing.T) {
 func Test_Error_Unwrap(t *testing.T) {
 	t.Parallel()
 
-	e := &query.Error{Op: "runtime", Err: sentinel}
+	e := &query.Error{Op: "runtime", Err: errSentinel}
 
-	if got := e.Unwrap(); got != sentinel {
+	if got := e.Unwrap(); got != errSentinel {
 		t.Errorf("Unwrap() = %v, want sentinel", got)
 	}
-	if !errors.Is(e, sentinel) {
-		t.Errorf("errors.Is(e, sentinel) = false, want true; Unwrap must be wired correctly")
+	if !errors.Is(e, errSentinel) {
+		t.Errorf("errors.Is(e, errSentinel) = false, want true; Unwrap must be wired correctly")
 	}
 }
 
