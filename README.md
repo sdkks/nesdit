@@ -11,13 +11,18 @@ A CLI for deterministic, format-preserving edits to JSON, YAML, and TOML documen
 ## Installation
 
 **Go:**
+
 ```sh
 go install github.com/sdkks/nesdit/cmd/nesdit@latest
 ```
 
 **Pre-built binaries** (linux/amd64, linux/arm64, darwin/arm64) are available on the [releases page](https://github.com/sdkks/nesdit/releases).
 
-**Homebrew** *(coming soon)*
+**Homebrew**:
+
+```sh
+brew tap sdkks/tap && brew install sdkks/tap/nesdit
+```
 
 ## Quick start
 
@@ -42,37 +47,50 @@ nesdit --edit config.yaml
 
 # Read from stdin
 echo '{"x": 1}' | nesdit --query '.x = 2'
+
+# Transcode: convert a JSON file to YAML output
+nesdit config.json --output-format yaml --query '.'
+
+# Inject a shell variable as a typed JSON value
+nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $replicas'
 ```
 
 ## Supported formats
 
-| Format | Extensions       | Notes                     |
-|--------|------------------|---------------------------|
-| JSON   | `.json`          | Preserves key order       |
-| YAML   | `.yaml`, `.yml`  | Single-document per file  |
-| TOML   | `.toml`          | Tables and arrays of tables |
+| Format | Extensions      | Notes                       |
+| ------ | --------------- | --------------------------- |
+| JSON   | `.json`         | Preserves key order         |
+| YAML   | `.yaml`, `.yml` | Single-document per file    |
+| TOML   | `.toml`         | Tables and arrays of tables |
 
-Format is auto-detected from the file extension. Use `--format json|yaml|toml` to override.
+Format is auto-detected from the file extension. Use `--format json|yaml|toml` to override input format, and `--output-format json|yaml|toml` to transcode to a different output format.
 
 ## Key flags
 
-| Flag | Description |
-|------|-------------|
-| `--query <jq>` | jq-style query to apply |
-| `-f, --from-file <path>` | Load query from a file |
-| `--where <jq>` | Filter: only apply query to matching documents |
-| `-i, --in-place` | Edit file(s) atomically in place |
-| `-n, --dry-run` | Emit a unified diff; do not write |
-| `--check` | Exit 2 if query would change input; exit 0 if identical |
-| `--edit` | Open `$EDITOR`, emit a suggested query from the diff |
-| `--backup[=.ext]` | Write a sibling backup before each in-place edit (requires `-i`) |
-| `--create-missing` | Allow queries to create keys/paths not present in the input |
-| `--keep-going` | Continue after per-document errors; exit 1 at end if any failed |
-| `--log-format json` | Emit NDJSON on stderr instead of text |
-| `--timeout <dur>` | Cancel query after duration (e.g. `500ms`, `30s`) |
-| `--max-bytes <n>` | Reject inputs larger than `n` bytes (default 10 MiB; `0` disables) |
-| `--max-depth <n>` | Reject documents nested deeper than `n` levels (default 1000; `0` disables) |
-| `--max-yaml-nodes <n>` | YAML alias-expansion cap, billion-laughs mitigation (default 100 000; `0` disables) |
+| Flag                        | Description                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------- |
+| `--query <jq>`              | jq-style query to apply                                                             |
+| `-f, --from-file <path>`    | Load query from a file                                                              |
+| `--arg K=V`                 | Bind `$K` as a string value in the query (repeatable)                               |
+| `--argjson K=V`             | Bind `$K` as a JSON-decoded value in the query (repeatable)                         |
+| `--where <jq>`              | Filter: only apply query to matching documents                                      |
+| `--format <fmt>`            | Force input format (`json\|yaml\|toml`); default is extension-based detection        |
+| `--output-format <fmt>`     | Output format (`json\|yaml\|toml`); defaults to same as input                        |
+| `--yaml-version <1.1\|1.2>` | YAML boolean dialect: `1.1` coerces `yes/no/on/off`; `1.2` (default) requires `true/false` |
+| `-i, --in-place`            | Edit file(s) atomically in place                                                    |
+| `-n, --dry-run`             | Emit a unified diff; do not write                                                   |
+| `--check`                   | Exit 2 if query would change input; exit 0 if identical                             |
+| `--edit`                    | Open `$EDITOR`, emit a suggested query from the diff                                |
+| `--backup[=.ext]`           | Write a sibling backup before each in-place edit (requires `-i`)                    |
+| `--create-missing`          | Allow queries to create keys/paths not present in the input                         |
+| `--strict`                  | Halt on first document error (default behaviour; explicit alias)                    |
+| `--keep-going`              | Continue after per-document errors; exit 1 at end if any failed                     |
+| `--log-format json`         | Emit NDJSON on stderr instead of text                                               |
+| `--timeout <dur>`           | Cancel query after duration (e.g. `500ms`, `30s`)                                   |
+| `--max-bytes <n>`           | Reject inputs larger than `n` bytes (default 10 MiB; `0` disables)                  |
+| `--max-depth <n>`           | Reject documents nested deeper than `n` levels (default 1000; `0` disables)         |
+| `--max-yaml-nodes <n>`      | YAML alias-expansion cap, billion-laughs mitigation (default 100 000; `0` disables) |
+| `--max-query-bytes <n>`     | Reject `--from-file` queries larger than `n` bytes (default 1 MiB; `0` disables)    |
 
 See [`nesdit --help`](https://sdkks.github.io/nesdit/reference/nesdit/) for the full reference.
 
