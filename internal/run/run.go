@@ -496,13 +496,6 @@ var flagConflictRules = []flagConflictRule{
 		Event:      logx.EventFlagConflict,
 		Msg:        "--where is a batch/stream filter and is not supported with --check (single-file mode)",
 	},
-	{
-		// FR-14 / STORY-0010: --backup requires -i (writes only happen with -i).
-		IfSet:      []string{"backup"},
-		ThenNotSet: []string{"in-place"},
-		Event:      logx.EventFlagConflict,
-		Msg:        "--backup requires -i: backups are only written when editing files in-place",
-	},
 }
 
 // flagPrecedenceRules is the FR-21 ALLOW-with-warning matrix (DR-001).
