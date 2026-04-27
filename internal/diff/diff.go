@@ -394,20 +394,20 @@ type Result struct {
 //  3. --arg/--argjson examples (if any)
 //  4. Source-format preview with language hint comment
 func (r Result) Format(w io.Writer) error {
-	fmt.Fprintln(w, r.InvocationExample)
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Suggested query:")
-	fmt.Fprintln(w, r.SuggestedQuery)
+	_, _ = fmt.Fprintln(w, r.InvocationExample)
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Suggested query:")
+	_, _ = fmt.Fprintln(w, r.SuggestedQuery)
 	if len(r.ArgExamples) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Parameterised variants:")
+		_, _ = fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w, "Parameterised variants:")
 		for _, ex := range r.ArgExamples {
-			fmt.Fprintln(w, ex)
+			_, _ = fmt.Fprintln(w, ex)
 		}
 	}
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, r.FormatHint)
-	fmt.Fprint(w, r.Preview)
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, r.FormatHint)
+	_, _ = fmt.Fprint(w, r.Preview)
 	return nil
 }
 

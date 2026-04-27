@@ -597,7 +597,7 @@ func resolveQueryText(log *logx.Logger, queryExpr, queryFile string, maxQueryByt
 			log.ErrorGlobal(logx.EventFromFileRead, msg)
 			return "", &emittedError{cause: errors.New(msg)}
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		data, err := format.ReadAllLimited(f, maxQueryBytes, "query")
 		if err != nil {
 			var lim *format.LimitError

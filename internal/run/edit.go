@@ -134,7 +134,7 @@ func runEdit(opts RunOptions, path, fmtName string, limits format.Limits) error 
 			cmd.Stdin = devNull
 			cmd.Stdout = devNull
 			cmd.Stderr = devNull
-			defer devNull.Close()
+			defer func() { _ = devNull.Close() }()
 		}
 	} else {
 		// Production: connect editor to the real TTY so it gets a proper
@@ -145,7 +145,7 @@ func runEdit(opts RunOptions, path, fmtName string, limits format.Limits) error 
 				"--edit: cannot open TTY for editor: "+ttyErr.Error())
 			return &emittedError{cause: ttyErr}
 		}
-		defer tty.Close()
+		defer func() { _ = tty.Close() }()
 		cmd.Stdin = tty
 		cmd.Stdout = tty
 		cmd.Stderr = tty
