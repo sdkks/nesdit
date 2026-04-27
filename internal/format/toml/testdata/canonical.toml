@@ -1,0 +1,5 @@
+name = "nesdit"
+version = 1
+active = true
+tags = ["a", "b", "c"]
+meta = {author = "bot", count = 42}
