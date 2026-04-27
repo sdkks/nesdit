@@ -1,49 +1,48 @@
 # golangci-lint v2 config.
 # CI uses golangci-lint v2.x via golangci/golangci-lint-action@v8.0.0.
 # Timeout is passed as --timeout=5m via the action args and the local lint
-# target. `issues.exclude-dirs` is the v2 successor of the deprecated
-# `run.skip-dirs` key (removed in v2). See README for pin rationale.
+# target. See README for pin rationale.
 
 version: "2"
 
-issues:
-  # Skip the e2e testscript harness entirely: it uses package-level patterns
-  # (custom-cmd signatures, global os.Stdout swaps) that trip several linters
-  # without signal. Rely on `go vet` and the harness's own fixtures for
-  # correctness there.
-  exclude-dirs:
-    - test/e2e
-
 linters:
-  disable-all: true
+  default: none
   enable:
     - govet
     - staticcheck
     - errcheck
-    - gofmt
-    - goimports
     - unused
     - ineffassign
     - unconvert
     - gocritic
     - revive
 
-linters-settings:
-  gofmt:
-    simplify: true
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-      - performance
-    disabled-checks:
-      - ifElseChain
-      - singleCaseSwitch
-      # omap.Value is a tagged union (~96 bytes); passing by value is the
-      # intended calling convention across the three format encoders and
-      # the omaptest equality helper. Chasing pointer-passing for gocritic's
-      # hugeParam gains no measurable perf in a CLI tool and costs readability.
-      - hugeParam
-      # EqualDocs returns (bool, string) where the semantics are obvious at
-      # the call site; adding names does not improve readability.
-      - unnamedResult
+  settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - ifElseChain
+        - singleCaseSwitch
+        # omap.Value is a tagged union (~96 bytes); passing by value is the
+        # intended calling convention. Pointer-chasing gains nothing in a CLI.
+        - hugeParam
+        # EqualDocs returns (bool, string) where semantics are obvious at call site.
+        - unnamedResult
+
+  exclusions:
+    paths:
+      # Skip the e2e testscript harness: package-level patterns (custom-cmd
+      # signatures, global os.Stdout swaps) trip linters without signal.
+      # Rely on go vet and the harness's own fixtures for correctness.
+      - test/e2e
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
