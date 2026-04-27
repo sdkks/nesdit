@@ -10,9 +10,10 @@
 # Tests:
 #   (1) --backup with no suffix → uses default ".bak".
 #   (2) --backup=.orig → uses custom suffix ".orig".
-#   (3) --backup on an unchanged file still writes the backup (the file
-#       exists and a backup was requested).
-#   (4) file.backup_written info event is emitted on stderr.
+#   (3) file.backup_written info event is emitted on stderr.
+#
+# Note: unchanged files are NOT backed up (no write occurs). See
+# fr14_backup_glob.txtar for the unchanged-file skip case.
 
 # (1) Default suffix .bak: edit a.json in-place with --backup.
 cp a.json a.json.expected_original

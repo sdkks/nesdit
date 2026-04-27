@@ -111,13 +111,14 @@ func checkSeq(orig, out omap.Value, path []string) error {
 	origLen := len(origSeq)
 
 	for i, outElem := range out.Seq {
-		idxPath := append(append([]string(nil), path...), fmt.Sprintf("[%d]", i))
+		idxKey := fmt.Sprintf("[%d]", i)
 		if i >= origLen {
 			return fmt.Errorf(
 				"path %s does not exist in the input document; use --create-missing to allow creating new paths",
-				buildPath(nil, strings.Join(idxPath, "")),
+				buildPath(path, idxKey),
 			)
 		}
+		idxPath := append(append([]string(nil), path...), idxKey)
 		origElem := origSeq[i]
 		if err := checkValue(origElem, outElem, idxPath); err != nil {
 			return err

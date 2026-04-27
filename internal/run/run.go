@@ -480,6 +480,29 @@ var flagConflictRules = []flagConflictRule{
 		Event:      logx.EventFlagConflict,
 		Msg:        "--keep-going and --strict are mutually exclusive: --strict is the default behaviour (halt on first error); --keep-going overrides it",
 	},
+	{
+		// FR-10 / STORY-0009: --where is a batch/stream filter; --dry-run operates
+		// on exactly one file and has no notion of filtering. Combining them is
+		// undefined (the predicate would be silently ignored).
+		IfSet:      []string{"where"},
+		ThenNotSet: []string{"dry-run"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--where is a batch/stream filter and is not supported with --dry-run (single-file mode)",
+	},
+	{
+		// FR-10 / STORY-0009: same rationale as --dry-run above.
+		IfSet:      []string{"where"},
+		ThenNotSet: []string{"check"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--where is a batch/stream filter and is not supported with --check (single-file mode)",
+	},
+	{
+		// FR-14 / STORY-0010: --backup requires -i (writes only happen with -i).
+		IfSet:      []string{"backup"},
+		ThenNotSet: []string{"in-place"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--backup requires -i: backups are only written when editing files in-place",
+	},
 }
 
 // flagPrecedenceRules is the FR-21 ALLOW-with-warning matrix (DR-001).

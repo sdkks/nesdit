@@ -64,7 +64,7 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePre
 		// (pass-through). A where predicate error halts the stream (even under
 		// --keep-going: this is a misconfiguration, not a per-doc data error).
 		if wherePredicate != "" {
-			match, whereErr := query.ApplyWhere(val, wherePredicate)
+			match, whereErr := query.ApplyWhere(ctx, val, wherePredicate)
 			if whereErr != nil {
 				opts.Logger.ErrorAt(classifyQueryErr(ctx, whereErr, 0), stdinFilename, docIndex, whereErr.Error())
 				return &emittedError{cause: whereErr}
@@ -108,7 +108,11 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePre
 		if !createMissing {
 			if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
 				opts.Logger.ErrorAt(logx.EventQueryMissingPath, stdinFilename, docIndex, mpErr.Error())
-				return &emittedError{cause: mpErr}
+				if !keepGoing {
+					return &emittedError{cause: mpErr}
+				}
+				hadError = true
+				continue
 			}
 		}
 

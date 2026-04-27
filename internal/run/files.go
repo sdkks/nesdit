@@ -278,7 +278,7 @@ func processOneFile(
 	// query. Files that do not match are logged as where.skipped and returned
 	// immediately; the query and encode steps are skipped.
 	if wherePredicate != "" {
-		match, whereErr := query.ApplyWhere(val, wherePredicate)
+		match, whereErr := query.ApplyWhere(ctx, val, wherePredicate)
 		if whereErr != nil {
 			opts.Logger.Error(classifyQueryErr(ctx, whereErr, 0), path, whereErr.Error())
 			res.encErr = whereErr

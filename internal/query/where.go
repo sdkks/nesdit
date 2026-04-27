@@ -20,7 +20,8 @@ import (
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
-// ApplyWhere evaluates `select(<predicate>)` against doc.
+// ApplyWhere evaluates `select(<predicate>)` against doc using ctx for
+// cancellation (honours --timeout and future SIGINT handling).
 //
 // Returns:
 //   - (true, nil)  — doc satisfies the predicate; apply the query.
@@ -30,7 +31,7 @@ import (
 // The predicate is the inner expression only (e.g. `.type == "service"`).
 // ApplyWhere wraps it as `select(<predicate>)` internally; the caller MUST NOT
 // include the `select(...)` wrapper.
-func ApplyWhere(doc omap.Value, predicate string) (bool, error) {
+func ApplyWhere(ctx context.Context, doc omap.Value, predicate string) (bool, error) {
 	wrapped := fmt.Sprintf("select(%s)", predicate)
 	parsed, err := gojq.Parse(wrapped)
 	if err != nil {
@@ -42,7 +43,7 @@ func ApplyWhere(doc omap.Value, predicate string) (bool, error) {
 	}
 
 	in := omap.ValueToAny(doc)
-	iter := code.RunWithContext(context.Background(), in)
+	iter := code.RunWithContext(ctx, in)
 	first, ok := iter.Next()
 	if !ok {
 		// select produced no output — predicate was falsy.
