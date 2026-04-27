@@ -12,6 +12,7 @@ package nesio
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -81,6 +82,73 @@ func WriteAtomic(dest string, data []byte) error {
 	}
 	cleanup = false // rename succeeded; nothing to clean up
 	return nil
+}
+
+// WriteAtomicWithBackup writes data to dest atomically (temp+rename) and,
+// when backupSuffix is non-empty, first copies the original file to
+// dest+backupSuffix. The backup is a plain (non-atomic) copy written before
+// the rename so a crash during the atomic step leaves the original bytes
+// intact in the backup, satisfying FR-14's safety-copy contract.
+//
+// If dest does not exist yet, no backup is written (there is nothing to back up).
+// If writing the backup fails, the function returns an error without touching
+// the destination file.
+//
+// When backupSuffix is empty, WriteAtomicWithBackup behaves identically to
+// WriteAtomic. The returned backupWritten flag is true iff a backup was
+// actually written to disk.
+func WriteAtomicWithBackup(dest string, data []byte, backupSuffix string) (backupWritten bool, err error) {
+	if backupSuffix == "" {
+		return false, WriteAtomic(dest, data)
+	}
+
+	// Resolve the target before stat-ing so the backup is of the real file.
+	target, err := resolveTarget(dest)
+	if err != nil {
+		return false, fmt.Errorf("resolve target %s: %w", dest, err)
+	}
+
+	// Only write a backup if the target file already exists (nothing to back
+	// up for a new-file creation path).
+	if _, statErr := os.Stat(target); statErr == nil {
+		backupPath := target + backupSuffix
+		if copyErr := copyFile(target, backupPath); copyErr != nil {
+			return false, fmt.Errorf("write backup %s: %w", backupPath, copyErr)
+		}
+		backupWritten = true
+	}
+
+	// Proceed with the normal atomic write.
+	if writeErr := WriteAtomic(dest, data); writeErr != nil {
+		return backupWritten, writeErr
+	}
+	return backupWritten, nil
+}
+
+// copyFile copies the contents of src to dst, creating or truncating dst.
+// Permissions on dst are set to match src before closing.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src) //nolint:gosec // caller controls both paths
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+
+	fi, err := in.Stat()
+	if err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode().Perm()) //nolint:gosec
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // resolveTarget resolves dest to its final target path following symlinks.

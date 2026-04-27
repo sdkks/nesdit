@@ -148,23 +148,24 @@ func (e *emittedError) Unwrap() error { return e.cause }
 // calls in parallel.
 func newRootCmd(opts RunOptions) *cobra.Command {
 	var (
-		queryExpr       string
-		queryFile       string
-		formatName      string
-		argPairs        []string
-		argJSONPairs    []string
-		inPlace         bool
-		dryRun          bool
-		check           bool
-		editMode        bool
-		wherePredicate  string
-		keepGoing       bool
-		strict          bool
-		timeout         time.Duration
-		maxBytes        int64
-		maxDepth        int
-		maxYAMLNodes    int
-		maxQueryBytes   int64
+		queryExpr      string
+		queryFile      string
+		formatName     string
+		argPairs       []string
+		argJSONPairs   []string
+		inPlace        bool
+		dryRun         bool
+		check          bool
+		editMode       bool
+		wherePredicate string
+		keepGoing      bool
+		strict         bool
+		backupSuffix   string
+		timeout        time.Duration
+		maxBytes       int64
+		maxDepth       int
+		maxYAMLNodes   int
+		maxQueryBytes  int64
 	)
 	// STORY-0008 defaults come from the format package so the CLI and
 	// tests share one source of truth.
@@ -288,7 +289,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 
 			// -i / --in-place: route through the two-pass file orchestrator.
 			if effectiveInPlace {
-				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, jqArgs, limits, timeout, keepGoing)
+				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, jqArgs, limits, timeout, keepGoing, backupSuffix)
 			}
 
 			// STDIN mode (FR-3, STORY-0005): no file args, or explicit "-".
@@ -330,6 +331,13 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	// Both flags are mutually exclusive; enforced by validateFlagInteraction.
 	cmd.Flags().BoolVar(&keepGoing, "keep-going", false, "continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred")
 	cmd.Flags().BoolVar(&strict, "strict", false, "halt on the first document error (default behaviour; explicit alias for documentation)")
+	// STORY-0010 flag: --backup[=.bak] (FR-14). Optional-value string flag:
+	//   --backup          → suffix defaults to ".bak" (NoOptDefVal)
+	//   --backup=.orig    → suffix is ".orig"
+	//   (absent)          → no backup written
+	// Requires -i; validated by flagConflictRules.
+	cmd.Flags().StringVar(&backupSuffix, "backup", "", "write a sibling backup before each in-place edit (default suffix .bak; custom: --backup=.orig); requires -i")
+	cmd.Flag("backup").NoOptDefVal = ".bak"
 	// STORY-0008 flags. Defaults come from format.DefaultLimits() so the
 	// safe-by-default semantics live in one place.
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap")
@@ -519,6 +527,14 @@ func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command) error {
 			log.ErrorGlobal(rule.Event, rule.Msg)
 			return &emittedError{cause: errors.New(rule.Msg)}
 		}
+	}
+	// FR-21 / DR-001: --backup requires -i. This is a "requires" constraint
+	// rather than a mutual-exclusion constraint, so it is checked separately
+	// from the flagConflictRules table (which expresses mutual-exclusion pairs).
+	if changed("backup") && !changed("in-place") {
+		const msg = "--backup requires -i"
+		log.ErrorGlobal(logx.EventFlagInvalid, msg)
+		return &emittedError{cause: errors.New(msg)}
 	}
 	// WARN cells: emit flag.precedence warning but continue.
 	for _, rule := range flagPrecedenceRules {

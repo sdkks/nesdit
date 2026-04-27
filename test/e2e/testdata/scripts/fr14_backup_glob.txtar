@@ -1,0 +1,36 @@
+# fr14_backup_glob.txtar — FR-14: --backup in a glob batch run.
+#
+# When --backup is used with a multi-file -i run:
+#   - Files that WILL be changed get a backup written before the atomic write.
+#   - Files that are UNCHANGED (identity query result equals re-encoded
+#     original) do NOT get a backup (no point preserving a file that won't
+#     change).
+#
+# Tests:
+#   (a) 3 files: 2 will change, 1 identity (unchanged).
+#       → 2 backups written, 1 not.
+#   (b) file.backup_written emitted once per backup (2 lines).
+#   (c) batch.summary still emitted for multi-file runs.
+
+# (a) Batch of three files. f1 and f2 will change; f3 is identity.
+cp f1.json f1.json.expected_original
+cp f2.json f2.json.expected_original
+nesdit -i f1.json f2.json f3.json --query 'if .mark == true then . else .mark = true end' --backup
+# f1 and f2 are changed → backups must exist.
+exists f1.json.bak
+exists f2.json.bak
+cmp f1.json.bak f1.json.expected_original
+cmp f2.json.bak f2.json.expected_original
+# f3 already had .mark = true → unchanged → NO backup.
+! exists f3.json.bak
+# (b) Two file.backup_written lines on stderr.
+stderr 'file\.backup_written'
+# (c) Batch summary emitted.
+stderr 'batch\.summary'
+
+-- f1.json --
+{"mark":false}
+-- f2.json --
+{"mark":false}
+-- f3.json --
+{"mark":true}

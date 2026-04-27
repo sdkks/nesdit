@@ -132,6 +132,18 @@ const (
 	// by --where predicate mismatch or (future) filter modes.
 	EventDocSkipped Event = "doc.skipped"
 
+	// STORY-0010 --backup events.
+
+	// EventFileWritten is emitted (info) after a successful in-place atomic
+	// write to a file. Distinct from io.write (which is an error event) —
+	// file.written is the success notice per SPEC-0001 Solution §2 event list.
+	EventFileWritten Event = "file.written"
+
+	// EventFileBackupWritten is emitted (info) per backup file written when
+	// --backup is set. FR-14 / SPEC-0001 Solution §2 event list.
+	EventFileBackupWritten Event = "file.backup_written"
+
+
 	// STORY-0007 --edit mode events.
 
 	// EventEditNoTTY is emitted when --edit is invoked but stdin (or the
@@ -189,6 +201,9 @@ var knownEvents = map[Event]struct{}{
 	EventDecoderLimitYAMLNodeCount: {},
 	EventQueryTimeout:              {},
 	EventQueryCancelled:            {},
+
+	EventFileWritten:       {},
+	EventFileBackupWritten: {},
 
 	EventEditNoTTY:        {},
 	EventEditEditorFailed: {},
@@ -292,6 +307,12 @@ func (l *Logger) WarnAt(event Event, file string, index int, msg string) {
 // notices and other pre-input warnings.
 func (l *Logger) WarnGlobal(event Event, msg string) {
 	l.emit(Record{Sev: SeverityWarn, Event: event, Msg: msg})
+}
+
+// Info emits an info line with a file context. Used for per-file
+// success notices (e.g. file.backup_written).
+func (l *Logger) Info(event Event, file, msg string) {
+	l.emit(Record{Sev: SeverityInfo, Event: event, File: file, Msg: msg})
 }
 
 // InfoGlobal emits an info line with no file/index (batch summaries etc).

@@ -60,6 +60,10 @@ type fileResult struct {
 // next file rather than aborting. No files are written for the batch until
 // after all files are processed; errored files are excluded from the write
 // phase. Exit code is 1 if any errors occurred.
+//
+// When backupSuffix is non-empty (--backup flag, FR-14), each file that will
+// be changed is backed up to <path><suffix> BEFORE the atomic rename step.
+// Unchanged files are not backed up.
 func runFiles(
 	ctx context.Context,
 	opts RunOptions,
@@ -70,7 +74,8 @@ func runFiles(
 	args []query.Arg,
 	limits format.Limits,
 	timeout time.Duration,
-	keepGoing bool,
+	keepGoing    bool,
+	backupSuffix string,
 ) error {
 	// Deduplicate paths so two symlinks pointing to the same real file
 	// do not cause double writes.
@@ -119,9 +124,21 @@ func runFiles(
 			// reach here if there were no encode failures (guarded above).
 			continue
 		}
-		if err := nesio.WriteAtomic(r.path, r.encoded); err != nil {
+		// FR-14: unchanged files are not backed up. isUnchanged is true when
+		// the encoded query output matches the re-encoded original.
+		isUnchanged := r.reencoded != nil && bytes.Equal(r.reencoded, r.encoded)
+		writeSuffix := ""
+		if !isUnchanged {
+			writeSuffix = backupSuffix
+		}
+		backupWritten, err := nesio.WriteAtomicWithBackup(r.path, r.encoded, writeSuffix)
+		if err != nil {
 			opts.Logger.Error(logx.EventIOWrite, r.path, err.Error())
 			r.encErr = err // mark as errored for summary
+			continue
+		}
+		if backupWritten {
+			opts.Logger.Info(logx.EventFileBackupWritten, r.path, r.path+writeSuffix)
 		}
 	}
 

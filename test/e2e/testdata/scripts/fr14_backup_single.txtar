@@ -1,0 +1,44 @@
+# fr14_backup_single.txtar — FR-14: --backup[=.bak] single-file backup.
+#
+# When -i is combined with --backup, the original file is copied to
+# <path><suffix> BEFORE the atomic write. Default suffix is ".bak";
+# a custom suffix is accepted via --backup=<suffix>.
+#
+# The backup is a safety copy: it contains the pre-edit bytes regardless
+# of whether the atomic rename succeeds or fails.
+#
+# Tests:
+#   (1) --backup with no suffix → uses default ".bak".
+#   (2) --backup=.orig → uses custom suffix ".orig".
+#   (3) --backup on an unchanged file still writes the backup (the file
+#       exists and a backup was requested).
+#   (4) file.backup_written info event is emitted on stderr.
+
+# (1) Default suffix .bak: edit a.json in-place with --backup.
+cp a.json a.json.expected_original
+nesdit -i a.json --query '.x = 99' --backup
+# file.backup_written info line must appear on stderr from the -i run above.
+stderr 'file\.backup_written'
+! stdout .
+# Backup must exist and contain the pre-edit bytes.
+exists a.json.bak
+cmp a.json.bak a.json.expected_original
+# Edited file must reflect the query.
+nesdit a.json --query '.x'
+stdout '^99$'
+
+# (2) Custom suffix .orig.
+cp b.yaml b.yaml.expected_original
+nesdit -i b.yaml --query '.value = "world"' --backup=.orig
+stderr 'file\.backup_written'
+! stdout .
+exists b.yaml.orig
+cmp b.yaml.orig b.yaml.expected_original
+nesdit b.yaml --query '.value'
+stdout '^world$'
+
+-- a.json --
+{"x":1,"y":2}
+-- b.yaml --
+name: test
+value: hello

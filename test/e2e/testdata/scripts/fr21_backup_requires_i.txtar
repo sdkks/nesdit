@@ -1,0 +1,31 @@
+# fr21_backup_requires_i.txtar — FR-21 / DR-001: --backup requires -i.
+#
+# Using --backup without -i must be rejected at flag-parse time (PreRunE),
+# BEFORE any file read, with exit 1 and a canonical flag.invalid error on
+# stderr per DR-001. The spec text: "nesdit: error: flag.invalid: --backup requires -i".
+#
+# CRITICAL: rejection MUST happen before any file read. We use a nonexistent
+# file path and assert the error is flag.invalid (not an IO error).
+
+# (1) --backup without -i → flag.invalid error.
+! nesdit does-not-exist.json --query '.' --backup
+stderr '^nesdit: error: flag\.invalid: --backup requires -i$'
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+# (2) --backup=.orig without -i → same error.
+! nesdit does-not-exist.json --query '.' --backup=.orig
+stderr '^nesdit: error: flag\.invalid: --backup requires -i$'
+! stderr 'does-not-exist'
+! stdout .
+
+# (3) --backup + --dry-run (no -i) → flag.invalid (backup requires -i, not dry-run conflict).
+! nesdit does-not-exist.json --query '.' --backup -n
+stderr '^nesdit: error: flag\.invalid: --backup requires -i$'
+! stdout .
+
+# (4) --backup + --check (no -i) → flag.invalid.
+! nesdit does-not-exist.json --query '.' --backup --check
+stderr '^nesdit: error: flag\.invalid: --backup requires -i$'
+! stdout .
