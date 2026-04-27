@@ -9,7 +9,7 @@
 #   (c) A file that fails encode produces K>=1 and non-zero exit.
 
 # (a) 3 files, all changed.
-nesdit -i f1.json f2.json f3.json --query '.mark = true'
+nesdit -i f1.json f2.json f3.json --create-missing --query '.mark = true'
 stderr '^nesdit: info: batch\.summary: 3 changed, 0 unchanged, 0 errored$'
 ! stdout .
 # Verify the edits took effect.

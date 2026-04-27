@@ -144,6 +144,13 @@ const (
 	EventFileBackupWritten Event = "file.backup_written"
 
 
+	// STORY-0012 --create-missing (FR-16): fired when a query creates a path
+	// that did not exist in the input document and --create-missing is not set.
+	// Distinct from query.runtime so operators can filter missing-path rejections
+	// from generic runtime errors and surface clear remediation hints.
+	EventQueryMissingPath Event = "query.missing_path"
+
+
 	// STORY-0007 --edit mode events.
 
 	// EventEditNoTTY is emitted when --edit is invoked but stdin (or the
@@ -201,6 +208,7 @@ var knownEvents = map[Event]struct{}{
 	EventDecoderLimitYAMLNodeCount: {},
 	EventQueryTimeout:              {},
 	EventQueryCancelled:            {},
+	EventQueryMissingPath:          {},
 
 	EventFileWritten:       {},
 	EventFileBackupWritten: {},

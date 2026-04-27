@@ -5,7 +5,7 @@
 # No file argument: nesdit reads from STDIN.
 
 stdin input.jsonl
-nesdit --format jsonl --query '.ok = true'
+nesdit --format jsonl --create-missing --query '.ok = true'
 stdout '^{"id":1,"ok":true}$'
 stdout '^{"id":2,"ok":true}$'
 stdout '^{"id":3,"ok":true}$'

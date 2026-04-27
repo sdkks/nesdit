@@ -1,0 +1,38 @@
+# fr16_create_missing_toml.txtar — FR-16 (STORY-0012): --create-missing on TOML.
+#
+# Parallel of fr16_create_missing_json but for TOML format.
+# nesdit's TOML encoder emits nested tables as inline tables (DR-006).
+
+# 1. Without --create-missing: setting a nested missing path errors.
+! nesdit a.toml --query '.b.c = 2'
+stderr 'query\.missing_path'
+! stdout .
+
+# 2. With --create-missing: nested missing path is created.
+nesdit a.toml --create-missing --query '.b.c = 2'
+stdout '^a = 1$'
+stdout '^b = \{c = 2\}$'
+! stderr .
+
+# 3. With --create-missing, -i: nested missing path created in-place.
+cp a.toml a_inplace.toml
+nesdit -i a_inplace.toml --create-missing --query '.b.c = 2'
+! stderr .
+cmp a_inplace.toml a_after.toml
+
+# 4. Without --create-missing: top-level missing key errors.
+! nesdit a.toml --query '.z = 99'
+stderr 'query\.missing_path'
+! stdout .
+
+# 5. With --create-missing: top-level missing key is created.
+nesdit a.toml --create-missing --query '.z = 99'
+stdout '^a = 1$'
+stdout '^z = 99$'
+! stderr .
+
+-- a.toml --
+a = 1
+-- a_after.toml --
+a = 1
+b = {c = 2}

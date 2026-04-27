@@ -160,6 +160,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		wherePredicate string
 		keepGoing      bool
 		strict         bool
+		createMissing  bool
 		backupSuffix   string
 		timeout        time.Duration
 		maxBytes       int64
@@ -273,7 +274,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
 					return &emittedError{cause: errors.New(msg)}
 				}
-				return runDryRun(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout)
+				return runDryRun(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout, createMissing)
 			}
 
 			// --check (FR-12): compare encoded result to re-encoded original.
@@ -284,12 +285,12 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
 					return &emittedError{cause: errors.New(msg)}
 				}
-				return runCheck(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout)
+				return runCheck(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout, createMissing)
 			}
 
 			// -i / --in-place: route through the two-pass file orchestrator.
 			if effectiveInPlace {
-				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, jqArgs, limits, timeout, keepGoing, backupSuffix)
+				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, jqArgs, limits, timeout, keepGoing, backupSuffix, createMissing)
 			}
 
 			// STDIN mode (FR-3, STORY-0005): no file args, or explicit "-".
@@ -299,14 +300,14 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFormatUnknown, fmtErr.Error())
 					return &emittedError{cause: fmtErr}
 				}
-				return runStdin(cmd.Context(), resolvedOpts, fmtName, qText, wherePredicate, jqArgs, limits, timeout, keepGoing)
+				return runStdin(cmd.Context(), resolvedOpts, fmtName, qText, wherePredicate, jqArgs, limits, timeout, keepGoing, createMissing)
 			}
 
 			// Default: single-file file→stdout path (STORY-0003).
 			// --where is not meaningful in single-file mode (there's nothing to
 			// filter against a batch), so wherePredicate is intentionally not
 			// passed to runOnce.
-			return runOnce(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout)
+			return runOnce(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout, createMissing)
 		},
 	}
 
@@ -338,6 +339,11 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	// Requires -i; validated by flagConflictRules.
 	cmd.Flags().StringVar(&backupSuffix, "backup", "", "write a sibling backup before each in-place edit (default suffix .bak; custom: --backup=.orig); requires -i")
 	cmd.Flag("backup").NoOptDefVal = ".bak"
+	// STORY-0012 flag: --create-missing (FR-16). Without this flag, a query
+	// that sets a path not present in the input document is rejected with a
+	// query.missing_path error. With the flag, absent intermediate nodes are
+	// created as empty objects (mirrors jq's native `=` assignment semantics).
+	cmd.Flags().BoolVar(&createMissing, "create-missing", false, "allow queries to create keys/paths that do not exist in the input document; by default, absent paths are rejected")
 	// STORY-0008 flags. Defaults come from format.DefaultLimits() so the
 	// safe-by-default semantics live in one place.
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap")
@@ -685,7 +691,11 @@ func unescapeDollarBrace(q string) string {
 // deeply-nested / alias-bombed inputs fail fast with canonical-shape
 // stderr. `timeout` (when > 0) wraps ctx with context.WithTimeout so a
 // pathological gojq query cancels on deadline and emits query.timeout.
-func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat string, args []query.Arg, limits format.Limits, timeout time.Duration) error {
+//
+// STORY-0012: when createMissing is false, the post-query output is
+// checked for new keys/paths that did not exist in the input. If any are
+// found the run is rejected with a query.missing_path error.
+func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat string, args []query.Arg, limits format.Limits, timeout time.Duration, createMissing bool) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
 		fmtName = detectFormatByExt(path)
@@ -730,6 +740,14 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 	if err != nil {
 		opts.Logger.Error(classifyQueryErr(queryCtx, err, timeout), path, err.Error())
 		return &emittedError{cause: err}
+	}
+
+	// FR-16 / STORY-0012: reject missing-path creation unless --create-missing.
+	if !createMissing {
+		if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
+			opts.Logger.Error(logx.EventQueryMissingPath, path, mpErr.Error())
+			return &emittedError{cause: mpErr}
+		}
 	}
 
 	var buf bytes.Buffer

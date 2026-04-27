@@ -3,12 +3,12 @@
 # GIVEN `--arg name=alice --query '.user = $name'`, THEN `.user` is the
 # string "alice" in the output.
 
-nesdit a.json --arg name=alice --query '.user = $name'
+nesdit a.json --create-missing --arg name=alice --query '.user = $name'
 stdout '^{"user":"alice"}$'
 
 # Numbers passed via --arg must remain STRINGS (jq semantics) — "42",
 # not 42.
-nesdit a.json --arg count=42 --query '.count = $count'
+nesdit a.json --create-missing --arg count=42 --query '.count = $count'
 stdout '^{"count":"42"}$'
 
 -- a.json --

@@ -5,7 +5,7 @@ env FOO=bar_from_env
 
 # `$${FOO}` inside the query's string literal MUST be preserved as the
 # literal `${FOO}` — NOT expanded from the environment.
-nesdit a.json --query '.x = "$${FOO}"'
+nesdit a.json --create-missing --query '.x = "$${FOO}"'
 stdout '^{"x":"\$\{FOO\}"}$'
 
 # Sanity: the shell-env value must NOT appear in stdout.

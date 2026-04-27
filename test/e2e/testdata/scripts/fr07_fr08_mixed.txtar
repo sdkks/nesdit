@@ -10,12 +10,12 @@
 # to the output document — under the positional-reconciliation contract
 # (DR-007), brand-new keys lex-sort. Expected order is {c, n}, not the
 # order they appear in the query.
-nesdit a.json --arg name=alice --argjson count=42 --query '.u = {n: $name, c: $count}'
+nesdit a.json --create-missing --arg name=alice --argjson count=42 --query '.u = {n: $name, c: $count}'
 stdout '^{"u":{"c":42,"n":"alice"}}$'
 
 # Reverse flag order — binding must be identical regardless of which
 # flag appears first on the command line.
-nesdit a.json --argjson count=42 --arg name=alice --query '.u = {n: $name, c: $count}'
+nesdit a.json --create-missing --argjson count=42 --arg name=alice --query '.u = {n: $name, c: $count}'
 stdout '^{"u":{"c":42,"n":"alice"}}$'
 
 -- a.json --

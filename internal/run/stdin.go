@@ -39,7 +39,7 @@ const stdinFilename = "-"
 //
 // timeout (when > 0) wraps ctx with a per-document deadline for the query
 // phase only (consistent with runOnce).
-func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing bool) error {
+func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing bool, createMissing bool) error {
 	// Wire the reader.
 	reader, err := stream.NewReader(fmtName, opts.Stdin, limits)
 	if err != nil {
@@ -102,6 +102,14 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePre
 			// The errored document is NOT written to stdout.
 			hadError = true
 			continue
+		}
+
+		// FR-16 / STORY-0012: reject missing-path creation unless --create-missing.
+		if !createMissing {
+			if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
+				opts.Logger.ErrorAt(logx.EventQueryMissingPath, stdinFilename, docIndex, mpErr.Error())
+				return &emittedError{cause: mpErr}
+			}
 		}
 
 		if wErr := writer.WriteDoc(outVal); wErr != nil {

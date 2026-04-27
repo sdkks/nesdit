@@ -1,0 +1,36 @@
+# fr16_create_missing_json.txtar — FR-16 (STORY-0012): --create-missing on JSON.
+#
+# Without --create-missing, setting a missing path is an error.
+# With --create-missing, absent paths are created; intermediate nodes become
+# empty objects (jq-native `=` assignment semantics).
+
+# 1. Without --create-missing: setting a nested missing path errors.
+! nesdit a.json --query '.b.c = 2'
+stderr 'query\.missing_path'
+! stdout .
+
+# 2. With --create-missing: nested missing path is created.
+nesdit a.json --create-missing --query '.b.c = 2'
+stdout '^\{"a":1,"b":\{"c":2\}\}$'
+! stderr .
+
+# 3. With --create-missing, -i: nested missing path created in-place.
+cp a.json a_inplace.json
+nesdit -i a_inplace.json --create-missing --query '.b.c = 2'
+! stderr .
+# Verify via a re-read (avoids trailing-newline difference in cmp).
+nesdit a_inplace.json --query '.'
+stdout '^\{"a":1,"b":\{"c":2\}\}$'
+
+# 4. Without --create-missing: top-level missing key errors.
+! nesdit a.json --query '.z = 99'
+stderr 'query\.missing_path'
+! stdout .
+
+# 5. With --create-missing: top-level missing key is created.
+nesdit a.json --create-missing --query '.z = 99'
+stdout '^\{"a":1,"z":99\}$'
+! stderr .
+
+-- a.json --
+{"a":1}

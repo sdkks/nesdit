@@ -9,11 +9,11 @@
 # in isolation, but no E2E fixture previously exercised the full
 # flag→jq→omap→encode path for a >2^53 literal.
 
-nesdit a.json --argjson big=9007199254740993 --query '.n = $big'
+nesdit a.json --create-missing --argjson big=9007199254740993 --query '.n = $big'
 stdout '^{"n":9007199254740993}$'
 
 # Negative int64 below -2^53 — same invariant on the sign-symmetric side.
-nesdit a.json --argjson big=-9007199254740993 --query '.n = $big'
+nesdit a.json --create-missing --argjson big=-9007199254740993 --query '.n = $big'
 stdout '^{"n":-9007199254740993}$'
 
 -- a.json --

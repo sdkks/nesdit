@@ -76,6 +76,7 @@ func runFiles(
 	timeout time.Duration,
 	keepGoing    bool,
 	backupSuffix string,
+	createMissing bool,
 ) error {
 	// Deduplicate paths so two symlinks pointing to the same real file
 	// do not cause double writes.
@@ -91,7 +92,7 @@ func runFiles(
 	hasEncodeFailure := false
 
 	for i, p := range paths {
-		res := processOneFile(ctx, opts, p, queryExpr, wherePredicate, overrideFormat, args, limits, timeout)
+		res := processOneFile(ctx, opts, p, queryExpr, wherePredicate, overrideFormat, args, limits, timeout, createMissing)
 		results[i] = res
 		if res.encErr != nil {
 			hasEncodeFailure = true
@@ -225,6 +226,7 @@ func processOneFile(
 	args []query.Arg,
 	limits format.Limits,
 	timeout time.Duration,
+	createMissing bool,
 ) fileResult {
 	res := fileResult{path: path}
 
@@ -302,6 +304,15 @@ func processOneFile(
 		opts.Logger.Error(classifyQueryErr(queryCtx, err, timeout), path, err.Error())
 		res.encErr = err
 		return res
+	}
+
+	// FR-16 / STORY-0012: reject missing-path creation unless --create-missing.
+	if !createMissing {
+		if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
+			opts.Logger.Error(logx.EventQueryMissingPath, path, mpErr.Error())
+			res.encErr = mpErr
+			return res
+		}
 	}
 
 	// Encode.

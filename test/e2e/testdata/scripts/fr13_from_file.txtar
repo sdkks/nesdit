@@ -1,11 +1,11 @@
 # fr13_from_file.txtar — FR-13: `-f/--from-file <path>` loads query text.
 
 # Short form -f.
-nesdit a.json -f q.jq
+nesdit a.json -f q.jq --create-missing
 stdout '^{"x":1,"y":2,"z":99}$'
 
 # Long form --from-file.
-nesdit a.json --from-file q.jq
+nesdit a.json --from-file q.jq --create-missing
 stdout '^{"x":1,"y":2,"z":99}$'
 
 # FR-13 acceptance: --query and -f together are rejected at flag-parse

@@ -48,6 +48,7 @@ func runDryRun(
 	args []query.Arg,
 	limits format.Limits,
 	timeout time.Duration,
+	createMissing bool,
 ) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
@@ -96,6 +97,14 @@ func runDryRun(
 	if qErr != nil {
 		opts.Logger.Error(classifyQueryErr(queryCtx, qErr, timeout), path, qErr.Error())
 		return &emittedError{cause: qErr}
+	}
+
+	// FR-16 / STORY-0012: reject missing-path creation unless --create-missing.
+	if !createMissing {
+		if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
+			opts.Logger.Error(logx.EventQueryMissingPath, path, mpErr.Error())
+			return &emittedError{cause: mpErr}
+		}
 	}
 
 	// Encode the query result for the diff "after".
@@ -154,6 +163,7 @@ func runCheck(
 	args []query.Arg,
 	limits format.Limits,
 	timeout time.Duration,
+	createMissing bool,
 ) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
@@ -202,6 +212,14 @@ func runCheck(
 	if qErr != nil {
 		opts.Logger.Error(classifyQueryErr(queryCtx, qErr, timeout), path, qErr.Error())
 		return &emittedError{cause: qErr}
+	}
+
+	// FR-16 / STORY-0012: reject missing-path creation unless --create-missing.
+	if !createMissing {
+		if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
+			opts.Logger.Error(logx.EventQueryMissingPath, path, mpErr.Error())
+			return &emittedError{cause: mpErr}
+		}
 	}
 
 	// Encode the query result.

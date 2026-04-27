@@ -1,0 +1,42 @@
+# fr16_no_create_missing_error.txtar — FR-16 (STORY-0012): strict-by-default
+# behavior. Without --create-missing, any query that would create a new
+# key or path in the input document is rejected with query.missing_path.
+# File on disk is unchanged; stdout is empty.
+
+# 1. JSON: nested missing path → error, file unchanged.
+! nesdit a.json --query '.b.c = 2'
+stderr 'query\.missing_path'
+! stdout .
+cmp a.json a.json.orig
+
+# 2. YAML: nested missing path → error, file (with -i) unchanged.
+cp a.yaml a_inplace.yaml
+! nesdit -i a_inplace.yaml --query '.b.c = 2'
+stderr 'query\.missing_path'
+cmp a_inplace.yaml a.yaml.orig
+
+# 3. TOML: top-level missing key → error.
+! nesdit a.toml --query '.newkey = "hello"'
+stderr 'query\.missing_path'
+! stdout .
+
+# 4. STDIN JSON: missing path → error.
+stdin a.json
+! nesdit --format json --query '.b = 42'
+stderr 'query\.missing_path'
+! stdout .
+
+# 5. Error message mentions --create-missing as the remedy.
+! nesdit a.json --query '.missing = 1'
+stderr 'create-missing'
+
+-- a.json --
+{"a":1}
+-- a.json.orig --
+{"a":1}
+-- a.yaml --
+a: 1
+-- a.yaml.orig --
+a: 1
+-- a.toml --
+a = 1
