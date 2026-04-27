@@ -42,8 +42,10 @@ import (
 
 // Version and Commit are injected at build time via -X ldflags by GoReleaser.
 // They remain empty strings in local dev builds.
+// Version is the release version, injected at build time via -X ldflags.
 var Version string
 
+// Commit is the short git commit SHA, injected at build time via -X ldflags.
 var Commit string
 
 // validateJSON verifies that s is a single syntactically valid JSON
