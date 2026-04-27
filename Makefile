@@ -10,7 +10,7 @@ PKGS      := ./...
 all: test-all
 
 build:
-	$(GO) build -o $(BIN) ./cmd/nesdit
+	$(GO) build -ldflags='-s -w' -o $(BIN) ./cmd/nesdit
 
 test:
 	$(GO) test -race -count=1 $(PKGS)

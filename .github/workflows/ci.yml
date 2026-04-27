@@ -54,6 +54,8 @@ jobs:
         # MUST stay under 8 MiB so the single-binary distribution story
         # holds. `wc -c < file` is portable across macOS and linux
         # (avoids GNU-only `stat -c%s`).
+        # TASK-0010: -ldflags='-s -w' strips debug info; new baseline ~4.13 MiB
+        # (darwin/arm64, 2026-04-27). Previous debug baseline was ~5.83 MiB.
         run: |
           bytes=$(wc -c < bin/nesdit | tr -d ' ')
           limit=8388608
