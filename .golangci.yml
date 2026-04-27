@@ -38,6 +38,10 @@ linters:
       # signatures, global os.Stdout swaps) trip linters without signal.
       # Rely on go vet and the harness's own fixtures for correctness.
       - test/e2e
+      # Skip agent worktrees created by Claude Code sessions. Each worktree is
+      # an independent Git checkout with its own go.mod; including them causes
+      # duplicate-symbol typecheck errors when golangci-lint scans ./...
+      - .claude/worktrees
 
 formatters:
   enable:
