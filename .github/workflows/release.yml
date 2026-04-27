@@ -1,23 +1,25 @@
 # release.yml — Automated semver releases via release-please + GoReleaser.
 #
 # Flow:
-#   1. On every push to main, release-please inspects conventional commits
-#      and either opens/updates a "Release PR" or does nothing (if no
-#      releasable commits have landed since the last release).
-#   2. When a Release PR is merged, release-please creates a GitHub Release
-#      and a git tag (e.g. v0.0.1). That sets `release_created: true`.
-#   3. The goreleaser job fires only when `release_created` is true. It
-#      builds linux/amd64, linux/arm64, and darwin/arm64 binaries and
-#      uploads them as assets to the release that release-please created.
+#   1. After ci passes on any push to main, release-please inspects
+#      conventional commits and either opens/updates a "Release PR" or
+#      does nothing (no releasable commits since last release).
+#   2. The Release PR is auto-merged once its own CI passes.
+#   3. When release-please processes the merged Release PR it pushes a
+#      semver tag (e.g. v0.0.1) and creates a draft-free GitHub Release.
+#   4. The goreleaser job in this file is triggered by that tag push.
+#      It builds linux/amd64, linux/arm64, and darwin/arm64 binaries and
+#      uploads them as assets to the release release-please created.
 #
-# First release:
-#   .release-please-manifest.json is bootstrapped at "0.0.0". The first
-#   conventional commit of type feat or fix will produce a Release PR that
-#   bumps to v0.0.1. Merge that PR to publish the first release.
+# Why two triggers (workflow_run + push tags)?
+#   workflow_run[ci] gates release-please so it only opens Release PRs
+#   when tests are green. goreleaser uses push[tags] because the tag is
+#   a real push event that fires reliably after the Release PR merges —
+#   workflow_run does NOT fire on auto-merge commits.
 #
 # Conventional commit types that trigger a release:
 #   fix:  → patch bump  (0.0.x)
-#   feat: → minor bump  (0.x.0)
+#   feat: → minor bump  (0.x.0)  [capped at patch while pre-major]
 #   feat!: or BREAKING CHANGE: → major bump (x.0.0)
 #
 # SHA ↔ tag mappings verified via scripts/check-action-pins.sh:
@@ -29,13 +31,16 @@
 name: release
 
 on:
-  # Only run after the ci workflow completes successfully on main.
-  # This prevents release PRs from opening (or GoReleaser from firing)
-  # when tests are red.
+  # release-please: runs after ci passes on main pushes.
   workflow_run:
     workflows: [ci]
     types: [completed]
     branches: [main]
+
+  # goreleaser: runs when release-please pushes a semver tag.
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: write
@@ -49,11 +54,7 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Bail out immediately if ci did not pass.
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
@@ -63,8 +64,8 @@ jobs:
           manifest-file: .release-please-manifest.json
 
       - name: Auto-merge Release PR
-        # steps.release.outputs.pr is a JSON object. Put it in an env var and
-        # parse with jq — fromJSON() in env: blows up when the output is empty.
+        # steps.release.outputs.pr is a JSON object — put it in an env var
+        # and parse with jq to avoid shell interpolation of the raw JSON.
         if: ${{ steps.release.outputs.pr }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -74,19 +75,14 @@ jobs:
           gh pr merge --auto --squash --repo "$GITHUB_REPOSITORY" "$PR_NUMBER"
 
   goreleaser:
-    needs: release-please
-    # Only run when release-please has created a new release (i.e. a Release
-    # PR was merged and a GitHub Release + tag now exist).
-    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          # Fetch the full history so GoReleaser can walk commits for the
-          # changelog and produce accurate previous-tag comparisons.
           fetch-depth: 0
 
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
