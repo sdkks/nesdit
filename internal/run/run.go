@@ -603,7 +603,10 @@ var flagPrecedenceRules = []flagPrecedenceRule{
 // warn line and allow the run to continue with the dominating flag.
 // Keeps the name and signature stable because the cobra PreRunE closure
 // in newRootCmd references it by name.
-func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command) error {
+//
+// args are the positional arguments after flag parsing; they are needed
+// to distinguish STDIN mode (no args / "-") from single-file mode.
+func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command, args []string) error {
 	changed := func(name string) bool {
 		f := cmd.Flag(name)
 		return f != nil && f.Changed
@@ -654,6 +657,25 @@ func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command) error {
 		msg := "--where requires --query or -f/--from-file: a predicate filter without a query has no effect"
 		log.ErrorGlobal(logx.EventFlagInvalid, msg)
 		return &emittedError{cause: errors.New(msg)}
+	}
+
+	// TASK-0027 / FR-21: --where is a batch/stream filter. It is meaningful
+	// only in -i (multi-file) mode or STDIN stream mode. In plain single-file
+	// mode (exactly one positional arg that is not "-", no -i flag set), the
+	// predicate is silently ignored by runOnce — reject it before any IO so
+	// the user gets a clear diagnostic rather than a silent no-op.
+	//
+	// STDIN mode is len(args)==0 or args[0]=="-"; --edit and -i are valid
+	// modes but already handled by the flagConflictRules table (--edit
+	// rejects --where via the existing dry-run/check rules) or legitimately
+	// pass wherePredicate through. Only the plain single-file path is wrong.
+	if changed("where") && !changed("in-place") && !changed("edit") {
+		stdinMode := len(args) == 0 || (len(args) == 1 && args[0] == "-")
+		if !stdinMode {
+			msg := "--where is a batch/stream filter and is not supported in single-file mode (use -i for multi-file or omit the file argument for STDIN stream mode)"
+			log.ErrorGlobal(logx.EventFlagConflict, msg)
+			return &emittedError{cause: errors.New(msg)}
+		}
 	}
 
 	return nil
