@@ -13,7 +13,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # TASK-0020: SHA↔tag consistency guard — catches lying `# <tag>` comments
+  # on action pins before they can cause BUG-0002-class breakage.
+  # Runs as a fast, standalone check on ubuntu with gh CLI available; does
+  # NOT need Go or the full matrix, so it completes before the matrix starts.
+  check-action-pins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Verify SHA↔tag consistency for all pinned actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/check-action-pins.sh
+
   test:
+    needs: check-action-pins
     strategy:
       fail-fast: false
       matrix:

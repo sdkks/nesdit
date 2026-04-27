@@ -5,7 +5,7 @@ GO        ?= go
 BIN       := bin/nesdit
 PKGS      := ./...
 
-.PHONY: all build test test-e2e test-all lint docs site clean
+.PHONY: all build test test-e2e test-all lint check-pins docs site clean
 
 all: test-all
 
@@ -33,6 +33,9 @@ lint:
 		fi; \
 	fi; \
 	$$LINT run
+
+check-pins:
+	@bash scripts/check-action-pins.sh
 
 docs:
 	$(GO) run ./cmd/gendocs --out docs/reference
