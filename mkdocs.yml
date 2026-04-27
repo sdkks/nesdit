@@ -35,5 +35,20 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Installation: install.md
+  - Quickstart: quickstart.md
+  - Modes:
+    - In-place (-i): modes/in-place.md
+    - Stdout (default): modes/stdout.md
+    - STDIN stream: modes/stdin.md
+    - Dry-run (-n): modes/dryrun.md
+    - Check (--check): modes/check.md
+    - Expression builder (--edit): modes/edit.md
+  - Examples:
+    - Format round-trips: examples/formats/index.md
+    - Data structures: examples/data-structures/index.md
+    - Expressions: examples/expressions/index.md
+    - Pipelines: examples/pipelines/index.md
+    - Error diagnostics: examples/errors/index.md
   - Reference:
     - nesdit: reference/nesdit.md
