@@ -1,0 +1,68 @@
+# .goreleaser.yml — GoReleaser configuration for nesdit.
+#
+# Builds static, stripped binaries for linux/amd64, linux/arm64, and
+# darwin/arm64. Archives as tar.gz. SHA-256 checksums file included.
+#
+# Triggered by release.yml when release-please creates a GitHub Release tag.
+# Local validation: goreleaser check
+# Local dry-run:    goreleaser release --snapshot --clean
+
+version: 2
+
+project_name: nesdit
+
+# Build flags mirror the CI guardrail in ci.yml: -s -w strips debug info and
+# symbol tables to keep the binary well below the 8 MiB limit.
+#
+# Version metadata injection via -X is omitted here because cmd/nesdit/main.go
+# does not declare version/commit/date variables. To enable `nesdit --version`
+# output, add `var version, commit, date string` to the main package (or to
+# internal/run) and uncomment the -X lines below.
+builds:
+  - id: nesdit
+    main: ./cmd/nesdit
+    binary: nesdit
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    # Exclude darwin/amd64 — only Apple Silicon is required.
+    ignore:
+      - goos: darwin
+        goarch: amd64
+    ldflags:
+      - -s -w
+      # Uncomment once version variables are declared in the main package:
+      # - -X main.version={{.Version}}
+      # - -X main.commit={{.Commit}}
+      # - -X main.date={{.Date}}
+
+archives:
+  - id: nesdit-archives
+    # Name pattern: nesdit_0.0.1_linux_amd64.tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
+    files:
+      - README.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+changelog:
+  # Changelog generation is handled by release-please; GoReleaser should not
+  # duplicate it on the GitHub Release body.
+  disable: true
+
+release:
+  # GoReleaser uploads artifacts to the release that release-please already
+  # created. Set draft: false so assets are immediately visible.
+  draft: false
+  # Do not overwrite the release notes that release-please wrote.
+  replace_existing_draft: false
+  # Prevent GoReleaser from marking this as a pre-release.
+  prerelease: auto
