@@ -255,27 +255,33 @@ func encodeDoc(w io.Writer, d *omap.Doc) error {
 	if _, err := io.WriteString(w, "{"); err != nil {
 		return err
 	}
-	keys := d.Keys()
-	for i, k := range keys {
-		if i > 0 {
-			if _, err := io.WriteString(w, ","); err != nil {
-				return err
+	first := true
+	var encErr error
+	d.Entries(func(k string, v omap.Value) bool {
+		if !first {
+			if _, encErr = io.WriteString(w, ","); encErr != nil {
+				return false
 			}
 		}
+		first = false
 		kb, err := stdjson.Marshal(k)
 		if err != nil {
-			return fmt.Errorf("json: marshal key %q: %w", k, err)
+			encErr = fmt.Errorf("json: marshal key %q: %w", k, err)
+			return false
 		}
-		if _, err := w.Write(kb); err != nil {
-			return err
+		if _, encErr = w.Write(kb); encErr != nil {
+			return false
 		}
-		if _, err := io.WriteString(w, ":"); err != nil {
-			return err
+		if _, encErr = io.WriteString(w, ":"); encErr != nil {
+			return false
 		}
-		v, _ := d.Get(k)
-		if err := encodeValue(w, v); err != nil {
-			return err
+		if encErr = encodeValue(w, v); encErr != nil {
+			return false
 		}
+		return true
+	})
+	if encErr != nil {
+		return encErr
 	}
 	_, err := io.WriteString(w, "}")
 	return err

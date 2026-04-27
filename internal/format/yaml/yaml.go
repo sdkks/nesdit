@@ -358,11 +358,11 @@ func valueToNode(v omap.Value) *yaml.Node {
 		return n
 	case omap.KindMap:
 		n := &yaml.Node{Kind: yaml.MappingNode}
-		for _, k := range v.Map.Keys() {
+		v.Map.Entries(func(k string, sub omap.Value) bool {
 			kn := &yaml.Node{Kind: yaml.ScalarNode, Value: k}
-			sub, _ := v.Map.Get(k)
 			n.Content = append(n.Content, kn, valueToNode(sub))
-		}
+			return true
+		})
 		return n
 	}
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!null", Value: "null"}

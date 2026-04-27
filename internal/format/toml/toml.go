@@ -408,13 +408,16 @@ func (tw *tomlWriter) writeDoc(d *omap.Doc) error {
 // "TOML-idiomatic" output for deeply nested documents; in exchange we
 // guarantee that decode→encode→decode is a stable fixed point.
 func (tw *tomlWriter) writeTable(_ []string, d *omap.Doc) {
-	for _, k := range d.Keys() {
-		v, _ := d.Get(k)
+	d.Entries(func(k string, v omap.Value) bool {
+		if tw.err != nil {
+			return false
+		}
 		tw.writeStr(encodeKey(k))
 		tw.writeStr(" = ")
 		tw.writeInlineValue(v)
 		tw.writeStr("\n")
-	}
+		return true
+	})
 }
 
 // writeInlineValue emits a single value in inline form (strings, numbers,
@@ -447,16 +450,19 @@ func (tw *tomlWriter) writeInlineValue(v omap.Value) {
 	case omap.KindMap:
 		tw.writeStr("{")
 		first := true
-		for _, k := range v.Map.Keys() {
+		v.Map.Entries(func(k string, sub omap.Value) bool {
+			if tw.err != nil {
+				return false
+			}
 			if !first {
 				tw.writeStr(", ")
 			}
 			first = false
 			tw.writeStr(encodeKey(k))
 			tw.writeStr(" = ")
-			sub, _ := v.Map.Get(k)
 			tw.writeInlineValue(sub)
-		}
+			return true
+		})
 		tw.writeStr("}")
 	case omap.KindNull:
 		// Unreachable — checkTOMLRepresentable rejects earlier.

@@ -1,6 +1,7 @@
 package omap_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/sdkks/nesdit/internal/omap"
@@ -245,5 +246,60 @@ func TestDoc_Entries_NilReceiver(t *testing.T) {
 	})
 	if called {
 		t.Fatal("Entries on nil invoked yield")
+	}
+}
+
+// TestDoc_Entries_RangeForm exercises the Go 1.23 range-over-func syntax on
+// Doc.Entries. The module now targets go 1.23+; this test pins the stronger
+// contract that Entries satisfies iter.Seq2[string, Value] so a future
+// go.mod downgrade would fail to compile here rather than silently losing
+// the range-form guarantee.
+//
+// It also verifies that early termination (break) works correctly via the
+// range form — the runtime must call yield with false and Doc.Entries must
+// stop immediately.
+func TestDoc_Entries_RangeForm(t *testing.T) {
+	t.Parallel()
+	d := omap.New()
+	inserts := []struct {
+		k string
+		n int64
+	}{
+		{"alpha", 1},
+		{"bravo", 2},
+		{"charlie", 3},
+		{"delta", 4},
+	}
+	for _, e := range inserts {
+		d.Set(e.k, omap.IntValue(e.n))
+	}
+
+	// Full iteration via range form — verify order and values.
+	var gotKeys []string
+	var gotNums []string
+	for k, v := range d.Entries {
+		gotKeys = append(gotKeys, k)
+		gotNums = append(gotNums, v.Num.String())
+	}
+	if len(gotKeys) != len(inserts) {
+		t.Fatalf("range form yielded %d entries, want %d", len(gotKeys), len(inserts))
+	}
+	for i, e := range inserts {
+		if gotKeys[i] != e.k {
+			t.Errorf("key[%d]=%q want %q", i, gotKeys[i], e.k)
+		}
+		if gotNums[i] != fmt.Sprintf("%d", e.n) {
+			t.Errorf("num[%d]=%q want %d", i, gotNums[i], e.n)
+		}
+	}
+
+	// Early break — range form must stop after the first entry.
+	count := 0
+	for range d.Entries {
+		count++
+		break
+	}
+	if count != 1 {
+		t.Fatalf("range+break visited %d entries, want 1", count)
 	}
 }
