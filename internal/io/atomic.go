@@ -38,7 +38,14 @@ func WriteAtomic(dest string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("resolve target %s: %w", dest, err)
 	}
+	return writeAtomicResolved(target, data)
+}
 
+// writeAtomicResolved performs the atomic write to an already-resolved target
+// path. Callers that need to use the resolved path for additional operations
+// (e.g. WriteAtomicWithBackup) should call resolveTarget once and then call
+// this function directly, avoiding a second resolution.
+func writeAtomicResolved(target string, data []byte) error {
 	// Capture original file permissions so we can restore them on the temp
 	// before rename. If the file does not yet exist (new file creation path),
 	// we fall back to 0644.
@@ -102,7 +109,11 @@ func WriteAtomicWithBackup(dest string, data []byte, backupSuffix string) (backu
 		return false, WriteAtomic(dest, data)
 	}
 
-	// Resolve the target before stat-ing so the backup is of the real file.
+	// Resolve the target once before any I/O so that both the backup copy
+	// and the atomic write operate on the same underlying file. Resolving
+	// twice (once here, once inside WriteAtomic) would open a narrow window
+	// where a symlink change between the two calls could cause the backup and
+	// the write to target different files.
 	target, err := resolveTarget(dest)
 	if err != nil {
 		return false, fmt.Errorf("resolve target %s: %w", dest, err)
@@ -118,8 +129,9 @@ func WriteAtomicWithBackup(dest string, data []byte, backupSuffix string) (backu
 		backupWritten = true
 	}
 
-	// Proceed with the normal atomic write.
-	if writeErr := WriteAtomic(dest, data); writeErr != nil {
+	// Use the already-resolved target so we don't call resolveTarget a second
+	// time and don't re-open the race window described above.
+	if writeErr := writeAtomicResolved(target, data); writeErr != nil {
 		return backupWritten, writeErr
 	}
 	return backupWritten, nil
