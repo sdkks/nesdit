@@ -55,6 +55,12 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      - name: Auto-merge Release PR
+        if: ${{ steps.release.outputs.pr }}
+        run: gh pr merge --auto --squash "${{ steps.release.outputs.pr }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   goreleaser:
     needs: release-please
     # Only run when release-please has created a new release (i.e. a Release
