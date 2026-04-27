@@ -59,7 +59,11 @@ jobs:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Must use a PAT (RELEASE_TOKEN), not GITHUB_TOKEN. Tags and commits
+          # pushed by GITHUB_TOKEN do not trigger downstream workflow runs
+          # (GitHub prevents loops). The PAT push is treated as a real user
+          # event, so the goreleaser push[tags:v*] trigger fires correctly.
+          token: ${{ secrets.RELEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
