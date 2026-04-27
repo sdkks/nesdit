@@ -1,0 +1,26 @@
+# fr10_where_stdin_mode.txtar — FR-10: --where selector in STDIN stream mode.
+#
+# A three-doc YAML stream is piped in. Docs 1 and 3 have env=prod; doc 2 has
+# env=staging. With --where '.env == "prod"' --query '.version = 99':
+#   - Docs 1 and 3 satisfy the predicate → .version = 99 is applied.
+#   - Doc 2 does NOT satisfy the predicate → passed through unchanged.
+#
+# Output MUST be a three-doc YAML stream in the original order, with only
+# docs 1 and 3 having version: 99; doc 2 is byte-identical to its input.
+#
+# stderr MUST carry a where.skipped warn for doc 2.
+
+stdin input.yaml
+nesdit --format yaml --where '.env == "prod"' --query '.version = 99'
+stdout '(?s)^---\nenv: prod\nversion: 99\n---\nenv: staging\nversion: 1\n---\nenv: prod\nversion: 99\n$'
+stderr 'nesdit: warn: -:2: where\.skipped: '
+
+-- input.yaml --
+env: prod
+version: 1
+---
+env: staging
+version: 1
+---
+env: prod
+version: 1

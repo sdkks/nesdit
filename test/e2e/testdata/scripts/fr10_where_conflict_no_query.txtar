@@ -1,0 +1,11 @@
+# fr10_where_conflict_no_query.txtar — FR-21: --where without --query is an error.
+#
+# Providing --where without either --query or -f is a flag.invalid error
+# that MUST be rejected before any file read (DR-001).
+
+! nesdit f.json --where '.type == "service"'
+stderr 'nesdit: error: flag\.invalid: --where requires --query or -f/--from-file'
+! stdout .
+
+-- f.json --
+{"type":"service"}

@@ -1,0 +1,38 @@
+# fr10_where_file_mode.txtar — FR-10: --where selector in file (-i) mode.
+#
+# Three JSON files are provided:
+#   service.json   — has type=service   → predicate ".type == \"service\"" matches
+#   job.json       — has type=job       → predicate does not match; file is skipped
+#   service2.json  — has type=service   → predicate matches
+#
+# After the run:
+#   - service.json and service2.json MUST have .patched=true written.
+#   - job.json MUST be unchanged (skipped by --where).
+#   - stderr MUST carry where.skipped warn for job.json.
+#   - batch summary MUST count 2 changed, 0 unchanged, 0 errored.
+
+nesdit -i service.json job.json service2.json --where '.type == "service"' --query '.patched = true'
+stderr 'nesdit: warn: job\.json: where\.skipped: '
+stderr '^nesdit: info: batch\.summary: 2 changed, 0 unchanged, 0 errored$'
+! stdout .
+
+# Verify: matched files were patched.
+nesdit service.json --query '.patched'
+stdout '^true$'
+nesdit service2.json --query '.patched'
+stdout '^true$'
+
+# Verify: non-matching file is unchanged — type is still "job" and
+# the "patched" key does not exist (the whole document is an object with
+# only "type" and "name").
+nesdit job.json --query '.type'
+stdout '^"job"$'
+nesdit job.json --query '.patched'
+stdout '^null$'
+
+-- service.json --
+{"type":"service","name":"api"}
+-- job.json --
+{"type":"job","name":"batch"}
+-- service2.json --
+{"type":"service","name":"web"}
