@@ -53,7 +53,7 @@ archives:
     files:
       - README.md
       - src: docs/nesdit.1
-        dst: share/man/man1
+        dst: share/man/man1/nesdit.1
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
