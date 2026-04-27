@@ -1,7 +1,7 @@
 //go:build !windows
 
-// tty_unix.go — TTY detection and open helpers for Unix-family platforms
-// (Linux, macOS, *BSD). Used by the --edit mode (STORY-0007 M1).
+// Package run provides TTY detection and open helpers for Unix-family
+// platforms (Linux, macOS, *BSD). Used by the --edit mode.
 //
 // On Unix, /dev/tty is the canonical controlling-terminal device. Opening it
 // succeeds iff the calling process has a controlling terminal — which is

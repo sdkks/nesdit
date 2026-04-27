@@ -1,3 +1,4 @@
+// Package main is the process entry point for the nesdit CLI.
 package main
 
 import (

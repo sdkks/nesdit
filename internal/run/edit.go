@@ -178,7 +178,7 @@ func runEdit(opts RunOptions, path, fmtName string, limits format.Limits) error 
 
 	// 6c. No change → exit 0 with message.
 	if bytes.Equal(editedBytes, origEncBytes) {
-		fmt.Fprintln(opts.Stdout, "no change detected")
+		_, _ = fmt.Fprintln(opts.Stdout, "no change detected")
 		return nil
 	}
 

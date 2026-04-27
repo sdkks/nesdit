@@ -95,8 +95,14 @@ func DefaultLimits() Limits {
 type LimitKind string
 
 const (
-	LimitInputSize     LimitKind = "input_size"
-	LimitDepth         LimitKind = "depth"
+	// LimitInputSize is exceeded when the raw byte count of the input file
+	// exceeds the --max-bytes cap.
+	LimitInputSize LimitKind = "input_size"
+	// LimitDepth is exceeded when the nesting depth of the document exceeds
+	// the --max-depth cap.
+	LimitDepth LimitKind = "depth"
+	// LimitYAMLNodeCount is exceeded when the number of YAML nodes exceeds
+	// the --max-yaml-nodes cap.
 	LimitYAMLNodeCount LimitKind = "yaml_node_count"
 )
 

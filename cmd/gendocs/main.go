@@ -1,3 +1,5 @@
+// Package main generates CLI reference documentation from the nesdit cobra
+// command tree and writes the output as markdown files.
 package main
 
 import (

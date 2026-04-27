@@ -186,9 +186,12 @@ func IsKnownEvent(e Event) bool {
 type Severity string
 
 const (
+	// SeverityError indicates a hard failure; the operation did not complete.
 	SeverityError Severity = "error"
-	SeverityWarn  Severity = "warn"
-	SeverityInfo  Severity = "info"
+	// SeverityWarn indicates a recoverable condition the operator should review.
+	SeverityWarn Severity = "warn"
+	// SeverityInfo is used for operational events at normal verbosity.
+	SeverityInfo Severity = "info"
 )
 
 // Field is a structured key/value pair carried alongside a Record. The

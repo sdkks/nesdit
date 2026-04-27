@@ -57,8 +57,6 @@ func validateJSON(s string) error {
 	return nil
 }
 
-// Run is the process-level entrypoint used by cmd/nesdit/main.go. It
-// constructs a RunOptions backed by os.Stdin/out/err and delegates to
 // NewRootCmd returns the root cobra.Command for use by doc generators
 // (e.g. cmd/gendocs). The returned command is pre-wired with all flags
 // but is not yet executed.
@@ -70,7 +68,8 @@ func NewRootCmd() *cobra.Command {
 	})
 }
 
-// Execute. Exit code matches Execute's contract:
+// Run is the process-level entrypoint used by cmd/nesdit/main.go.
+// Exit code matches Execute's contract:
 //   - 0 — success
 //   - 1 — any error
 //   - 2 — --check drift detected (DR-002: only this path returns 2)
@@ -657,7 +656,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 		opts.Logger.Error(logx.EventIORead, path, err.Error())
 		return &emittedError{cause: err}
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	val, err := decodeFormatValueWithLimits(fmtName, f, limits)
 	if err != nil {
