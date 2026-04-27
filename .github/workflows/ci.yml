@@ -4,6 +4,17 @@ on:
   pull_request:
   push:
     branches: [main]
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - "test/**"
+      - "docs/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/ci.yml"
+      - "Makefile"
+      - "scripts/**"
+      - ".golangci.yml"
 
 permissions:
   contents: read
