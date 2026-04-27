@@ -38,8 +38,9 @@ import (
 type fileResult struct {
 	path      string // original path as supplied by the caller
 	reencoded []byte // re-encoded original bytes (decode+encode without query; for unchanged detection)
-	encoded   []byte // encoded output bytes (nil if encode failed)
+	encoded   []byte // encoded output bytes (nil if encode failed or where-skipped)
 	encErr    error  // non-nil if encode or query failed
+	skipped   bool   // true when --where predicate did not match; file is not written
 }
 
 // runFiles is the in-place (-i) orchestrator. Callers pass the already-
@@ -48,15 +49,28 @@ type fileResult struct {
 // Mixed-format detection (FR-5) happens before any file is opened, using
 // only extension-based detection on the path names. This ensures the
 // rejection is a pure metadata operation with no IO side-effects.
+//
+// wherePredicate (FR-10 / STORY-0009): when non-empty, each file is decoded
+// and tested against select(<wherePredicate>) before the query is applied.
+// Files that do not satisfy the predicate are logged as where.skipped and
+// counted in the batch summary as skipped (excluded from changed/unchanged).
+//
+// keepGoing (FR-17 / STORY-0013 --keep-going): when true, errored files are
+// counted in the batch summary K errored slot and processing continues to the
+// next file rather than aborting. No files are written for the batch until
+// after all files are processed; errored files are excluded from the write
+// phase. Exit code is 1 if any errors occurred.
 func runFiles(
 	ctx context.Context,
 	opts RunOptions,
 	paths []string,
 	queryExpr string,
+	wherePredicate string,
 	overrideFormat string,
 	args []query.Arg,
 	limits format.Limits,
 	timeout time.Duration,
+	keepGoing bool,
 ) error {
 	// Deduplicate paths so two symlinks pointing to the same real file
 	// do not cause double writes.
@@ -72,15 +86,18 @@ func runFiles(
 	hasEncodeFailure := false
 
 	for i, p := range paths {
-		res := processOneFile(ctx, opts, p, queryExpr, overrideFormat, args, limits, timeout)
+		res := processOneFile(ctx, opts, p, queryExpr, wherePredicate, overrideFormat, args, limits, timeout)
 		results[i] = res
 		if res.encErr != nil {
 			hasEncodeFailure = true
 		}
 	}
 
-	// --- NFR-7: if any encode/query step failed, abort before any write ---
-	if hasEncodeFailure {
+	// --- NFR-7 / FR-17: if any encode/query step failed ---
+	// Strict (default): abort before any write.
+	// --keep-going: continue to the write phase; errored files are skipped
+	// and counted in the batch summary.
+	if hasEncodeFailure && !keepGoing {
 		// Errors were already logged per-file by processOneFile.
 		// Emit batch summary only for multi-file runs.
 		if len(results) > 1 {
@@ -92,6 +109,16 @@ func runFiles(
 	// --- Write phase: atomic per-file (NFR-9: non-transactional batch) ---
 	for i := range results {
 		r := &results[i]
+		if r.skipped {
+			// where.skipped: predicate did not match; do not write this file.
+			continue
+		}
+		if r.encErr != nil {
+			// Errored file: do not write (the error was already logged).
+			// Under --keep-going this is expected; under strict mode we only
+			// reach here if there were no encode failures (guarded above).
+			continue
+		}
 		if err := nesio.WriteAtomic(r.path, r.encoded); err != nil {
 			opts.Logger.Error(logx.EventIOWrite, r.path, err.Error())
 			r.encErr = err // mark as errored for summary
@@ -103,10 +130,10 @@ func runFiles(
 		emitBatchSummary(opts.Logger, results)
 	}
 
-	// If any write failed, exit non-zero.
+	// If any encode/query or write failed, exit non-zero.
 	for _, r := range results {
 		if r.encErr != nil {
-			return &emittedError{cause: errors.New("one or more files failed to write")}
+			return &emittedError{cause: errors.New("one or more files failed")}
 		}
 	}
 	return nil
@@ -166,13 +193,17 @@ func detectMixedFormats(opts RunOptions, paths []string, overrideFormat string) 
 	return &emittedError{cause: errors.New(msg)}
 }
 
-// processOneFile runs the decode → query → encode pipeline for a single
-// file and returns a fileResult. Errors are logged and stored in result.encErr.
+// processOneFile runs the decode → where-test → query → encode pipeline for a
+// single file and returns a fileResult. Errors are logged and stored in
+// result.encErr. When wherePredicate is non-empty and the document does not
+// satisfy it, result.skipped is set to true and the query/encode steps are
+// skipped.
 func processOneFile(
 	ctx context.Context,
 	opts RunOptions,
 	path string,
 	queryExpr string,
+	wherePredicate string,
 	overrideFormat string,
 	args []query.Arg,
 	limits format.Limits,
@@ -224,6 +255,23 @@ func processOneFile(
 	// If re-encode fails (e.g. the file was already corrupt), reencoded stays
 	// nil and the summary will count it as changed (conservative).
 
+	// --where (FR-10 / STORY-0009): test the predicate before running the
+	// query. Files that do not match are logged as where.skipped and returned
+	// immediately; the query and encode steps are skipped.
+	if wherePredicate != "" {
+		match, whereErr := query.ApplyWhere(val, wherePredicate)
+		if whereErr != nil {
+			opts.Logger.Error(classifyQueryErr(ctx, whereErr, 0), path, whereErr.Error())
+			res.encErr = whereErr
+			return res
+		}
+		if !match {
+			opts.Logger.Warn(logx.EventWhereSkipped, path, "--where predicate did not match; file skipped")
+			res.skipped = true
+			return res
+		}
+	}
+
 	// Apply query with optional timeout.
 	queryCtx := ctx
 	var cancel context.CancelFunc
@@ -256,8 +304,11 @@ func processOneFile(
 	return res
 }
 
-// emitBatchSummary counts changed/unchanged/errored from results and emits
-// the FR-6 `N changed, M unchanged, K errored` line on stderr via InfoGlobal.
+// emitBatchSummary counts changed/unchanged/skipped/errored from results and
+// emits the FR-6 `N changed, M unchanged, K errored` line on stderr via
+// InfoGlobal. Skipped files (--where predicate mismatch) are excluded from
+// changed/unchanged/errored — they appear only in the per-file where.skipped
+// warn lines already emitted by processOneFile.
 //
 // Unchanged detection: compare encode(query(original)) with encode(original).
 // This normalises away encoding differences (trailing newlines, whitespace) so
@@ -265,6 +316,10 @@ func processOneFile(
 func emitBatchSummary(log *logx.Logger, results []fileResult) {
 	changed, unchanged, errored := 0, 0, 0
 	for _, r := range results {
+		if r.skipped {
+			// where.skipped: not counted in any summary bucket.
+			continue
+		}
 		if r.encErr != nil {
 			errored++
 		} else if r.reencoded != nil && bytes.Equal(r.reencoded, r.encoded) {

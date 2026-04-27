@@ -1,0 +1,59 @@
+# fr17_keep_going_files.txtar — FR-17: --keep-going in file batch (-i) mode.
+#
+# GIVEN a 3-file JSON batch where file 2 (bad.json) causes query failure
+# (ascii_upcase requires a string, but bad.json has a number value),
+# WHEN `--keep-going` is set,
+# THEN:
+#   - ok1.json and ok3.json are written with the query applied.
+#   - bad.json is NOT modified (query failed; error logged per file).
+#   - the batch summary shows 2 changed, 0 unchanged, 1 errored.
+#   - exit code is 1 (errors occurred even with --keep-going).
+#
+# Without --keep-going (default --strict):
+#   - NFR-7 two-pass guarantee: NO files are written if any encode/query fails.
+#   - exit code is 1.
+
+# (a) --keep-going: good files are written; bad file unchanged; exit 1.
+! nesdit -i ok1.json bad.json ok3.json --query '.value |= ascii_upcase' --keep-going
+! stdout .
+# Stderr must show per-file error for bad.json.
+stderr 'bad\.json'
+# Batch summary must show 2 changed, 1 errored.
+stderr 'batch\.summary'
+stderr '2 changed.*1 errored'
+# Exit 1 verified by ! above.
+
+# Verify ok1.json and ok3.json were written (value uppercased).
+nesdit ok1.json --query '.value'
+stdout '"HELLO"'
+nesdit ok3.json --query '.value'
+stdout '"WORLD"'
+
+# Verify bad.json was NOT modified (value still the original number).
+nesdit bad.json --query '.value'
+stdout '^42$'
+
+# (b) --strict (default, on fresh copies): NFR-7 — NO files written if any fails.
+# Reset files first.
+cp orig_ok1.json ok1.json
+cp orig_ok3.json ok3.json
+
+! nesdit -i ok1.json bad.json ok3.json --query '.value |= ascii_upcase'
+! stdout .
+stderr 'batch\.summary'
+# NFR-7: ok1 and ok3 unchanged because two-pass aborted before write phase.
+nesdit ok1.json --query '.value'
+stdout '"hello"'
+nesdit ok3.json --query '.value'
+stdout '"world"'
+
+-- ok1.json --
+{"value":"hello"}
+-- bad.json --
+{"value":42}
+-- ok3.json --
+{"value":"world"}
+-- orig_ok1.json --
+{"value":"hello"}
+-- orig_ok3.json --
+{"value":"world"}

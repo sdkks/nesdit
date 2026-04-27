@@ -20,9 +20,18 @@ const stdinFilename = "-"
 // runStdin is the NFR-8 single-pass STDIN pipeline. It reads one document at
 // a time via a stream.DocReader, applies the query, and writes to stdout.
 //
-// On the first document failure, runStdin halts with a non-zero exit via
-// emittedError. Earlier documents already written to stdout are documented
-// NFR-8 behavior (single-pass, not transactional).
+// Default (strict) behaviour: on the first document failure, runStdin halts
+// with a non-zero exit via emittedError. Earlier documents already written to
+// stdout are documented NFR-8 behavior (single-pass, not transactional).
+//
+// With keepGoing=true (FR-17 / STORY-0013 --keep-going): a query or encode
+// error on one document is logged and processing continues to the next
+// document. The errored document is NOT written to stdout. Exit code is
+// non-zero at the end if any errors occurred.
+//
+// wherePredicate (FR-10 / STORY-0009): when non-empty, each document that does
+// not satisfy select(<wherePredicate>) is written to stdout unchanged (passed
+// through). The query is only applied to matching documents.
 //
 // fmtName is the effective format string after auto-detection. It must be
 // one of "yaml", "jsonl", or "toml". "toml" is single-document only;
@@ -30,7 +39,7 @@ const stdinFilename = "-"
 //
 // timeout (when > 0) wraps ctx with a per-document deadline for the query
 // phase only (consistent with runOnce).
-func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr string, args []query.Arg, limits format.Limits, timeout time.Duration) error {
+func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing bool) error {
 	// Wire the reader.
 	reader, err := stream.NewReader(fmtName, opts.Stdin, limits)
 	if err != nil {
@@ -45,9 +54,33 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr string, a
 	}
 
 	docIndex := 0
+	hadError := false
 	for reader.Next() {
 		docIndex++
 		val := reader.Value()
+
+		// --where (FR-10 / STORY-0009): test the predicate before running the
+		// query. Documents that do not match are written to stdout unchanged
+		// (pass-through). A where predicate error halts the stream (even under
+		// --keep-going: this is a misconfiguration, not a per-doc data error).
+		if wherePredicate != "" {
+			match, whereErr := query.ApplyWhere(val, wherePredicate)
+			if whereErr != nil {
+				opts.Logger.ErrorAt(classifyQueryErr(ctx, whereErr, 0), stdinFilename, docIndex, whereErr.Error())
+				return &emittedError{cause: whereErr}
+			}
+			if !match {
+				opts.Logger.WarnAt(logx.EventWhereSkipped, stdinFilename, docIndex, "--where predicate did not match; doc passed through")
+				if wErr := writer.WriteDoc(val); wErr != nil {
+					opts.Logger.ErrorAt(classifyEncodeErr(wErr), stdinFilename, docIndex, wErr.Error())
+					if !keepGoing {
+						return &emittedError{cause: wErr}
+					}
+					hadError = true
+				}
+				continue
+			}
+		}
 
 		// Apply --timeout to the query phase per doc (consistent with runOnce).
 		queryCtx := ctx
@@ -62,12 +95,22 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr string, a
 		}
 		if qErr != nil {
 			opts.Logger.ErrorAt(classifyQueryErr(queryCtx, qErr, timeout), stdinFilename, docIndex, qErr.Error())
-			return &emittedError{cause: qErr}
+			if !keepGoing {
+				return &emittedError{cause: qErr}
+			}
+			// --keep-going (FR-17): log error, skip this doc, continue to next.
+			// The errored document is NOT written to stdout.
+			hadError = true
+			continue
 		}
 
 		if wErr := writer.WriteDoc(outVal); wErr != nil {
 			opts.Logger.ErrorAt(classifyEncodeErr(wErr), stdinFilename, docIndex, wErr.Error())
-			return &emittedError{cause: wErr}
+			if !keepGoing {
+				return &emittedError{cause: wErr}
+			}
+			hadError = true
+			continue
 		}
 	}
 
@@ -87,7 +130,15 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr string, a
 		} else {
 			opts.Logger.ErrorAt(event, stdinFilename, docIndex+1, rErr.Error())
 		}
+		// A stream-level error halts even under --keep-going: once the stream
+		// decoder has failed, the remaining document boundaries are unknown.
 		return &emittedError{cause: rErr}
+	}
+
+	// FR-17: if any per-document errors were encountered under --keep-going,
+	// exit 1 at end of run (non-zero, even though processing continued).
+	if hadError {
+		return &emittedError{cause: errors.New("one or more documents failed processing")}
 	}
 
 	return nil

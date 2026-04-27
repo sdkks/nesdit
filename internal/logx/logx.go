@@ -108,6 +108,30 @@ const (
 	// so operators can filter clean cancellations separately.
 	EventQueryCancelled Event = "query.cancelled"
 
+	// STORY-0009 --where filter events.
+
+	// EventWhereSkipped is emitted when --where is set and a document (stream
+	// mode: passed through; file mode: skipped) does not satisfy the predicate.
+	// FR-10 / SPEC-0001 Solution §2 event list.
+	EventWhereSkipped Event = "where.skipped"
+
+	// STORY-0013 --keep-going per-doc processing outcome events.
+	// Required by STORY-0011 (--log-format=json). These are info-level tokens
+	// emitted per document when --log-format=json is active; they are registered
+	// here so the closed-enum invariant is maintained.
+
+	// EventDocUnchanged is emitted (info) when a document passes query but the
+	// result is identical to the original encoded form (idempotent edit).
+	EventDocUnchanged Event = "doc.unchanged"
+
+	// EventDocChanged is emitted (info) when a document passes query and the
+	// result differs from the original encoded form.
+	EventDocChanged Event = "doc.changed"
+
+	// EventDocSkipped is emitted (info) when a document is skipped — either
+	// by --where predicate mismatch or (future) filter modes.
+	EventDocSkipped Event = "doc.skipped"
+
 	// STORY-0007 --edit mode events.
 
 	// EventEditNoTTY is emitted when --edit is invoked but stdin (or the
@@ -171,6 +195,12 @@ var knownEvents = map[Event]struct{}{
 	EventEditEmptySave:    {},
 	EventEditNoChange:     {},
 	EventEditTTYBypass:    {},
+
+	EventWhereSkipped: {},
+
+	EventDocUnchanged: {},
+	EventDocChanged:   {},
+	EventDocSkipped:   {},
 }
 
 // IsKnownEvent reports whether e is a registered event token. Callers
@@ -250,6 +280,12 @@ func (l *Logger) ErrorGlobal(event Event, msg string) {
 // Warn emits a warning line (e.g. flag.precedence).
 func (l *Logger) Warn(event Event, file, msg string) {
 	l.emit(Record{Sev: SeverityWarn, Event: event, File: file, Msg: msg})
+}
+
+// WarnAt emits a per-file, per-doc-index warning line for multi-doc streams.
+// Index is 1-based; pass 0 to suppress the index.
+func (l *Logger) WarnAt(event Event, file string, index int, msg string) {
+	l.emit(Record{Sev: SeverityWarn, Event: event, File: file, Index: index, Msg: msg})
 }
 
 // WarnGlobal emits a warning with neither file nor index — flag-precedence

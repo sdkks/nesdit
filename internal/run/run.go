@@ -148,20 +148,23 @@ func (e *emittedError) Unwrap() error { return e.cause }
 // calls in parallel.
 func newRootCmd(opts RunOptions) *cobra.Command {
 	var (
-		queryExpr     string
-		queryFile     string
-		formatName    string
-		argPairs      []string
-		argJSONPairs  []string
-		inPlace       bool
-		dryRun        bool
-		check         bool
-		editMode      bool
-		timeout       time.Duration
-		maxBytes      int64
-		maxDepth      int
-		maxYAMLNodes  int
-		maxQueryBytes int64
+		queryExpr       string
+		queryFile       string
+		formatName      string
+		argPairs        []string
+		argJSONPairs    []string
+		inPlace         bool
+		dryRun          bool
+		check           bool
+		editMode        bool
+		wherePredicate  string
+		keepGoing       bool
+		strict          bool
+		timeout         time.Duration
+		maxBytes        int64
+		maxDepth        int
+		maxYAMLNodes    int
+		maxQueryBytes   int64
 	)
 	// STORY-0008 defaults come from the format package so the CLI and
 	// tests share one source of truth.
@@ -285,7 +288,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 
 			// -i / --in-place: route through the two-pass file orchestrator.
 			if effectiveInPlace {
-				return runFiles(cmd.Context(), opts, args, qText, formatName, jqArgs, limits, timeout)
+				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, jqArgs, limits, timeout, keepGoing)
 			}
 
 			// STDIN mode (FR-3, STORY-0005): no file args, or explicit "-".
@@ -295,16 +298,22 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFormatUnknown, fmtErr.Error())
 					return &emittedError{cause: fmtErr}
 				}
-				return runStdin(cmd.Context(), resolvedOpts, fmtName, qText, jqArgs, limits, timeout)
+				return runStdin(cmd.Context(), resolvedOpts, fmtName, qText, wherePredicate, jqArgs, limits, timeout, keepGoing)
 			}
 
 			// Default: single-file file→stdout path (STORY-0003).
+			// --where is not meaningful in single-file mode (there's nothing to
+			// filter against a batch), so wherePredicate is intentionally not
+			// passed to runOnce.
 			return runOnce(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout)
 		},
 	}
 
 	cmd.Flags().StringVar(&queryExpr, "query", "", "jq-style query (default '.' identity when neither --query nor -f is given)")
 	cmd.Flags().StringVarP(&queryFile, "from-file", "f", "", "load query from file (mutually exclusive with --query)")
+	// STORY-0009 flag: --where (FR-10). Inner jq predicate; implementation
+	// wraps it as select(<predicate>) at evaluation time.
+	cmd.Flags().StringVar(&wherePredicate, "where", "", "filter docs by jq predicate: only matching docs have --query applied (stream: others pass through; file mode: others are skipped)")
 	cmd.Flags().StringVar(&formatName, "format", "", "force input format (json|yaml|toml); default is extension-based detection")
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "bind $K=V in the query as a literal string (repeatable)")
 	cmd.Flags().StringArrayVar(&argJSONPairs, "argjson", nil, "bind $K=V in the query as a JSON-decoded value (repeatable)")
@@ -315,6 +324,12 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	cmd.Flags().BoolVar(&check, "check", false, "exit 2 if the query would change the input; exit 0 if identical; exit 1 on error")
 	// STORY-0007 flag: --edit (FR-4). Long-only per DR-003; -e is reserved.
 	cmd.Flags().BoolVar(&editMode, "edit", false, "open $EDITOR on a temp copy of the file; diff before/after and emit suggested query")
+	// STORY-0013 flags: --keep-going (FR-17) and --strict (explicit default alias).
+	// Default behaviour is --strict (halt on first error). --keep-going opts in to
+	// continue-on-error: errored documents are skipped, processing continues.
+	// Both flags are mutually exclusive; enforced by validateFlagInteraction.
+	cmd.Flags().BoolVar(&keepGoing, "keep-going", false, "continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred")
+	cmd.Flags().BoolVar(&strict, "strict", false, "halt on the first document error (default behaviour; explicit alias for documentation)")
 	// STORY-0008 flags. Defaults come from format.DefaultLimits() so the
 	// safe-by-default semantics live in one place.
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap")
@@ -442,6 +457,15 @@ var flagConflictRules = []flagConflictRule{
 		Event:      logx.EventFlagConflict,
 		Msg:        "--edit does not execute a query; --argjson bindings are not compatible",
 	},
+	{
+		// FR-17 / STORY-0013: --keep-going and --strict are mutually exclusive.
+		// --strict is the explicit default; --keep-going opts in to continue-on-error.
+		// Both flags set simultaneously is a usage error.
+		IfSet:      []string{"keep-going"},
+		ThenNotSet: []string{"strict"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--keep-going and --strict are mutually exclusive: --strict is the default behaviour (halt on first error); --keep-going overrides it",
+	},
 }
 
 // flagPrecedenceRules is the FR-21 ALLOW-with-warning matrix (DR-001).
@@ -502,6 +526,17 @@ func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command) error {
 			log.WarnGlobal(logx.EventFlagPrecedence, rule.Msg)
 		}
 	}
+
+	// FR-21 / STORY-0009: --where without --query or -f is an error.
+	// The existing mutual-exclusion table handles "A and B cannot both be
+	// set"; this requires "A is set and neither B nor C is set" — a
+	// required-pairing check that doesn't fit flagConflictRule's shape.
+	if changed("where") && !changed("query") && !changed("from-file") {
+		msg := "--where requires --query or -f/--from-file: a predicate filter without a query has no effect"
+		log.ErrorGlobal(logx.EventFlagInvalid, msg)
+		return &emittedError{cause: errors.New(msg)}
+	}
+
 	return nil
 }
 

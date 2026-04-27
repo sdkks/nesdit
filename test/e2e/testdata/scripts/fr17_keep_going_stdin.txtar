@@ -1,0 +1,51 @@
+# fr17_keep_going_stdin.txtar — FR-17: --keep-going in STDIN stream mode.
+#
+# GIVEN a 5-doc YAML stream where doc 3 has a numeric `name` field (not a
+# string), WHEN `--query '.name | ascii_downcase'` is applied,
+# THEN the query fails at doc 3 because ascii_downcase requires a string.
+#
+# With --keep-going:
+#   - docs 1, 2, 4, 5 are processed and written to stdout.
+#   - doc 3 is skipped (not written); its error is emitted to stderr.
+#   - exit code is 1 (errors occurred).
+#
+# Without --keep-going (default --strict):
+#   - processing halts at doc 3; exit code is 1.
+#
+# --keep-going and --strict together must be rejected at flag-parse time.
+
+# (a) --keep-going: 4 of 5 docs processed; doc 3 skipped; exit 1.
+stdin stream.yaml
+! nesdit --format yaml --query '.name | ascii_downcase' --keep-going
+stdout 'alpha'
+stdout 'beta'
+stdout 'delta'
+stdout 'epsilon'
+# doc 3 errored: stderr must contain the per-doc error line (file=- index=3).
+stderr 'nesdit: error: -:3:'
+# doc 3 name value (42 as number) must NOT appear in stdout.
+! stdout '^42'
+
+# (b) --strict (default): halts at doc 3, exit 1.
+stdin stream.yaml
+! nesdit --format yaml --query '.name | ascii_downcase'
+stderr 'nesdit: error: -:3:'
+# doc 4 "delta" must not appear since strict halts before it.
+! stdout 'delta'
+
+# (c) --keep-going and --strict together: flag.conflict error.
+stdin stream.yaml
+! nesdit --format yaml --query '.' --keep-going --strict
+stderr 'flag\.conflict'
+! stdout .
+
+-- stream.yaml --
+name: alpha
+---
+name: beta
+---
+name: 42
+---
+name: delta
+---
+name: epsilon
