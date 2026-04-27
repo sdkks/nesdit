@@ -196,6 +196,38 @@ nesdit data.json --query 'del(.items[1])'
 
 **Stdout:** `{"items":[10,30,40,50]}`
 
+### Filter with `select`
+
+`select(predicate)` keeps only elements for which the predicate is true. Wrap with array reconstruction to filter an array-of-maps:
+
+**Input (`services.yaml`):**
+
+```yaml
+services:
+  - name: api
+    enabled: true
+  - name: worker
+    enabled: false
+  - name: scheduler
+    enabled: true
+```
+
+```sh
+nesdit --format yaml --query '.services = [.services[] | select(.enabled == true)]' services.yaml
+```
+
+**Stdout:**
+
+```yaml
+services:
+  - name: api
+    enabled: true
+  - name: scheduler
+    enabled: true
+```
+
+Key order within each map entry is preserved. The `worker` entry is dropped because `.enabled == false`.
+
 ---
 
 ## Array-of-maps
@@ -316,6 +348,9 @@ nesdit --yaml-version 1.1 flags.yaml --query '.switch_on'
 
 !!! note
     The encoder always writes YAML 1.2 output regardless of `--yaml-version`. Setting `--yaml-version 1.1` only affects how the input is decoded.
+
+!!! note "Available in v1"
+    The `--yaml-version` flag was included in v1 scope despite appearing in the RFC's deferral list. It is fully supported.
 
 ---
 
