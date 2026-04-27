@@ -17,6 +17,8 @@ go install github.com/sdkks/nesdit/cmd/nesdit@latest
 
 **Pre-built binaries** (linux/amd64, linux/arm64, darwin/arm64) are available on the [releases page](https://github.com/sdkks/nesdit/releases).
 
+**Homebrew** *(coming soon)*
+
 ## Quick start
 
 ```sh
