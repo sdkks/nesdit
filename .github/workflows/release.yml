@@ -29,7 +29,12 @@
 name: release
 
 on:
-  push:
+  # Only run after the ci workflow completes successfully on main.
+  # This prevents release PRs from opening (or GoReleaser from firing)
+  # when tests are red.
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
     branches: [main]
 
 permissions:
@@ -44,6 +49,8 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Bail out immediately if ci did not pass.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -56,10 +63,13 @@ jobs:
           manifest-file: .release-please-manifest.json
 
       - name: Auto-merge Release PR
+        # steps.release.outputs.pr is a JSON object; extract .number into an
+        # env var to avoid shell interpolation issues with the raw JSON string.
         if: ${{ steps.release.outputs.pr }}
-        run: gh pr merge --auto --squash "${{ steps.release.outputs.pr }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
+        run: gh pr merge --auto --squash "$PR_NUMBER"
 
   goreleaser:
     needs: release-please
