@@ -1,49 +1,46 @@
-# release.yml — Automated semver releases via release-please + GoReleaser.
+# release.yml — Automated semver releases via semantic-release + GoReleaser.
 #
 # Flow:
-#   1. After ci passes on any push to main, release-please inspects
-#      conventional commits and either opens/updates a "Release PR" or
-#      does nothing (no releasable commits since last release).
-#   2. The Release PR is auto-merged once its own CI passes.
-#   3. When release-please processes the merged Release PR it pushes a
-#      semver tag (e.g. v0.0.1) and creates a draft-free GitHub Release.
-#   4. The goreleaser job in this file is triggered by that tag push.
+#   1. After ci passes on a push to main, semantic-release inspects
+#      conventional commits and either pushes a semver tag + GitHub Release
+#      or does nothing (no releasable commits since last release).
+#   2. The goreleaser job is triggered by that tag push.
 #      It builds linux/amd64, linux/arm64, and darwin/arm64 binaries and
-#      uploads them as assets to the release release-please created.
+#      uploads them as assets to the release semantic-release created.
 #
 # Why two triggers (workflow_run + push tags)?
-#   workflow_run[ci] gates release-please so it only opens Release PRs
-#   when tests are green. goreleaser uses push[tags] because the tag is
-#   a real push event that fires reliably after the Release PR merges —
-#   workflow_run does NOT fire on auto-merge commits.
+#   workflow_run[ci] gates semantic-release so it only runs when tests are
+#   green. goreleaser uses push[tags] because the tag is a real push event
+#   that fires reliably — workflow_run does NOT fire on tag pushes.
 #
 # Conventional commit types that trigger a release:
 #   fix:  → patch bump  (0.0.x)
-#   feat: → minor bump  (0.x.0)  [capped at patch while pre-major]
+#   feat: → minor bump  (0.x.0)
 #   feat!: or BREAKING CHANGE: → major bump (x.0.0)
 #
 # SHA ↔ tag mappings verified via scripts/check-action-pins.sh:
 #   actions/checkout                 11bd7190... → v4.2.2
 #   actions/setup-go                 d35c59ab... → v5.5.0
-#   googleapis/release-please-action 45996ed1... → v5.0.0
+#   cycjimmy/semantic-release-action b12c8f60... → v6.0.0
 #   goreleaser/goreleaser-action     1a80836c... → v7.2.1
 
 name: release
 
 on:
-  # release-please: runs after ci passes on main pushes.
+  # semantic-release: runs after ci passes on main pushes.
   workflow_run:
     workflows: [ci]
     types: [completed]
     branches: [main]
 
-  # goreleaser: runs when release-please pushes a semver tag.
+  # goreleaser: runs when semantic-release pushes a semver tag.
   push:
     tags:
       - "v*"
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 concurrency:
@@ -51,32 +48,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release-please:
+  semantic-release:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
+          fetch-depth: 0
           # Must use a PAT (RELEASE_TOKEN), not GITHUB_TOKEN. Tags and commits
           # pushed by GITHUB_TOKEN do not trigger downstream workflow runs
           # (GitHub prevents loops). The PAT push is treated as a real user
           # event, so the goreleaser push[tags:v*] trigger fires correctly.
           token: ${{ secrets.RELEASE_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
 
-      - name: Auto-merge Release PR
-        # steps.release.outputs.pr is a JSON object — put it in an env var
-        # and parse with jq to avoid shell interpolation of the raw JSON.
-        if: ${{ steps.release.outputs.pr }}
+      - uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_JSON: ${{ steps.release.outputs.pr }}
-        run: |
-          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
-          gh pr merge --auto --squash --repo "$GITHUB_REPOSITORY" "$PR_NUMBER"
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
   goreleaser:
     runs-on: ubuntu-latest
