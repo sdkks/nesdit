@@ -40,6 +40,10 @@ import (
 	"github.com/sdkks/nesdit/internal/query"
 )
 
+// Version and Commit are injected at build time via -X ldflags by GoReleaser.
+// They remain empty strings in local dev builds.
+var Version, Commit string
+
 // validateJSON verifies that s is a single syntactically valid JSON
 // value. Used by --argjson to reject malformed inputs at flag-parse
 // time rather than deferring to the query engine.
@@ -184,10 +188,19 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	maxYAMLNodes = defaults.MaxYAMLNodes
 	maxQueryBytes = format.DefaultQueryMaxBytes
 
+	version := Version
+	if version == "" {
+		version = "dev"
+	}
+	if Commit != "" {
+		version += " (" + Commit + ")"
+	}
+
 	cmd := &cobra.Command{
 		Use:           "nesdit [flags] <file> [<file>...]",
 		Short:         "Edit structured config (JSON/YAML/TOML) with jq-style queries",
 		Long:          longDesc,
+		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {

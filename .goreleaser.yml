@@ -41,6 +41,8 @@ builds:
       # builds and avoids leaking developer machine paths in panics).
       - -s -w
       - -extldflags=-static
+      - -X github.com/sdkks/nesdit/internal/run.Version={{.Version}}
+      - -X github.com/sdkks/nesdit/internal/run.Commit={{.ShortCommit}}
     flags:
       # trimpath: remove all local file system paths from the binary.
       - -trimpath
