@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pmezard/go-difflib/difflib"
@@ -111,11 +112,17 @@ func runDryRun(
 
 	// Emit unified diff to stdout. The diff is informational — an empty
 	// diff (no change) is fine and still exits 0.
+	//
+	// Sanitise embedded newlines in the path before placing it in the
+	// diff header fields (FR-11 / TASK-0025): a literal '\n' in a
+	// filename would split the "--- path" header line, producing a
+	// malformed diff.
+	safeHeader := strings.ReplaceAll(path, "\n", `\n`)
 	diff := difflib.UnifiedDiff{
 		A:        difflib.SplitLines(beforeBuf.String()),
 		B:        difflib.SplitLines(afterBuf.String()),
-		FromFile: path,
-		ToFile:   path,
+		FromFile: safeHeader,
+		ToFile:   safeHeader,
 		Context:  3,
 	}
 	diffText, diffErr := difflib.GetUnifiedDiffString(diff)
