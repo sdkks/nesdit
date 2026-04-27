@@ -1,0 +1,46 @@
+# fr06_batch_summary.txtar — FR-6: batch summary stderr line.
+#
+# After a glob -i run, a single info line MUST appear on stderr in the form:
+#   nesdit: info: batch.summary: N changed, M unchanged, K errored
+#
+# Tests:
+#   (a) All files changed (query is non-no-op).
+#   (b) Some files unchanged (identity query).
+#   (c) A file that fails encode produces K>=1 and non-zero exit.
+
+# (a) 3 files, all changed.
+nesdit -i f1.json f2.json f3.json --query '.mark = true'
+stderr '^nesdit: info: batch\.summary: 3 changed, 0 unchanged, 0 errored$'
+! stdout .
+# Verify the edits took effect.
+nesdit f1.json --query '.mark'
+stdout '^true$'
+nesdit f2.json --query '.mark'
+stdout '^true$'
+nesdit f3.json --query '.mark'
+stdout '^true$'
+
+# (b) Identity query on 2 JSON files — both unchanged.
+nesdit -i g1.json g2.json --query '.'
+stderr '^nesdit: info: batch\.summary: 0 changed, 2 unchanged, 0 errored$'
+! stdout .
+
+# (c) One file fails encode (TOML can't represent null) — errored count >= 1.
+! nesdit -i ok.toml bad_null.toml --query '.k = null'
+stderr '^nesdit: info: batch\.summary: '
+stderr 'errored'
+
+-- f1.json --
+{"a":1}
+-- f2.json --
+{"b":2}
+-- f3.json --
+{"c":3}
+-- g1.json --
+{"x":1}
+-- g2.json --
+{"y":2}
+-- ok.toml --
+k = "original"
+-- bad_null.toml --
+k = "original"

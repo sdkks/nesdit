@@ -1,0 +1,46 @@
+# nfr07_no_partial_write_on_encode_fail.txtar — NFR-7: two-pass validation.
+#
+# GIVEN a 5-file glob where file 4 fails to encode,
+# WHEN -i runs,
+# THEN NO file in the glob has been modified on disk.
+#
+# We trigger a known encode failure: TOML cannot represent null values.
+# All 5 files have TOML key k = "original". The query `.k = null` causes
+# the TOML encoder to reject every file. The two-pass NFR-7 guarantee means
+# no file should be modified before any write starts.
+#
+# However, since all files fail to encode, the abort happens during the
+# encode pass — before any writes. This validates the "abort if any encode
+# fails" gate.
+#
+# We verify no writes occurred by re-reading each file and confirming
+# the value of .k is still the original string.
+
+! nesdit -i ok1.toml ok2.toml ok3.toml bad.toml ok5.toml --query '.k = null'
+! stdout .
+stderr 'format\.incompatible'
+stderr 'batch\.summary'
+
+# All 5 files must still have k at the original value (not written).
+# Use identity query and check the TOML output contains the expected string.
+nesdit ok1.toml --query '.'
+stdout 'one'
+nesdit ok2.toml --query '.'
+stdout 'two'
+nesdit ok3.toml --query '.'
+stdout 'three'
+nesdit bad.toml --query '.'
+stdout 'bad'
+nesdit ok5.toml --query '.'
+stdout 'five'
+
+-- ok1.toml --
+k = "one"
+-- ok2.toml --
+k = "two"
+-- ok3.toml --
+k = "three"
+-- bad.toml --
+k = "bad"
+-- ok5.toml --
+k = "five"

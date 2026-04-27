@@ -1,0 +1,30 @@
+# fr05_mixed_format_named.txtar — FR-5: mixed-format detection.
+#
+# When a glob expansion (or explicit multi-file list) contains files of
+# different formats, nesdit MUST reject BEFORE any IO side-effect, with
+# exit 1 and a stderr line naming representative files. No file must be
+# modified and no stdout must be produced.
+
+# Two JSON + one YAML — mixed-format rejection.
+! nesdit -i a.json b.yaml --query '.x = 1'
+stderr 'format\.mixed'
+! stdout .
+
+# Verify no files were modified.
+cmp a.json a.json.orig
+cmp b.yaml b.yaml.orig
+
+# Rejection before IO: point to a non-existent JSON + existent YAML.
+# The error must still be format.mixed, not io.read.
+! nesdit -i missing.json b.yaml --query '.'
+stderr 'format\.mixed'
+! stderr 'io\.read'
+
+-- a.json --
+{"x":0}
+-- a.json.orig --
+{"x":0}
+-- b.yaml --
+x: 0
+-- b.yaml.orig --
+x: 0

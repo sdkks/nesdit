@@ -1,0 +1,53 @@
+# fr01_inplace_basic.txtar — FR-1: in-place file edit with -i flag.
+#
+# `nesdit -i <file> --query '...'` MUST parse <file>, apply the query,
+# and write the result back to the same path atomically (temp+rename).
+# The original file bytes must equal the encoded output after the edit.
+# STDOUT must be empty; stderr must be empty on success.
+
+# 1. Basic in-place edit: .x assigned to 99.
+nesdit -i a.json --query '.x = 99'
+! stdout .
+! stderr .
+# Re-read the edited file via a plain nesdit run and check output.
+nesdit a.json --query '.x'
+stdout '^99$'
+
+# 2. Verify that a second run (identity from current state) succeeds.
+nesdit -i a.json --query '.'
+! stdout .
+! stderr .
+
+# 3. In-place edit on YAML.
+nesdit -i b.yaml --query '.value = "world"'
+! stdout .
+! stderr .
+nesdit b.yaml --query '.value'
+stdout '^world$'
+
+# 4. In-place edit on TOML.
+nesdit -i c.toml --query '.version = "2.0"'
+! stdout .
+! stderr .
+# Re-read as YAML (roundtrip through nesdit) to verify the edit.
+nesdit c.toml --query '.'
+stdout 'version'
+stdout '2\.0'
+
+# 5. File not modified when -i is NOT set.
+cp d.json d.json.backup
+nesdit d.json --query '.k = 99'
+stdout .
+! stderr .
+cmp d.json d.json.backup
+
+-- a.json --
+{"x":1,"y":2}
+-- b.yaml --
+name: test
+value: hello
+-- c.toml --
+version = "1.0"
+name = "project"
+-- d.json --
+{"k":0}

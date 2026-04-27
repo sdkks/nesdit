@@ -1,0 +1,23 @@
+# fr01_inplace_symlink.txtar — FR-1 symlink acceptance: when the file
+# argument to -i is a symlink, the *target* is updated and the symlink
+# itself is preserved.
+
+# Create a symlink pointing to real.json.
+symlink link.json -> real.json
+
+# Apply in-place edit via the symlink.
+nesdit -i link.json --query '.val = 42'
+! stdout .
+! stderr .
+
+# The real target was updated: re-reading via the symlink produces the new value.
+nesdit link.json --query '.val'
+stdout '^42$'
+
+# The symlink still works (i.e., it was not replaced by a regular file at
+# link.json — the write went to real.json).
+nesdit real.json --query '.val'
+stdout '^42$'
+
+-- real.json --
+{"val":0}
