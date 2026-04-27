@@ -42,7 +42,9 @@ import (
 
 // Version and Commit are injected at build time via -X ldflags by GoReleaser.
 // They remain empty strings in local dev builds.
-var Version, Commit string
+var Version string
+
+var Commit string
 
 // validateJSON verifies that s is a single syntactically valid JSON
 // value. Used by --argjson to reject malformed inputs at flag-parse
