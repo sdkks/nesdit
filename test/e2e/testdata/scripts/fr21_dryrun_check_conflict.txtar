@@ -1,0 +1,23 @@
+# fr21_dryrun_check_conflict.txtar — FR-21: --dry-run and --check are mutually
+# exclusive. Using both together must be rejected at flag-parse time (PreRunE),
+# BEFORE any file read, with exit 1 and a canonical flag.conflict error on
+# stderr. STORY-0006 rework adds this fixture to close the gap in the FR-21
+# conflict matrix coverage.
+#
+# CRITICAL: rejection MUST happen before any file read. We use a nonexistent
+# file path and assert the error is flag.conflict, NOT an IO error. That
+# proves the check fires at flag-parse time per DR-001.
+
+# 1. Long form: --dry-run + --check
+! nesdit does-not-exist.json --dry-run --check --query '.'
+stderr '^nesdit: error: flag\.conflict: '
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+# 2. Short form for --dry-run (-n): -n + --check
+! nesdit does-not-exist.json -n --check --query '.'
+stderr '^nesdit: error: flag\.conflict: '
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .

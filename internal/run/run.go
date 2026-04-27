@@ -221,6 +221,14 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 			// emits the warn line); here we just override the effective mode.
 			effectiveInPlace := inPlace && !dryRun && !check
 
+			// SF-2 / STORY-0006: --dry-run and --check operate on exactly
+			// one file. Passing two or more files with either flag is an
+			// error (silently dropping files 2..N would be confusing).
+			if (dryRun || check) && len(args) > 1 {
+				opts.Logger.ErrorGlobal(logx.EventFlagInvalid, "--dry-run and --check support exactly one file argument")
+				return &emittedError{cause: fmt.Errorf("--dry-run and --check support exactly one file argument")}
+			}
+
 			// --dry-run (-n, FR-11): emit unified diff; no file write.
 			if dryRun {
 				if len(args) == 0 || (len(args) == 1 && args[0] == "-") {

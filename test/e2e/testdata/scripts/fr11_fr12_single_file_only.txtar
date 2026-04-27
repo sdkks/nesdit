@@ -1,0 +1,39 @@
+# fr11_fr12_single_file_only.txtar — STORY-0006 rework SF-2: --dry-run and
+# --check support exactly one file argument. When -i is also set (which
+# otherwise permits multi-file), --dry-run or --check must still reject
+# more than one file argument before doing any IO.
+#
+# The Args validator already blocks multi-file without -i, so we exercise
+# the combination that would otherwise slip through: -i + --dry-run/-n
+# or -i + --check with two or more file arguments. The precedence warning
+# for -i being overridden by -n/--check is still emitted (DR-001), but the
+# multi-file rejection fires immediately after.
+
+# 1. -i + --dry-run with two files → exit 1, flag.invalid on stderr.
+! nesdit a.json b.json -i --dry-run --query '.'
+stderr 'flag\.invalid'
+! stdout .
+
+# 2. -i + -n (short form) with two files → exit 1, flag.invalid on stderr.
+! nesdit a.json b.json -i -n --query '.'
+stderr 'flag\.invalid'
+! stdout .
+
+# 3. -i + --check with two files → exit 1, flag.invalid on stderr.
+! nesdit a.json b.json -i --check --query '.'
+stderr 'flag\.invalid'
+! stdout .
+
+# 4. Single file + --dry-run still works (exit 0, diff on stdout).
+nesdit a.json --dry-run --query '.'
+! stderr .
+
+# 5. Single file + --check still works (exit 0, identical content).
+nesdit a.json --check --query '.'
+! stdout .
+! stderr .
+
+-- a.json --
+{"x":1}
+-- b.json --
+{"y":2}
