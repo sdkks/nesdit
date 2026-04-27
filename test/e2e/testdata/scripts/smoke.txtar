@@ -7,11 +7,12 @@
 #
 # Real --edit / --in-place / multi-file fixtures land with STORY-0003+.
 
-# 1. Bare nesdit errors because it requires a file argument. The cobra-
-# generic error text is migrated to the DR-004 canonical shape in
-# STORY-0003, so we assert the canonical prefix.
+# 1. Bare nesdit with empty stdin enters STDIN mode (STORY-0005 FR-3) but
+# fails format detection on empty input, emitting format.unknown.
+# (STORY-0003 previously required exactly one file argument; STORY-0005
+# relaxes the Args validator to allow zero args for STDIN mode.)
 ! nesdit
-stderr '^nesdit: error: flag\.'
+stderr '^nesdit: error: format\.'
 
 # 2. Idempotency harness: two runs of the identity query produce identical output.
 nesdit-idempotent --query '.' basic.json

@@ -1,0 +1,35 @@
+# fr03_stdin_autodetect.txtar — FR-3: format auto-detection from STDIN.
+#
+# When no --format flag is given, nesdit MUST auto-detect the format by
+# peeking at the first 512 bytes of stdin. JSON is preferred on ambiguous.
+
+# Sub-test 1: JSON auto-detect — a JSON object on stdin. Detected as JSONL
+# (single-doc), output is the JSON value followed by newline.
+stdin json_input
+nesdit --query '.'
+stdout '^{"x":1}$'
+! stderr .
+
+# Sub-test 2: YAML auto-detect — a YAML document (not valid JSON) on stdin.
+# YAML writer emits `---\n` before each doc.
+stdin yaml_input
+nesdit --query '.'
+stdout '^---$'
+stdout '^x: 1$'
+! stderr .
+
+# Sub-test 3: JSONL auto-detect — two JSON lines on stdin, identity query.
+# Each line is emitted on its own line.
+stdin jsonl_input
+nesdit --query '.'
+stdout '^{"a":1}$'
+stdout '^{"b":2}$'
+! stderr .
+
+-- json_input --
+{"x":1}
+-- yaml_input --
+x: 1
+-- jsonl_input --
+{"a":1}
+{"b":2}

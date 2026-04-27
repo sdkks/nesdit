@@ -1,0 +1,25 @@
+# fr03_toml_multidoc_rejected.txtar — FR-3: TOML multi-doc is a hard error.
+#
+# TOML is single-doc only. When the input appears to contain multiple TOML
+# documents (content after a valid TOML document), nesdit MUST exit non-zero
+# and stderr MUST contain the format.unsupported event naming TOML.
+#
+# The "multi-doc" signal for TOML is any input that, when parsed, leaves
+# remaining content after the first TOML document boundary — which in practice
+# means the stream reader detects more than one separator or has content after
+# the end of the first parse. We simulate this by passing two TOML documents
+# separated by a blank line (TOML has no `---` separator; the parser consumes
+# the whole input, so the stream layer must detect a second doc attempt).
+
+stdin input.toml
+! nesdit --format toml --query '.'
+stderr '^nesdit: error: -: format\.unsupported: toml: multi-doc input is not supported; TOML is single-document only$'
+! stdout .
+
+-- input.toml --
+[first]
+x = 1
+
+---
+[second]
+x = 2

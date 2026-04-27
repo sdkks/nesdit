@@ -1,0 +1,22 @@
+# fr03_yaml_multidoc_stream.txtar — FR-3: YAML multi-doc stream via STDIN.
+#
+# `nesdit --format yaml --query '.version = 2'` with a 3-doc YAML stream on
+# stdin MUST produce three `---`-separated YAML docs, each with version: 2.
+# No file argument: nesdit reads from STDIN.
+# Key order is preserved (NFR-3): name appears before version in input, so
+# it appears before version in output.
+
+stdin input.yaml
+nesdit --format yaml --query '.version = 2'
+stdout '(?s)^---\nname: alpha\nversion: 2\n---\nname: beta\nversion: 2\n---\nname: gamma\nversion: 2\n$'
+! stderr .
+
+-- input.yaml --
+name: alpha
+version: 1
+---
+name: beta
+version: 1
+---
+name: gamma
+version: 1

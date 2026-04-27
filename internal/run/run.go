@@ -139,6 +139,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		formatName    string
 		argPairs      []string
 		argJSONPairs  []string
+		inPlace       bool
 		timeout       time.Duration
 		maxBytes      int64
 		maxDepth      int
@@ -154,14 +155,29 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	maxQueryBytes = format.DefaultQueryMaxBytes
 
 	cmd := &cobra.Command{
-		Use:           "nesdit [flags] <file>",
+		Use:           "nesdit [flags] <file> [<file>...]",
 		Short:         "Edit structured config (JSON/YAML/TOML) with jq-style queries",
 		Long:          longDesc,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Args: func(_ *cobra.Command, args []string) error {
+		Args: func(cmd *cobra.Command, args []string) error {
+			// -i mode accepts one or more file arguments (multi-file / glob).
+			// Non-i mode requires exactly one file argument OR no arguments
+			// (STDIN mode, STORY-0005 FR-3).
+			if cmd.Flag("in-place").Changed {
+				if len(args) < 1 {
+					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, "nesdit -i requires at least one file argument")
+					return &emittedError{cause: fmt.Errorf("accepts at least 1 arg(s), received %d", len(args))}
+				}
+				return nil
+			}
+			// Zero args → STDIN mode (FR-3). One arg of "-" → STDIN mode.
+			// Two or more args without -i → error (multi-file requires -i).
+			if len(args) == 0 || (len(args) == 1 && args[0] == "-") {
+				return nil
+			}
 			if len(args) != 1 {
-				opts.Logger.ErrorGlobal(logx.EventFlagInvalid, "nesdit requires exactly one file argument")
+				opts.Logger.ErrorGlobal(logx.EventFlagInvalid, "nesdit requires exactly one file argument (or no arguments for STDIN mode)")
 				return &emittedError{cause: fmt.Errorf("accepts 1 arg(s), received %d", len(args))}
 			}
 			return nil
@@ -192,6 +208,23 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 				MaxDepth:     maxDepth,
 				MaxYAMLNodes: maxYAMLNodes,
 			}
+
+			// -i / --in-place: route through the two-pass file orchestrator.
+			if inPlace {
+				return runFiles(cmd.Context(), opts, args, qText, formatName, jqArgs, limits, timeout)
+			}
+
+			// STDIN mode (FR-3, STORY-0005): no file args, or explicit "-".
+			if len(args) == 0 || (len(args) == 1 && args[0] == "-") {
+				fmtName, resolvedOpts, fmtErr := stdinFormatName(opts, formatName)
+				if fmtErr != nil {
+					opts.Logger.ErrorGlobal(logx.EventFormatUnknown, fmtErr.Error())
+					return &emittedError{cause: fmtErr}
+				}
+				return runStdin(cmd.Context(), resolvedOpts, fmtName, qText, jqArgs, limits, timeout)
+			}
+
+			// Default: single-file file→stdout path (STORY-0003).
 			return runOnce(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout)
 		},
 	}
@@ -201,6 +234,8 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	cmd.Flags().StringVar(&formatName, "format", "", "force input format (json|yaml|toml); default is extension-based detection")
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "bind $K=V in the query as a literal string (repeatable)")
 	cmd.Flags().StringArrayVar(&argJSONPairs, "argjson", nil, "bind $K=V in the query as a JSON-decoded value (repeatable)")
+	// -i / --in-place flag (STORY-0004 FR-1): edit files in-place atomically.
+	cmd.Flags().BoolVarP(&inPlace, "in-place", "i", false, "edit file(s) in-place using atomic temp+rename writes")
 	// STORY-0008 flags. Defaults come from format.DefaultLimits() so the
 	// safe-by-default semantics live in one place.
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap")

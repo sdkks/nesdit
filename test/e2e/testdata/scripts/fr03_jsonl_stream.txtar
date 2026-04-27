@@ -1,0 +1,17 @@
+# fr03_jsonl_stream.txtar — FR-3: JSONL multi-doc stream via STDIN.
+#
+# `nesdit --format jsonl --query '.ok = true'` with a 3-line JSONL stream on
+# stdin MUST produce three newline-separated JSON docs, each with ok:true.
+# No file argument: nesdit reads from STDIN.
+
+stdin input.jsonl
+nesdit --format jsonl --query '.ok = true'
+stdout '^{"id":1,"ok":true}$'
+stdout '^{"id":2,"ok":true}$'
+stdout '^{"id":3,"ok":true}$'
+! stderr .
+
+-- input.jsonl --
+{"id":1}
+{"id":2}
+{"id":3}

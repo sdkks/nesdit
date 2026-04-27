@@ -1,0 +1,19 @@
+# fr03_midstream_failure_exit_nonzero.txtar — NFR-8: mid-stream failure halts
+# with non-zero exit; earlier docs already on stdout are acceptable.
+#
+# A 3-doc YAML stream where doc 2 fails the query (doc 2 is a sequence, and
+# the query calls error() on non-objects). Under --strict (default): doc 1
+# appears on stdout, processing halts at doc 2, exit code is non-zero.
+
+stdin input.yaml
+! nesdit --format yaml --query 'if type == "object" then .tag = "ok" else error("not a map") end'
+stderr 'query\.result|query\.runtime|parse\.error'
+# Exit is non-zero (assertion is the ! prefix above).
+
+-- input.yaml --
+tag: first
+---
+- item1
+- item2
+---
+tag: third
