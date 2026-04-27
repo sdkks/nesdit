@@ -7,8 +7,10 @@ Edit structured config (JSON/YAML/TOML) with jq-style queries
 nesdit reads a single JSON, YAML, or TOML document, applies a jq-style
 query, and writes the result to stdout.
 
-Supported today:
+Supported modes:
   - File input with --query '<jq>' or --from-file / -f <path>.
+  - STDIN stream mode: omit the file argument (or pass -) to read from stdin.
+  - --edit to open $EDITOR on the file, then emit a suggested query from the diff.
   - --arg K=V (string) and --argjson K=V (JSON-decoded) bindings.
   - --format <json|yaml|toml> to override extension-based detection.
   - $${VAR} literal escape in a query (nesdit never expands shell env).
@@ -18,8 +20,6 @@ Supported today:
   - --timeout <dur> to cancel a runaway query on a deadline.
   - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
     resource caps for decode-phase hardening.
-
-The STDIN stream and --edit modes are still future work.
 
 ```
 nesdit [flags] <file> [<file>...]
