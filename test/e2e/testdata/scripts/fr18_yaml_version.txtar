@@ -53,6 +53,20 @@ stdout '^1$'
 stderr 'flag.invalid'
 stderr '1\.1 or 1\.2'
 
+# Sub-test 8 (STDIN, 1.1): `yes` on stdin decoded as boolean true.
+# Exercises the runStdin → stream.NewReaderWithOpts code path with yamlVersion=1.1.
+stdin flag_yes.yaml
+nesdit --yaml-version 1.1 --format yaml --query '.flag'
+stdout '^true$'
+! stderr .
+
+# Sub-test 9 (STDIN, 1.2 default): `yes` on stdin decoded as string.
+# Without --yaml-version, YAML 1.2 is the default; `yes` stays as a plain string.
+stdin flag_yes.yaml
+nesdit --format yaml --query '.flag'
+stdout '^yes$'
+! stderr .
+
 -- input.yaml --
 enabled: yes
 disabled: no
@@ -60,3 +74,5 @@ switch_on: on
 switch_off: off
 -- input.json --
 {"x":1}
+-- flag_yes.yaml --
+flag: yes
