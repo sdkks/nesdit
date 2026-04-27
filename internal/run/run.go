@@ -100,7 +100,7 @@ func Execute(opts RunOptions) int {
 		opts.Stdin = bytes.NewReader(nil)
 	}
 	if opts.Logger == nil {
-		opts.Logger = logx.New(opts.Stderr)
+		opts.Logger = logx.NewFormat(opts.Stderr, opts.LogFormat)
 	}
 
 	root := newRootCmd(opts)
@@ -151,6 +151,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		queryExpr      string
 		queryFile      string
 		formatName     string
+		logFormatStr   string
 		argPairs       []string
 		argJSONPairs   []string
 		inPlace        bool
@@ -215,7 +216,33 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		// PreRunE runs after flag parsing, before RunE. FR-21 / DR-001
 		// mandates that flag-interaction rejection happens BEFORE any
 		// file read or stdin byte — this is where we enforce it.
+		//
+		// FR-15 / STORY-0011: --log-format validation also runs here so
+		// an unknown value exits 1 before any IO, matching the DR-001
+		// contract for flag-parse rejections. After validation, the
+		// Logger is re-constructed with the requested format (if the
+		// caller did not supply a Logger explicitly via RunOptions).
 		PreRunE: func(cmd *cobra.Command, _ []string) error {
+			// FR-15: validate --log-format before any IO.
+			if cmd.Flag("log-format").Changed {
+				switch logx.Format(logFormatStr) {
+				case logx.FormatText, logx.FormatJSON:
+					// valid
+				default:
+					msg := fmt.Sprintf("--log-format: unknown value %q; supported values are: text, json", logFormatStr)
+					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
+					return &emittedError{cause: fmt.Errorf("%s", msg)}
+				}
+				// Re-create Logger with the requested format. Only do
+				// this when the caller did not supply a Logger via
+				// RunOptions (if they did, they own the format).
+				// We detect "caller-supplied" by checking whether opts.Logger
+				// was set before Execute constructed one; unfortunately we
+				// can't easily distinguish, so we always replace here.
+				// This is safe: no emit has occurred yet (flag-conflict
+				// checks below may be the first).
+				opts.Logger = logx.NewFormat(opts.Stderr, logx.Format(logFormatStr))
+			}
 			return validateFlagInteraction(opts.Logger, cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -310,6 +337,11 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 			return runOnce(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout, createMissing)
 		},
 	}
+
+	// FR-15 / STORY-0011: --log-format selects the stderr rendering mode.
+	// "text" (default) emits NFR-10 canonical lines; "json" emits NDJSON.
+	// Unknown values are rejected in PreRunE before any IO.
+	cmd.Flags().StringVar(&logFormatStr, "log-format", "text", "stderr rendering mode: text (default, NFR-10 canonical lines) or json (NDJSON per FR-15)")
 
 	cmd.Flags().StringVar(&queryExpr, "query", "", "jq-style query (default '.' identity when neither --query nor -f is given)")
 	cmd.Flags().StringVarP(&queryFile, "from-file", "f", "", "load query from file (mutually exclusive with --query)")

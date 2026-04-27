@@ -1,0 +1,38 @@
+# fr15_log_format_json_success.txtar — FR-15: --log-format=json emits NDJSON
+# on stderr for a successful -i (in-place) batch run.
+#
+# GIVEN two JSON files and --log-format=json with -i (multi-file triggers batch.summary),
+# WHEN nesdit applies a query and writes the files in-place,
+# THEN:
+#   - stdout is empty (in-place mode writes to files, not stdout).
+#   - stderr contains at least one NDJSON line (batch.summary for the 2-file run).
+#   - the NDJSON line has "event":"batch.summary" and "severity":"info".
+#   - each NDJSON line begins with '{' (no human-readable NFR-10 text-mode prefix).
+#   - the result files on disk reflect the applied query.
+
+nesdit -i a.json b.json --query '.version = 2' --log-format=json
+! stdout .
+# Multi-file runs emit batch.summary; must be NDJSON when --log-format=json.
+stderr '"event":"batch\.summary"'
+stderr '"severity":"info"'
+# No text-mode prefix — confirms JSON mode is active.
+! stderr '^nesdit: '
+
+# Verify the edits were applied.
+nesdit a.json --query '.version'
+stdout '^2$'
+nesdit b.json --query '.version'
+stdout '^2$'
+
+# (b) Single-file stdout mode --log-format=json: no batch.summary (single-file
+# runs omit it), stdout contains the result, stderr is empty.
+nesdit c.json --query '.x = 99' --log-format=json
+stdout '"x":99'
+! stderr .
+
+-- a.json --
+{"version":1,"name":"alpha"}
+-- b.json --
+{"version":1,"name":"beta"}
+-- c.json --
+{"x":1}

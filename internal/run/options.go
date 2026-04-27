@@ -47,8 +47,13 @@ type RunOptions struct {
 	Stderr io.Writer
 
 	// Logger is the canonical stderr emitter (see internal/logx). When
-	// nil, Execute constructs one over Stderr. Callers that want to
-	// share a Logger across subprocesses (e.g. the testscript harness)
-	// set it explicitly.
+	// nil, Execute constructs one over Stderr using LogFormat. Callers
+	// that want to share a Logger across subprocesses (e.g. the testscript
+	// harness) set it explicitly; in that case LogFormat is ignored.
 	Logger *logx.Logger
+
+	// LogFormat selects the rendering mode ("text" or "json"). When
+	// Logger is nil, Execute constructs a Logger with this format.
+	// Defaults to "text" when empty. FR-15 / STORY-0011.
+	LogFormat logx.Format
 }

@@ -1,0 +1,20 @@
+# fr15_log_format_invalid.txtar — FR-15: unknown --log-format value exits 1
+# immediately with a flag.invalid error, before any file IO.
+#
+# GIVEN --log-format=invalid (unrecognised value),
+# WHEN nesdit parses flags,
+# THEN:
+#   - exit code is 1 immediately.
+#   - stdout is empty.
+#   - stderr contains a flag.invalid event.
+#   - no file IO occurs (the nonexistent file argument is never read).
+#
+# The file argument is deliberately nonexistent to prove the rejection
+# happens at flag-parse time (before any IO). If the flag were validated
+# at IO time, we would see an io.read error first; instead we see flag.invalid.
+
+! nesdit nonexistent.json --query '.' --log-format=invalid
+! stdout .
+stderr 'flag\.invalid'
+! stderr 'io\.read'
+! stderr 'nonexistent'

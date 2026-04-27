@@ -37,10 +37,21 @@
 package logx
 
 import (
+	"encoding/json"
 	"io"
 	"strconv"
 	"strings"
 	"sync"
+)
+
+// Format selects the rendering mode for a Logger. FR-15 / STORY-0011.
+type Format string
+
+const (
+	// FormatText renders each record as a human-readable NFR-10 canonical line (default).
+	FormatText Format = "text"
+	// FormatJSON renders each record as a single NDJSON line per FR-15.
+	FormatJSON Format = "json"
 )
 
 // Event is a closed-enum token identifying the class of a log line.
@@ -268,16 +279,28 @@ type Record struct {
 	Fields []Field
 }
 
-// Logger is the text emitter. STORY-0003 ships only the text formatter;
-// FR-15 NDJSON mode plugs in later behind the same method surface.
+// Logger is the structured emitter. It supports two rendering modes:
+// text (NFR-10 canonical shape, default) and JSON (FR-15 NDJSON).
+// The format is fixed at construction time and is goroutine-safe.
 type Logger struct {
-	mu sync.Mutex
-	w  io.Writer
+	mu  sync.Mutex
+	w   io.Writer
+	fmt Format
 }
 
-// New returns a Logger writing to w.
+// New returns a Logger writing to w in text format (default, NFR-10 shape).
 func New(w io.Writer) *Logger {
-	return &Logger{w: w}
+	return &Logger{w: w, fmt: FormatText}
+}
+
+// NewFormat returns a Logger writing to w in the given format.
+// Use FormatText for human-readable output (NFR-10) or FormatJSON for
+// FR-15 NDJSON output. If fmt is empty, FormatText is used.
+func NewFormat(w io.Writer, fmt Format) *Logger {
+	if fmt == "" {
+		fmt = FormatText
+	}
+	return &Logger{w: w, fmt: fmt}
 }
 
 // Error emits a per-file error line. file may be "" (no file context);
@@ -327,18 +350,26 @@ func (l *Logger) InfoGlobal(event Event, msg string) {
 }
 
 // emit is the sole stderr-writing primitive. All public methods funnel
-// here so the NFR-10 shape is enforced in one place.
+// here so the rendering format is enforced in one place. In text mode
+// the NFR-10 canonical shape is produced; in JSON mode (FR-15) an NDJSON
+// line is produced.
 func (l *Logger) emit(r Record) {
-	s := renderText(r) + "\n"
+	var s string
+	if l.fmt == FormatJSON {
+		s = renderJSON(r)
+	} else {
+		s = renderText(r) + "\n"
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	_, _ = io.WriteString(l.w, s)
 }
 
-// Format is exposed for callers (e.g. cobra's SilenceErrors path) that
-// want to produce a canonical-shape string without routing through a
-// Logger. Rarely needed; prefer the Logger methods.
-func Format(sev Severity, event Event, file string, index int, msg string) string {
+// FormatRecord is exposed for callers (e.g. cobra's SilenceErrors path)
+// that want to produce a canonical-shape string without routing through a
+// Logger. Rarely needed; prefer the Logger methods. Renamed from Format to
+// avoid conflict with the Format type introduced by FR-15 / STORY-0011.
+func FormatRecord(sev Severity, event Event, file string, index int, msg string) string {
 	return renderText(Record{Sev: sev, Event: event, File: file, Index: index, Msg: msg})
 }
 
@@ -375,6 +406,47 @@ func renderText(r Record) string {
 	b.WriteString(": ")
 	b.WriteString(msg)
 	return b.String()
+}
+
+// ndjsonRecord is the JSON-serialisable representation of a log Record for
+// FR-15 NDJSON mode. Fields tagged with omitempty are omitted when empty
+// so the schema stays compact for the common case (no file, no index, no
+// extra fields). The "fields" key is always present (as {} when empty) to
+// give consumers a stable schema surface.
+type ndjsonRecord struct {
+	Event    string         `json:"event"`
+	Severity string         `json:"severity"`
+	Path     string         `json:"path,omitempty"`
+	Index    int            `json:"index,omitempty"`
+	Msg      string         `json:"msg"`
+	Fields   map[string]any `json:"fields"`
+}
+
+// renderJSON serialises r to a single NDJSON line terminated with '\n'.
+// The shape is: {"event":"<token>","severity":"<sev>","path":"<file>",
+//
+//	"msg":"<human>","fields":{...}}
+//
+// path and index are omitted when empty/zero. fields is always present as
+// {} when Record.Fields is empty.
+func renderJSON(r Record) string {
+	rec := ndjsonRecord{
+		Event:    string(r.Event),
+		Severity: string(r.Sev),
+		Path:     r.File,
+		Index:    r.Index,
+		Msg:      r.Msg,
+		Fields:   make(map[string]any, len(r.Fields)),
+	}
+	for _, f := range r.Fields {
+		rec.Fields[f.Key] = f.Value
+	}
+	b, err := json.Marshal(rec)
+	if err != nil {
+		// Fallback: emit a minimal error record so the stream stays valid NDJSON.
+		return `{"event":"` + string(r.Event) + `","severity":"error","msg":"logx: renderJSON marshal failed","fields":{}}` + "\n"
+	}
+	return string(b) + "\n"
 }
 
 // stripControls replaces every C0 control byte (\x00-\x1f) and DEL

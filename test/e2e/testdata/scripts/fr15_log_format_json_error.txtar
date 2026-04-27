@@ -1,0 +1,29 @@
+# fr15_log_format_json_error.txtar — FR-15: --log-format=json emits NDJSON
+# with "severity":"error" when a run encounters an error.
+#
+# GIVEN a nonexistent file and --log-format=json,
+# WHEN nesdit tries to open the file and fails (io.read error),
+# THEN:
+#   - exit code is 1 (error occurred).
+#   - stdout is empty.
+#   - stderr contains an NDJSON line with "severity":"error".
+#   - the NDJSON line has "event":"io.read" (file-not-found maps to io.read).
+#   - no human-readable NFR-10 prefix ("nesdit: error:") appears on stderr.
+
+! nesdit nonexistent.json --query '.' --log-format=json
+! stdout .
+stderr '"severity":"error"'
+stderr '"event":"io\.read"'
+# Must be JSON (starts with '{'), not text mode.
+! stderr '^nesdit: '
+
+# Second error case: flag-parse error still uses NDJSON format.
+# --backup requires -i; this is a flag validation error (flag.invalid).
+! nesdit data.json --backup --log-format=json
+! stdout .
+stderr '"severity":"error"'
+stderr '"event":"flag\.invalid"'
+! stderr '^nesdit: '
+
+-- data.json --
+{"x":1}
