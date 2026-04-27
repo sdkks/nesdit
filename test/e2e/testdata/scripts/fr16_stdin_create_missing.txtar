@@ -1,0 +1,17 @@
+# fr16_stdin_create_missing.txtar — FR-16 (STORY-0012): --create-missing on STDIN
+# success path.
+#
+# Without --create-missing, a missing-path query on STDIN exits 1 with
+# query.missing_path on stderr (tested in fr16_no_create_missing_error.txtar).
+# With --create-missing, the absent path is created and the result is emitted
+# to stdout as expected.
+
+# 1. --format json --create-missing --query '.b = 42' on STDIN with {"a":1}:
+#    absent top-level key .b is created; stdout is {"a":1,"b":42}.
+stdin input.json
+nesdit --format json --create-missing --query '.b = 42'
+stdout '^\{"a":1,"b":42\}$'
+! stderr .
+
+-- input.json --
+{"a":1}

@@ -1,0 +1,21 @@
+# fr16_check_create_missing.txtar — FR-16 (STORY-0012) × FR-12: --check combined
+# with --create-missing.
+#
+# --create-missing bypasses the missing-path guard, so the query is allowed to
+# run and create the absent key. --check then compares the re-encoded original
+# ("{}") against the query result ('{"newkey":1}'); they differ, so drift is
+# detected and the process exits 2 (DR-002 / FR-20).
+#
+# Stdout MUST be empty and stderr MUST be empty — drift is signaled exclusively
+# via exit code 2.
+
+! nesdit --check --create-missing --query '.newkey = 1' file.json
+! stdout .
+! stderr .
+# File on disk is unchanged.
+cmp file.json file.json.orig
+
+-- file.json --
+{}
+-- file.json.orig --
+{}
