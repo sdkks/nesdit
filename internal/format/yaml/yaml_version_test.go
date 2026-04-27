@@ -209,3 +209,25 @@ func TestYAML_DecodeOpts_ZeroValueIsYAML12(t *testing.T) {
 		t.Fatalf("zero opts: flag kind=%v want KindStr", got.Kind)
 	}
 }
+
+// TestYAML_InvalidYAMLVersion confirms that DecodeValueWithLimitsAndOpts
+// returns an error immediately for unrecognised YAMLVersion values, rather
+// than silently falling through to the 1.2 code path.
+func TestYAML_InvalidYAMLVersion(t *testing.T) {
+	t.Parallel()
+	cases := []string{"1.0", "2.0", "1", "2", "latest", "v1.1", "1.1.0"}
+	for _, version := range cases {
+		version := version
+		t.Run(version, func(t *testing.T) {
+			t.Parallel()
+			_, err := yamlfmt.DecodeValueWithLimitsAndOpts(
+				strings.NewReader("key: value\n"),
+				format.Limits{},
+				yamlfmt.DecodeOpts{YAMLVersion: version},
+			)
+			if err == nil {
+				t.Fatalf("version=%q: expected error for invalid YAMLVersion, got nil", version)
+			}
+		})
+	}
+}

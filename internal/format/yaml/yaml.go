@@ -112,6 +112,12 @@ func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error
 // dialect control. The opts.YAMLVersion field selects "1.1" or "1.2"
 // boolean vocabulary; all other behaviour is unchanged.
 func DecodeValueWithLimitsAndOpts(r io.Reader, limits format.Limits, opts DecodeOpts) (omap.Value, error) {
+	switch opts.YAMLVersion {
+	case "", "1.1", "1.2":
+		// valid
+	default:
+		return omap.Value{}, fmt.Errorf("yaml: unsupported YAMLVersion %q: must be \"1.1\", \"1.2\", or \"\" (default 1.2)", opts.YAMLVersion)
+	}
 	data, err := format.ReadAllLimited(r, limits.MaxBytes, "yaml")
 	if err != nil {
 		return omap.Value{}, err
