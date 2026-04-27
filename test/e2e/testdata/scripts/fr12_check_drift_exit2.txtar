@@ -1,0 +1,34 @@
+# fr12_check_drift_exit2.txtar — FR-12 / FR-20 / DR-002: --check exits 2
+# when applying the query would change the file.
+#
+# Exit 2 is reserved EXCLUSIVELY for --check drift detection (DR-002).
+# STDOUT MUST be empty; the file on disk MUST be unchanged.
+
+# 1. JSON file: query changes a value → exit 2.
+! nesdit a.json --check --query '.x = 99'
+! stdout .
+# File unchanged.
+cmp a.json a.json.orig
+
+# 2. YAML file: query changes a value → exit 2.
+! nesdit b.yaml --check --query '.value = "world"'
+! stdout .
+cmp b.yaml b.yaml.orig
+
+# 3. TOML file: query changes a value → exit 2.
+! nesdit c.toml --check --query '.version = "2.0"'
+! stdout .
+cmp c.toml c.toml.orig
+
+-- a.json --
+{"x":1}
+-- a.json.orig --
+{"x":1}
+-- b.yaml --
+value: hello
+-- b.yaml.orig --
+value: hello
+-- c.toml --
+version = "1.0"
+-- c.toml.orig --
+version = "1.0"

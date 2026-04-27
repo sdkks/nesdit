@@ -1,0 +1,41 @@
+# fr11_dryrun_diff.txtar — FR-11: -n/--dry-run emits a unified diff to stdout
+# and MUST NOT write any file.
+#
+# Per DR-001, when -i and -n are both set, -n wins and a flag.precedence
+# warning is emitted on stderr. That precedence case is tested separately
+# in dr001_i_plus_n_precedence.txtar.
+
+# 1. -n without -i: JSON file → diff to stdout, file unchanged on disk.
+nesdit a.json -n --query '.x = 99'
+stdout '---'
+stdout '\+\+\+'
+stdout '@@'
+stdout '\+.*99'
+! stderr .
+# File MUST be unchanged.
+cmp a.json a.json.orig
+
+# 2. -n with a no-op query: diff should still succeed with exit 0, though
+#    the diff body may be empty (identical before/after).
+cp a.json.orig a.json
+nesdit a.json -n --query '.'
+! stderr .
+# Exit 0 even if diff is empty.
+
+# 3. YAML file with -n.
+nesdit b.yaml -n --query '.value = "world"'
+stdout '---'
+stdout '\+\+\+'
+! stderr .
+cmp b.yaml b.yaml.orig
+
+-- a.json --
+{"x":1,"y":2}
+-- a.json.orig --
+{"x":1,"y":2}
+-- b.yaml --
+name: test
+value: hello
+-- b.yaml.orig --
+name: test
+value: hello

@@ -1,0 +1,27 @@
+# fr12_check_clean_exit0.txtar — FR-12: --check exits 0 when the query
+# produces output byte-identical to the input (no drift).
+#
+# The identity query '.' must be a no-op after encode normalisation —
+# the re-encoded form equals the encoded output, so --check exits 0.
+
+# 1. JSON file: identity query → exit 0.
+nesdit a.json --check --query '.'
+! stdout .
+! stderr .
+
+# 2. YAML file: identity query → exit 0.
+nesdit b.yaml --check --query '.'
+! stdout .
+! stderr .
+
+# 3. TOML file: identity query → exit 0.
+nesdit c.toml --check --query '.'
+! stdout .
+! stderr .
+
+-- a.json --
+{"x":1}
+-- b.yaml --
+x: 1
+-- c.toml --
+x = 1

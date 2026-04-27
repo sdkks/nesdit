@@ -218,6 +218,12 @@ func (l *Logger) Warn(event Event, file, msg string) {
 	l.emit(Record{Sev: SeverityWarn, Event: event, File: file, Msg: msg})
 }
 
+// WarnGlobal emits a warning with neither file nor index — flag-precedence
+// notices and other pre-input warnings.
+func (l *Logger) WarnGlobal(event Event, msg string) {
+	l.emit(Record{Sev: SeverityWarn, Event: event, Msg: msg})
+}
+
 // InfoGlobal emits an info line with no file/index (batch summaries etc).
 func (l *Logger) InfoGlobal(event Event, msg string) {
 	l.emit(Record{Sev: SeverityInfo, Event: event, Msg: msg})

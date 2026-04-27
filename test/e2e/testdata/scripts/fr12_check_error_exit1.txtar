@@ -1,0 +1,23 @@
+# fr12_check_error_exit1.txtar — FR-12 / FR-20 / DR-002: --check exits 1
+# when an unrelated error (parse, query, IO) prevents the check from
+# completing. Errors dominate drift signalling — exit 1, never exit 2.
+
+# 1. File does not exist → IO error → exit 1 (not 2).
+! nesdit does-not-exist.json --check --query '.'
+stderr 'io\.read'
+! stdout .
+
+# 2. Invalid query → query parse error → exit 1 (not 2).
+! nesdit a.json --check --query 'invalid!!jq'
+stderr 'query\.'
+! stdout .
+
+# 3. Format mismatch (corrupt JSON) → parse error → exit 1 (not 2).
+! nesdit bad.json --check --query '.'
+stderr 'parse\.error'
+! stdout .
+
+-- a.json --
+{"x":1}
+-- bad.json --
+not valid json {{{

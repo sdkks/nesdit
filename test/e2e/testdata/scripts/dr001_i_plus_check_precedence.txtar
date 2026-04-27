@@ -1,0 +1,24 @@
+# dr001_i_plus_check_precedence.txtar — DR-001: when -i and --check are
+# both set, --check dominates. A flag.precedence warning is emitted on
+# stderr, no file is written, and exit codes follow --check semantics.
+#
+# Per FR-21 table: -i + --check → ALLOW with warn "-i ignored because --check is set".
+
+# 1. -i and --check together on a drifting file → exit 2, warning, file unchanged.
+! nesdit -i a.json --check --query '.x = 99'
+! stdout .
+stderr 'flag\.precedence'
+stderr '-i ignored because --check is set'
+cmp a.json a.json.orig
+
+# 2. -i and --check together on a clean file → exit 0, warning, file unchanged.
+nesdit -i a.json --check --query '.'
+! stdout .
+stderr 'flag\.precedence'
+stderr '-i ignored because --check is set'
+cmp a.json a.json.orig
+
+-- a.json --
+{"x":1}
+-- a.json.orig --
+{"x":1}

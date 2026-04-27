@@ -62,9 +62,7 @@ func validateJSON(s string) error {
 // Execute. Exit code matches Execute's contract:
 //   - 0 — success
 //   - 1 — any error
-//
-// Exit 2 (--check drift) is produced only by the --check path, which
-// lands in a later story. STORY-0003 never returns 2.
+//   - 2 — --check drift detected (DR-002: only this path returns 2)
 func Run(args []string) int {
 	return Execute(RunOptions{
 		Args:   args,
@@ -104,7 +102,13 @@ func Execute(opts RunOptions) int {
 
 	err := root.ExecuteContext(opts.Ctx)
 	if err == nil {
-		return 0
+		return int(ExitOK)
+	}
+	// DR-002: driftError is the sole source of exit 2. The --check path
+	// returns this sentinel when the query would change the input.
+	var drift *driftError
+	if errors.As(err, &drift) {
+		return int(ExitDrift)
 	}
 	// Translate cobra/flag errors into canonical-shape stderr. Every
 	// code path that returns a non-nil error MUST either (a) have
@@ -112,12 +116,12 @@ func Execute(opts RunOptions) int {
 	// (b) carry an *emittedError we know the logger already handled.
 	var emitted *emittedError
 	if errors.As(err, &emitted) {
-		return 1
+		return int(ExitError)
 	}
 	// Default: treat as a flag-parse / cobra-generic error and emit
 	// in canonical shape.
 	opts.Logger.ErrorGlobal(logx.EventFlagInvalid, err.Error())
-	return 1
+	return int(ExitError)
 }
 
 // emittedError wraps an error whose canonical-shape stderr line has
@@ -140,6 +144,8 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		argPairs      []string
 		argJSONPairs  []string
 		inPlace       bool
+		dryRun        bool
+		check         bool
 		timeout       time.Duration
 		maxBytes      int64
 		maxDepth      int
@@ -209,8 +215,36 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 				MaxYAMLNodes: maxYAMLNodes,
 			}
 
+			// DR-001 precedence: -i + -n → -n wins with warning.
+			// DR-001 precedence: -i + --check → --check wins with warning.
+			// These are already validated by validateFlagInteraction (which
+			// emits the warn line); here we just override the effective mode.
+			effectiveInPlace := inPlace && !dryRun && !check
+
+			// --dry-run (-n, FR-11): emit unified diff; no file write.
+			if dryRun {
+				if len(args) == 0 || (len(args) == 1 && args[0] == "-") {
+					// STDIN + --dry-run is not yet supported; treat as error.
+					msg := "--dry-run requires a file argument (STDIN mode is not supported with --dry-run)"
+					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
+					return &emittedError{cause: errors.New(msg)}
+				}
+				return runDryRun(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout)
+			}
+
+			// --check (FR-12): compare encoded result to re-encoded original.
+			if check {
+				if len(args) == 0 || (len(args) == 1 && args[0] == "-") {
+					// STDIN + --check is not yet supported; treat as error.
+					msg := "--check requires a file argument (STDIN mode is not supported with --check)"
+					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
+					return &emittedError{cause: errors.New(msg)}
+				}
+				return runCheck(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout)
+			}
+
 			// -i / --in-place: route through the two-pass file orchestrator.
-			if inPlace {
+			if effectiveInPlace {
 				return runFiles(cmd.Context(), opts, args, qText, formatName, jqArgs, limits, timeout)
 			}
 
@@ -236,6 +270,9 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	cmd.Flags().StringArrayVar(&argJSONPairs, "argjson", nil, "bind $K=V in the query as a JSON-decoded value (repeatable)")
 	// -i / --in-place flag (STORY-0004 FR-1): edit files in-place atomically.
 	cmd.Flags().BoolVarP(&inPlace, "in-place", "i", false, "edit file(s) in-place using atomic temp+rename writes")
+	// STORY-0006 flags: --dry-run (-n, FR-11) and --check (FR-12).
+	cmd.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "emit a unified diff of before/after to stdout; do not write any file")
+	cmd.Flags().BoolVar(&check, "check", false, "exit 2 if the query would change the input; exit 0 if identical; exit 1 on error")
 	// STORY-0008 flags. Defaults come from format.DefaultLimits() so the
 	// safe-by-default semantics live in one place.
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap")
@@ -257,26 +294,24 @@ Supported today:
   - --arg K=V (string) and --argjson K=V (JSON-decoded) bindings.
   - --format <json|yaml|toml> to override extension-based detection.
   - $${VAR} literal escape in a query (nesdit never expands shell env).
+  - -i / --in-place to edit files atomically in place.
+  - -n / --dry-run to preview changes as a unified diff (no writes).
+  - --check to gate on drift: exit 2 if the query changes the input.
   - --timeout <dur> to cancel a runaway query on a deadline.
   - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
     resource caps for decode-phase hardening.
 
-The in-place (-i), STDIN stream, --edit, --dry-run, and --check modes
-are still future work.`
+The STDIN stream and --edit modes are still future work.`
 
 // flagConflictRule is one row of the FR-21 / DR-001 flag-interaction
-// matrix. If every flag in IfSet is explicitly set, and any flag in
-// ThenNotSet is also explicitly set, the invocation is rejected with
-// Event/Msg in canonical stderr shape, BEFORE any file read or stdin
-// byte consumed.
+// matrix for ERROR cells. If every flag in IfSet is explicitly set, and
+// any flag in ThenNotSet is also explicitly set, the invocation is
+// rejected with Event/Msg in canonical stderr shape, BEFORE any file read
+// or stdin byte consumed.
 //
 // Each rule matches cobra's `Flag.Changed` — defaults do not trigger.
 // Flag names are the long forms registered on the root command.
-//
-// STORY-0004 will extend this table with `-i` / `--edit` / `--check` /
-// `--dry-run` / `--backup` cells without adding new branches; each new
-// row is an additive entry. Keep rows sorted by primary flag for easy
-// reading.
+// Keep rows sorted by primary flag for easy reading.
 type flagConflictRule struct {
 	IfSet      []string
 	ThenNotSet []string
@@ -284,9 +319,20 @@ type flagConflictRule struct {
 	Msg        string
 }
 
-// flagConflictRules is the FR-21 matrix STORY-0003 enforces. Today
-// there is exactly one cell: `--query` and `-f/--from-file` are
-// mutually exclusive (FR-13 acceptance).
+// flagPrecedenceRule is one row of the FR-21 / DR-001 flag-interaction
+// matrix for ALLOW-with-warning cells. If every flag in IfSet is
+// explicitly set, and any flag in AlsoSet is also explicitly set, the
+// invocation continues but a flag.precedence warn is emitted on stderr.
+// This covers the -i + -n and -i + --check cases (DR-001).
+type flagPrecedenceRule struct {
+	IfSet   []string
+	AlsoSet []string
+	Msg     string
+}
+
+// flagConflictRules is the FR-21 ERROR matrix. Today there is one cell:
+// `--query` and `-f/--from-file` are mutually exclusive (FR-13).
+// STORY-0006 adds: `--dry-run` and `--check` are mutually exclusive.
 var flagConflictRules = []flagConflictRule{
 	{
 		IfSet:      []string{"query"},
@@ -294,14 +340,39 @@ var flagConflictRules = []flagConflictRule{
 		Event:      logx.EventFlagConflict,
 		Msg:        "--query and --from-file are mutually exclusive: provide the query inline OR via a file, not both",
 	},
+	{
+		// FR-21: --dry-run and --check are mutually exclusive.
+		IfSet:      []string{"dry-run"},
+		ThenNotSet: []string{"check"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--dry-run and --check are mutually exclusive: --dry-run prints a diff, --check only signals drift via exit code",
+	},
 }
 
-// validateFlagInteraction enforces the FR-21 / DR-001 matrix defined
-// in flagConflictRules. Returns the first rule's emittedError; logs
-// the canonical-shape error line via logx before returning. Keeps the
-// name and signature stable because the cobra PreRunE closure in
-// newRootCmd references it by name (STORY-0004 will extend the table,
-// not the function shape).
+// flagPrecedenceRules is the FR-21 ALLOW-with-warning matrix (DR-001).
+// When -i is set alongside a dominanting flag, the dominating flag wins
+// and a flag.precedence warn is emitted. No error, no abort.
+var flagPrecedenceRules = []flagPrecedenceRule{
+	{
+		// DR-001: -i + -n → -n wins.
+		IfSet:   []string{"in-place"},
+		AlsoSet: []string{"dry-run"},
+		Msg:     "-i ignored because --dry-run is set",
+	},
+	{
+		// DR-001: -i + --check → --check wins.
+		IfSet:   []string{"in-place"},
+		AlsoSet: []string{"check"},
+		Msg:     "-i ignored because --check is set",
+	},
+}
+
+// validateFlagInteraction enforces the FR-21 / DR-001 matrix defined in
+// flagConflictRules (ERROR cells) and flagPrecedenceRules (WARN cells).
+// Error rules return an emittedError and abort; precedence rules emit a
+// warn line and allow the run to continue with the dominating flag.
+// Keeps the name and signature stable because the cobra PreRunE closure
+// in newRootCmd references it by name.
 func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command) error {
 	changed := func(name string) bool {
 		f := cmd.Flag(name)
@@ -323,10 +394,17 @@ func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command) error {
 		}
 		return false
 	}
+	// ERROR cells: reject before any IO.
 	for _, rule := range flagConflictRules {
 		if allSet(rule.IfSet) && anySet(rule.ThenNotSet) {
 			log.ErrorGlobal(rule.Event, rule.Msg)
 			return &emittedError{cause: errors.New(rule.Msg)}
+		}
+	}
+	// WARN cells: emit flag.precedence warning but continue.
+	for _, rule := range flagPrecedenceRules {
+		if allSet(rule.IfSet) && anySet(rule.AlsoSet) {
+			log.WarnGlobal(logx.EventFlagPrecedence, rule.Msg)
 		}
 	}
 	return nil

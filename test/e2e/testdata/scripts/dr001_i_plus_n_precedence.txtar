@@ -1,0 +1,19 @@
+# dr001_i_plus_n_precedence.txtar — DR-001: when -i and -n are both set,
+# -n dominates. A flag.precedence warning is emitted on stderr, no file
+# is written, and the diff is emitted to stdout. Exit 0 on success.
+#
+# Per FR-21 table: -i + -n → ALLOW with warn "-i ignored because --dry-run is set".
+
+# 1. -i and -n together: diff to stdout, file unchanged, warning on stderr.
+nesdit -i a.json -n --query '.x = 99'
+stdout '---'
+stdout '\+\+\+'
+stderr 'flag\.precedence'
+stderr '-i ignored because --dry-run is set'
+# File MUST NOT be written.
+cmp a.json a.json.orig
+
+-- a.json --
+{"x":1,"y":2}
+-- a.json.orig --
+{"x":1,"y":2}
