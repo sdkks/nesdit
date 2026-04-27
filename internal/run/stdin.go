@@ -105,6 +105,16 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 			}
 			if !match {
 				opts.Logger.WarnAt(logx.EventWhereSkipped, stdinFilename, docIndex, "--where predicate did not match; doc passed through")
+				// NFR-8 partial-write trade-off: passthroughWriter writes
+				// directly to the streaming stdout. A write failure here
+				// (e.g. broken pipe or, theoretically, an encode error if the
+				// value could not be re-serialised in the input format) may
+				// leave a partial document on stdout before the error is
+				// detected — the same NFR-8 single-pass trade-off that applies
+				// to the main write path. Under --keep-going the error is
+				// logged, hadError is set, and processing continues; there is
+				// no rollback of bytes already emitted. Callers must treat
+				// stdout as incomplete whenever exit code is non-zero.
 				if wErr := passthroughWriter.WriteDoc(val); wErr != nil {
 					opts.Logger.ErrorAt(classifyEncodeErr(wErr), stdinFilename, docIndex, wErr.Error())
 					if !keepGoing {
