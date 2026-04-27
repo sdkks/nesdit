@@ -11,7 +11,7 @@
 #   - stderr MUST carry where.skipped warn for job.json.
 #   - batch summary MUST count 2 changed, 0 unchanged, 0 errored.
 
-nesdit -i service.json job.json service2.json --where '.type == "service"' --query '.patched = true'
+nesdit -i --create-missing service.json job.json service2.json --where '.type == "service"' --query '.patched = true'
 stderr 'nesdit: warn: job\.json: where\.skipped: '
 stderr '^nesdit: info: batch\.summary: 2 changed, 0 unchanged, 0 errored$'
 ! stdout .
