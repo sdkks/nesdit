@@ -1,16 +1,8 @@
-# golangci-lint v1-compatible config (schema supported by v1.59+).
-# CI pins v1.59.1 via golangci/golangci-lint-action@v6, which downloads a
-# prebuilt release binary (not a `go install` from source). Local dev on a
-# newer Go toolchain may need to use a newer v1.x (e.g. v1.62.2) because
-# v1.59.1's dependencies do not build from source under Go 1.23+; this is
-# safe because both versions honour the same v1 schema.
-# `issues.exclude-dirs` replaces the deprecated `run.skip-dirs` key
-# (deprecated in v1.59, removed in v2). See README "golangci-lint version
-# split" for the CI vs local install rationale.
-
-run:
-  timeout: 5m
-  tests: true
+# golangci-lint v2 config.
+# CI uses golangci-lint v2.x via golangci/golangci-lint-action@v8.0.0.
+# Timeout is passed as --timeout=5m via the action args and the local lint
+# target. `issues.exclude-dirs` is the v2 successor of the deprecated
+# `run.skip-dirs` key (removed in v2). See README for pin rationale.
 
 issues:
   # Skip the e2e testscript harness entirely: it uses package-level patterns

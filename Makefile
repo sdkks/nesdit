@@ -27,8 +27,8 @@ lint:
 			LINT="$$(go env GOPATH)/bin/golangci-lint"; \
 		else \
 			echo "golangci-lint not found on PATH or in \$$(go env GOPATH)/bin."; \
-			echo "Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2"; \
-			echo "(CI and canary both pin v1.62.2 via golangci/golangci-lint-action@v6.5.2 — same binary as local)"; \
+			echo "Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.11.4"; \
+			echo "(CI pins v2.11.4 via golangci/golangci-lint-action@v8.0.0 — same binary as local)"; \
 			exit 1; \
 		fi; \
 	fi; \
