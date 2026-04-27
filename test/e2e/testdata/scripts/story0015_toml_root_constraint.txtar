@@ -1,0 +1,36 @@
+# story0015_toml_root_constraint.txtar — STORY-0015: TOML root constraint.
+#
+# When --output-format toml is specified, the query result must be a
+# TOML table (object). Bare arrays, scalars, and null are rejected with
+# exit 1 and format.incompatible on stderr.
+#
+# This extends the existing TOML root constraint (TASK-0015 / FR-19) to
+# the cross-format case: a non-TOML input can also trigger the constraint
+# when --output-format=toml is used.
+
+# Case 1: query produces an array — cannot encode as TOML.
+stdin input.json
+! nesdit --format json --output-format toml --query '.items'
+stderr 'format\.incompatible'
+! stdout .
+
+# Case 2: query produces a scalar — cannot encode as TOML.
+stdin input.json
+! nesdit --format json --output-format toml --query '.items[0]'
+stderr 'format\.incompatible'
+! stdout .
+
+# Case 3: query produces null — cannot encode as TOML.
+stdin input.json
+! nesdit --format json --output-format toml --query '.missing'
+stderr 'format\.incompatible'
+! stdout .
+
+# Case 4: identity on an object root succeeds — TOML table root is fine.
+stdin input.json
+nesdit --format json --output-format toml
+stdout 'name = "alice"'
+! stderr .
+
+-- input.json --
+{"name":"alice","items":[1,2,3]}

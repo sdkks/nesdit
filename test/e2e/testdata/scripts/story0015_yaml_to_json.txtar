@@ -1,0 +1,20 @@
+# story0015_yaml_to_json.txtar — STORY-0015: --output-format yaml→json transcoding.
+#
+# Reading a YAML file and writing JSON output via --output-format json.
+# Key order is preserved (NFR-3): name appears before version in input,
+# so it appears before version in the JSON output.
+
+# STDIN mode: YAML input → JSON output.
+stdin input.yaml
+nesdit --format yaml --output-format json
+stdout '^{"name":"alice","version":1}$'
+! stderr .
+
+# File mode: YAML file → JSON output to stdout.
+nesdit input.yaml --output-format json
+stdout '^{"name":"alice","version":1}$'
+! stderr .
+
+-- input.yaml --
+name: alice
+version: 1

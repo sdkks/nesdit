@@ -1,0 +1,22 @@
+# story0015_yaml_to_toml.txtar — STORY-0015: --output-format yaml→toml transcoding.
+#
+# Reading a YAML file and writing TOML output via --output-format toml.
+# The root value must be a TOML table (object); YAML input with an object
+# root satisfies this constraint.
+
+# STDIN mode: YAML input → TOML output.
+stdin input.yaml
+nesdit --format yaml --output-format toml
+stdout 'name = "alice"'
+stdout 'version = 1'
+! stderr .
+
+# File mode: YAML file → TOML output to stdout.
+nesdit input.yaml --output-format toml
+stdout 'name = "alice"'
+stdout 'version = 1'
+! stderr .
+
+-- input.yaml --
+name: alice
+version: 1

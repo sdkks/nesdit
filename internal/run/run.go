@@ -151,6 +151,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		queryExpr      string
 		queryFile      string
 		formatName     string
+		outputFormat   string
 		logFormatStr   string
 		argPairs       []string
 		argJSONPairs   []string
@@ -243,6 +244,17 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 				// checks below may be the first).
 				opts.Logger = logx.NewFormat(opts.Stderr, logx.Format(logFormatStr))
 			}
+			// STORY-0015: validate --output-format before any IO.
+			if cmd.Flag("output-format").Changed {
+				switch outputFormat {
+				case "json", "yaml", "toml":
+					// valid
+				default:
+					msg := fmt.Sprintf("--output-format: unknown value %q; supported values are: json, yaml, toml", outputFormat)
+					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
+					return &emittedError{cause: fmt.Errorf("%s", msg)}
+				}
+			}
 			return validateFlagInteraction(opts.Logger, cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -301,7 +313,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
 					return &emittedError{cause: errors.New(msg)}
 				}
-				return runDryRun(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout, createMissing)
+				return runDryRun(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing)
 			}
 
 			// --check (FR-12): compare encoded result to re-encoded original.
@@ -312,12 +324,12 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
 					return &emittedError{cause: errors.New(msg)}
 				}
-				return runCheck(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout, createMissing)
+				return runCheck(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing)
 			}
 
 			// -i / --in-place: route through the two-pass file orchestrator.
 			if effectiveInPlace {
-				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, jqArgs, limits, timeout, keepGoing, backupSuffix, createMissing)
+				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, outputFormat, jqArgs, limits, timeout, keepGoing, backupSuffix, createMissing)
 			}
 
 			// STDIN mode (FR-3, STORY-0005): no file args, or explicit "-".
@@ -327,14 +339,14 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFormatUnknown, fmtErr.Error())
 					return &emittedError{cause: fmtErr}
 				}
-				return runStdin(cmd.Context(), resolvedOpts, fmtName, qText, wherePredicate, jqArgs, limits, timeout, keepGoing, createMissing)
+				return runStdin(cmd.Context(), resolvedOpts, fmtName, outputFormat, qText, wherePredicate, jqArgs, limits, timeout, keepGoing, createMissing)
 			}
 
 			// Default: single-file file→stdout path (STORY-0003).
 			// --where is not meaningful in single-file mode (there's nothing to
 			// filter against a batch), so wherePredicate is intentionally not
 			// passed to runOnce.
-			return runOnce(cmd.Context(), opts, args[0], qText, formatName, jqArgs, limits, timeout, createMissing)
+			return runOnce(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing)
 		},
 	}
 
@@ -349,6 +361,12 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	// wraps it as select(<predicate>) at evaluation time.
 	cmd.Flags().StringVar(&wherePredicate, "where", "", "filter docs by jq predicate: only matching docs have --query applied (stream: others pass through; file mode: others are skipped)")
 	cmd.Flags().StringVar(&formatName, "format", "", "force input format (json|yaml|toml); default is extension-based detection")
+	// STORY-0015: --output-format overrides the encode format independently of the input format.
+	// When absent, the effective output format equals the detected/overridden input format.
+	// When given, the output is encoded in the specified format regardless of input format.
+	// Incompatible with -i (in-place), because transcoding a file in-place silently changes
+	// its format, which is almost always destructive and unintentional.
+	cmd.Flags().StringVar(&outputFormat, "output-format", "", "output format (json|yaml|toml); defaults to same as input format when not specified")
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "bind $K=V in the query as a literal string (repeatable)")
 	cmd.Flags().StringArrayVar(&argJSONPairs, "argjson", nil, "bind $K=V in the query as a JSON-decoded value (repeatable)")
 	// -i / --in-place flag (STORY-0004 FR-1): edit files in-place atomically.
@@ -511,6 +529,16 @@ var flagConflictRules = []flagConflictRule{
 		ThenNotSet: []string{"strict"},
 		Event:      logx.EventFlagConflict,
 		Msg:        "--keep-going and --strict are mutually exclusive: --strict is the default behaviour (halt on first error); --keep-going overrides it",
+	},
+	{
+		// STORY-0015: --output-format and -i are mutually exclusive.
+		// In-place editing rewrites the file; changing the output format in-place
+		// would silently change the file's format, which is almost never the intent
+		// and is easy to do destructively.
+		IfSet:      []string{"output-format"},
+		ThenNotSet: []string{"in-place"},
+		Event:      logx.EventFlagConflict,
+		Msg:        "--output-format and -i are mutually exclusive: transcoding a file in-place would silently change its format; use --output-format without -i to transcode to stdout",
 	},
 	{
 		// FR-10 / STORY-0009: --where is a batch/stream filter; --dry-run operates
@@ -743,7 +771,11 @@ func unescapeDollarBrace(q string) string {
 // STORY-0012: when createMissing is false, the post-query output is
 // checked for new keys/paths that did not exist in the input. If any are
 // found the run is rejected with a query.missing_path error.
-func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat string, args []query.Arg, limits format.Limits, timeout time.Duration, createMissing bool) error {
+//
+// STORY-0015: outputFmtOverride, when non-empty, selects the encode
+// format independently of the input format. When empty, the encode format
+// equals the detected/overridden input format (no behaviour change).
+func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat, outputFmtOverride string, args []query.Arg, limits format.Limits, timeout time.Duration, createMissing bool) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
 		fmtName = detectFormatByExt(path)
@@ -752,6 +784,11 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 		msg := "cannot detect format (supported: json, yaml, yml, toml); use --format to override"
 		opts.Logger.Error(logx.EventFormatUnknown, path, msg)
 		return &emittedError{cause: errors.New(msg)}
+	}
+	// STORY-0015: resolve effective output format. Defaults to the input format.
+	outFmtName := outputFmtOverride
+	if outFmtName == "" {
+		outFmtName = fmtName
 	}
 
 	// Open the file as a stream. The decoder applies the byte cap via
@@ -799,7 +836,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 	}
 
 	var buf bytes.Buffer
-	if err := encodeFormatValue(fmtName, &buf, outVal); err != nil {
+	if err := encodeFormatValue(outFmtName, &buf, outVal); err != nil {
 		// Distinguish cross-format incompatibility (FR-19) from
 		// generic encode failures for better user diagnostics.
 		var encErr *omap.EncodeError

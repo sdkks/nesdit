@@ -33,24 +33,50 @@ const stdinFilename = "-"
 // not satisfy select(<wherePredicate>) is written to stdout unchanged (passed
 // through). The query is only applied to matching documents.
 //
-// fmtName is the effective format string after auto-detection. It must be
-// one of "yaml", "jsonl", or "toml". "toml" is single-document only;
+// fmtName is the effective input format string after auto-detection. It must
+// be one of "yaml", "jsonl", or "toml". "toml" is single-document only;
 // a multi-doc TOML input produces ErrTOMLMultiDoc (format.unsupported).
+//
+// outputFmtOverride (STORY-0015): when non-empty, each document is encoded in
+// the specified output format instead of the input format. Pass-through docs
+// (--where predicate mismatch) are still encoded in the input format so they
+// are byte-identical to the input.
 //
 // timeout (when > 0) wraps ctx with a per-document deadline for the query
 // phase only (consistent with runOnce).
-func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing, createMissing bool) error {
-	// Wire the reader.
+func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing, createMissing bool) error {
+	// Wire the reader (always in input format).
 	reader, err := stream.NewReader(fmtName, opts.Stdin, limits)
 	if err != nil {
 		opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, err.Error())
 		return &emittedError{cause: err}
 	}
-	// Wire the writer.
-	writer, err := stream.NewWriter(fmtName, opts.Stdout)
+	// STORY-0015: resolve effective output format. Defaults to the input format.
+	// Normalize "json" to "jsonl" for stdin streaming, consistent with how
+	// the input format is normalised in stdinFormatName.
+	var outFmtName string
+	switch outputFmtOverride {
+	case "":
+		outFmtName = fmtName
+	case "json":
+		// Normalize "json" to "jsonl" for stdin streaming.
+		outFmtName = "jsonl"
+	default:
+		outFmtName = outputFmtOverride
+	}
+	// Wire the writer (in effective output format).
+	writer, err := stream.NewWriter(outFmtName, opts.Stdout)
 	if err != nil {
 		opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, err.Error())
 		return &emittedError{cause: err}
+	}
+	// Wire a pass-through writer (always in input format) for --where
+	// unmatched documents. Pass-through docs are emitted "unchanged" in
+	// the input format even when --output-format specifies a different format.
+	passthroughWriter, ptErr := stream.NewWriter(fmtName, opts.Stdout)
+	if ptErr != nil {
+		opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, ptErr.Error())
+		return &emittedError{cause: ptErr}
 	}
 
 	docIndex := 0
@@ -61,8 +87,9 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePre
 
 		// --where (FR-10 / STORY-0009): test the predicate before running the
 		// query. Documents that do not match are written to stdout unchanged
-		// (pass-through). A where predicate error halts the stream (even under
-		// --keep-going: this is a misconfiguration, not a per-doc data error).
+		// (pass-through in input format). A where predicate error halts the stream
+		// (even under --keep-going: this is a misconfiguration, not a per-doc
+		// data error).
 		if wherePredicate != "" {
 			match, whereErr := query.ApplyWhere(ctx, val, wherePredicate)
 			if whereErr != nil {
@@ -71,7 +98,7 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, queryExpr, wherePre
 			}
 			if !match {
 				opts.Logger.WarnAt(logx.EventWhereSkipped, stdinFilename, docIndex, "--where predicate did not match; doc passed through")
-				if wErr := writer.WriteDoc(val); wErr != nil {
+				if wErr := passthroughWriter.WriteDoc(val); wErr != nil {
 					opts.Logger.ErrorAt(classifyEncodeErr(wErr), stdinFilename, docIndex, wErr.Error())
 					if !keepGoing {
 						return &emittedError{cause: wErr}

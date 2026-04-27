@@ -1,0 +1,11 @@
+# story0015_output_format_unknown.txtar — STORY-0015: unknown --output-format rejected.
+#
+# An unknown --output-format value is rejected at PreRunE (before any IO)
+# with exit 1 and flag.invalid on stderr.
+
+! nesdit does-not-exist.json --output-format xml
+stderr '^nesdit: error: flag\.invalid: '
+stderr '--output-format: unknown value "xml"'
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .

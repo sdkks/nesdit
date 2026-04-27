@@ -1,0 +1,21 @@
+# story0015_output_format_i_conflict.txtar — STORY-0015: --output-format + -i conflict.
+#
+# --output-format and -i are mutually exclusive (FR-21 matrix extension).
+# In-place editing with a different output format would silently change
+# the file's format, which is almost never the intent and is easy to do
+# destructively. The rejection MUST happen before any file read.
+
+# CRITICAL: the rejection MUST happen before any file read. We set the
+# file to a nonexistent path and assert the error is the flag.conflict,
+# NOT an IO error. That proves the check fires at flag-parse time.
+! nesdit -i does-not-exist.json --output-format yaml --query '.'
+stderr '^nesdit: error: flag\.conflict: '
+stderr '--output-format and -i are mutually exclusive'
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+# Same rejection regardless of flag order.
+! nesdit --output-format yaml -i does-not-exist.json --query '.'
+stderr '^nesdit: error: flag\.conflict: '
+! stdout .

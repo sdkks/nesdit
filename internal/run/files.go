@@ -64,6 +64,10 @@ type fileResult struct {
 // When backupSuffix is non-empty (--backup flag, FR-14), each file that will
 // be changed is backed up to <path><suffix> BEFORE the atomic rename step.
 // Unchanged files are not backed up.
+//
+// NOTE: --output-format is incompatible with -i (validated by
+// validateFlagInteraction before runFiles is reached), so outputFmtOverride
+// is wired here for completeness but will always be empty in practice.
 func runFiles(
 	ctx context.Context,
 	opts RunOptions,
@@ -71,6 +75,7 @@ func runFiles(
 	queryExpr string,
 	wherePredicate string,
 	overrideFormat string,
+	outputFmtOverride string,
 	args []query.Arg,
 	limits format.Limits,
 	timeout time.Duration,
@@ -92,7 +97,7 @@ func runFiles(
 	hasEncodeFailure := false
 
 	for i, p := range paths {
-		res := processOneFile(ctx, opts, p, queryExpr, wherePredicate, overrideFormat, args, limits, timeout, createMissing)
+		res := processOneFile(ctx, opts, p, queryExpr, wherePredicate, overrideFormat, outputFmtOverride, args, limits, timeout, createMissing)
 		results[i] = res
 		if res.encErr != nil {
 			hasEncodeFailure = true
@@ -223,6 +228,7 @@ func processOneFile(
 	queryExpr string,
 	wherePredicate string,
 	overrideFormat string,
+	outputFmtOverride string,
 	args []query.Arg,
 	limits format.Limits,
 	timeout time.Duration,
@@ -239,6 +245,11 @@ func processOneFile(
 		opts.Logger.Error(logx.EventFormatUnknown, path, msg)
 		res.encErr = errors.New(msg)
 		return res
+	}
+	// STORY-0015: resolve effective output format.
+	outFmtName := outputFmtOverride
+	if outFmtName == "" {
+		outFmtName = fmtName
 	}
 
 	// Read original bytes from disk (also used for unchanged detection).
@@ -267,8 +278,9 @@ func processOneFile(
 	// Comparing encoded(query(original)) == encoded(original) is the correct
 	// idempotency check — it normalises away trailing-newline and whitespace
 	// differences between what was on disk and what the encoder produces.
+	// Use outFmtName so cross-format runs detect "changed" correctly.
 	var reencBuf bytes.Buffer
-	if reencErr := encodeFormatValue(fmtName, &reencBuf, val); reencErr == nil {
+	if reencErr := encodeFormatValue(outFmtName, &reencBuf, val); reencErr == nil {
 		res.reencoded = reencBuf.Bytes()
 	}
 	// If re-encode fails (e.g. the file was already corrupt), reencoded stays
@@ -315,9 +327,9 @@ func processOneFile(
 		}
 	}
 
-	// Encode.
+	// Encode using the effective output format.
 	var buf bytes.Buffer
-	if encErr := encodeFormatValue(fmtName, &buf, outVal); encErr != nil {
+	if encErr := encodeFormatValue(outFmtName, &buf, outVal); encErr != nil {
 		var encodeErr *omap.EncodeError
 		if errors.As(encErr, &encodeErr) {
 			opts.Logger.Error(logx.EventFormatIncompatible, path, encErr.Error())

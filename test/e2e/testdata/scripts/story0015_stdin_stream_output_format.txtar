@@ -1,0 +1,18 @@
+# story0015_stdin_stream_output_format.txtar — STORY-0015: STDIN stream mode with
+# --output-format. Each document in the stream is encoded in the target format.
+#
+# A 2-doc YAML stream piped through nesdit --output-format json produces
+# two JSONL lines (one per document).
+
+stdin input.yaml
+nesdit --format yaml --output-format json
+stdout '^{"name":"alpha","version":1}$'
+stdout '^{"name":"beta","version":2}$'
+! stderr .
+
+-- input.yaml --
+name: alpha
+version: 1
+---
+name: beta
+version: 2

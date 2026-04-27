@@ -1,0 +1,26 @@
+# story0015_toml_to_yaml.txtar — STORY-0015: --output-format toml→yaml transcoding.
+#
+# Reading a TOML file and writing YAML output via --output-format yaml.
+# Key order is preserved (NFR-3): name appears before version in input,
+# so it appears before version in the YAML output.
+#
+# Note: STDIN stream mode emits a YAML `---` separator before each doc
+# (stream writer contract); file→stdout mode uses the single-doc encoder
+# which does not prepend `---`.
+
+# STDIN mode: TOML input → YAML output. Stream writer adds `---` prefix.
+stdin input.toml
+nesdit --format toml --output-format yaml
+stdout '(?s)^---\nname: alice\nversion: 1\n$'
+! stderr .
+
+# File mode: TOML file → YAML output to stdout. Single-doc encoder, no `---`.
+nesdit input.toml --output-format yaml
+stdout 'name: alice'
+stdout 'version: 1'
+! stdout '^---'
+! stderr .
+
+-- input.toml --
+name = "alice"
+version = 1

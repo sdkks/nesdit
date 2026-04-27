@@ -1,0 +1,21 @@
+# story0015_json_to_toml.txtar — STORY-0015: --output-format json→toml transcoding.
+#
+# Reading a JSON file and writing TOML output via --output-format toml.
+# The root value must be a TOML table (object); JSON input with an object
+# root satisfies this constraint.
+
+# STDIN mode: JSON input → TOML output.
+stdin input.json
+nesdit --format json --output-format toml
+stdout 'name = "alice"'
+stdout 'version = 1'
+! stderr .
+
+# File mode: JSON file → TOML output to stdout.
+nesdit input.json --output-format toml
+stdout 'name = "alice"'
+stdout 'version = 1'
+! stderr .
+
+-- input.json --
+{"name":"alice","version":1}

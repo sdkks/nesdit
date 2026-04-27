@@ -41,10 +41,15 @@ import (
 // disk — so the diff reflects semantic changes only, not format noise from
 // whitespace or trailing-newline differences that the encoder would
 // normalise away.
+//
+// STORY-0015: outputFmtOverride, when non-empty, selects the encode format
+// for the "after" half of the diff independently of the input format. The
+// "before" baseline is always encoded in the input format so the diff shows
+// the full cross-format transformation.
 func runDryRun(
 	ctx context.Context,
 	opts RunOptions,
-	path, queryExpr, overrideFormat string,
+	path, queryExpr, overrideFormat, outputFmtOverride string,
 	args []query.Arg,
 	limits format.Limits,
 	timeout time.Duration,
@@ -58,6 +63,11 @@ func runDryRun(
 		msg := "cannot detect format (supported: json, yaml, yml, toml); use --format to override"
 		opts.Logger.Error(logx.EventFormatUnknown, path, msg)
 		return &emittedError{cause: fmt.Errorf("%s", msg)}
+	}
+	// STORY-0015: resolve effective output format.
+	outFmtName := outputFmtOverride
+	if outFmtName == "" {
+		outFmtName = fmtName
 	}
 
 	f, err := os.Open(path) //nolint:gosec // user-supplied path by design
@@ -79,6 +89,8 @@ func runDryRun(
 	}
 
 	// Re-encode original without query for the diff "before" baseline.
+	// The "before" is always in the input format so the diff spans the full
+	// cross-format transformation when --output-format differs from input.
 	var beforeBuf bytes.Buffer
 	if reencErr := encodeFormatValue(fmtName, &beforeBuf, val); reencErr != nil {
 		opts.Logger.Error(logx.EventEncodeError, path, reencErr.Error())
@@ -107,9 +119,9 @@ func runDryRun(
 		}
 	}
 
-	// Encode the query result for the diff "after".
+	// Encode the query result for the diff "after" using the effective output format.
 	var afterBuf bytes.Buffer
-	if encErr := encodeFormatValue(fmtName, &afterBuf, outVal); encErr != nil {
+	if encErr := encodeFormatValue(outFmtName, &afterBuf, outVal); encErr != nil {
 		var encodeErr *omap.EncodeError
 		if errors.As(encErr, &encodeErr) {
 			opts.Logger.Error(logx.EventFormatIncompatible, path, encErr.Error())
@@ -156,10 +168,16 @@ func runDryRun(
 // DR-002: this function is the ONLY place in the codebase that may produce
 // a driftError, which is the only route to ExitDrift. All other error paths
 // return emittedError (exit 1) or nil (exit 0).
+//
+// STORY-0015: when outputFmtOverride is non-empty, the "after" is encoded in
+// the specified format. The "before" baseline is always encoded in the input
+// format; a cross-format --check with identity query will therefore always
+// report drift (the two representations differ), which is the correct
+// behaviour — the file would be changed if written.
 func runCheck(
 	ctx context.Context,
 	opts RunOptions,
-	path, queryExpr, overrideFormat string,
+	path, queryExpr, overrideFormat, outputFmtOverride string,
 	args []query.Arg,
 	limits format.Limits,
 	timeout time.Duration,
@@ -173,6 +191,11 @@ func runCheck(
 		msg := "cannot detect format (supported: json, yaml, yml, toml); use --format to override"
 		opts.Logger.Error(logx.EventFormatUnknown, path, msg)
 		return &emittedError{cause: fmt.Errorf("%s", msg)}
+	}
+	// STORY-0015: resolve effective output format.
+	outFmtName := outputFmtOverride
+	if outFmtName == "" {
+		outFmtName = fmtName
 	}
 
 	f, err := os.Open(path) //nolint:gosec // user-supplied path by design
@@ -193,7 +216,7 @@ func runCheck(
 		return &emittedError{cause: decErr}
 	}
 
-	// Re-encode original for the baseline (normalised form).
+	// Re-encode original for the baseline (normalised form, in input format).
 	var beforeBuf bytes.Buffer
 	if reencErr := encodeFormatValue(fmtName, &beforeBuf, val); reencErr != nil {
 		opts.Logger.Error(logx.EventEncodeError, path, reencErr.Error())
@@ -222,9 +245,9 @@ func runCheck(
 		}
 	}
 
-	// Encode the query result.
+	// Encode the query result using the effective output format.
 	var afterBuf bytes.Buffer
-	if encErr := encodeFormatValue(fmtName, &afterBuf, outVal); encErr != nil {
+	if encErr := encodeFormatValue(outFmtName, &afterBuf, outVal); encErr != nil {
 		var encodeErr *omap.EncodeError
 		if errors.As(encErr, &encodeErr) {
 			opts.Logger.Error(logx.EventFormatIncompatible, path, encErr.Error())
