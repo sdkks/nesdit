@@ -508,6 +508,13 @@ func classifyQueryErr(ctx context.Context, err error, timeout time.Duration) log
 	if errors.Is(err, context.DeadlineExceeded) {
 		return logx.EventQueryTimeout
 	}
+	// TASK-0018 S-2: context.Canceled is checked after DeadlineExceeded so
+	// that a timeout (which also cancels the context) is classified as
+	// query.timeout rather than query.cancelled. Canceled covers a future
+	// SIGINT handler or any other explicit cancellation path.
+	if ctx.Err() == context.Canceled || errors.Is(err, context.Canceled) {
+		return logx.EventQueryCancelled
+	}
 	var qErr *query.Error
 	if !errors.As(err, &qErr) {
 		return logx.EventQueryRuntime

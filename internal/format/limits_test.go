@@ -111,6 +111,35 @@ type erroringReader struct{ err error }
 
 func (e *erroringReader) Read(_ []byte) (int, error) { return 0, e.err }
 
+// TestReadAllLimited_SliceCastSafety covers TASK-0018 S-1: the truncation
+// branch in limitedReader.Read performs p[:int(remaining)] — safe because
+// remaining < len(p) at that point. This test verifies the Read path still
+// correctly truncates and returns a LimitError when the cap is smaller than
+// the input, exercising the branch that does the cast on every read call.
+func TestReadAllLimited_SliceCastSafety(t *testing.T) {
+	t.Parallel()
+	// Drive multiple Read calls through the truncation branch by using a
+	// cap that forces multiple partial reads (cap=7 against 20 bytes of input
+	// with a 1-byte buffer would normally not trigger multiple reads, but
+	// io.ReadAll uses large internal buffers — so use a small buffer manually
+	// via ReadAllLimited which uses io.ReadAll internally).
+	//
+	// The key invariant: when the limiter truncates p, remaining < len(p),
+	// so int(remaining) is always a valid non-negative int.
+	in := bytes.Repeat([]byte("z"), 20)
+	_, err := format.ReadAllLimited(bytes.NewReader(in), 7, "json")
+	if err == nil {
+		t.Fatal("expected LimitError for above-cap input; got nil")
+	}
+	var lim *format.LimitError
+	if !errors.As(err, &lim) {
+		t.Fatalf("want *format.LimitError, got %T", err)
+	}
+	if lim.Kind != format.LimitInputSize {
+		t.Errorf("Kind=%q want %q", lim.Kind, format.LimitInputSize)
+	}
+}
+
 // TestLimitError_Unwrap_Sentinel sanity-checks the error is a
 // distinguishable type (errors.As works) so CLI classifiers can match on
 // it.

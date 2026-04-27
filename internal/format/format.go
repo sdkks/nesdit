@@ -138,6 +138,15 @@ func newLimitedReader(r io.Reader, limit int64) *limitedReader {
 // Read implements io.Reader. It reads up to limit+1 bytes; on the (limit+1)th
 // byte it sets overrun=true and returns what it got. Subsequent reads return
 // EOF so the decoder's own parser halts at the end of the consumed buffer.
+//
+// TASK-0018 S-1: `p = p[:int(remaining)]` is safe here because we only
+// enter the truncation branch when remaining < int64(len(p)), so remaining
+// is strictly less than len(p) and is always representable as a valid int on
+// both 32-bit and 64-bit platforms. The explicit int() cast makes this
+// contract visible and prevents a hypothetical 32-bit overflow if a future
+// refactor moves the truncation outside the guard. The release matrix is
+// 64-bit only (see .github/workflows/ci.yml), so the MaxBytes default of
+// 10 MiB can never approach int32 overflow in practice.
 func (lr *limitedReader) Read(p []byte) (int, error) {
 	if lr.limit <= 0 {
 		return lr.r.Read(p)
@@ -147,7 +156,8 @@ func (lr *limitedReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 	if int64(len(p)) > remaining {
-		p = p[:remaining]
+		// remaining < len(p) here, so int(remaining) is always safe.
+		p = p[:int(remaining)]
 	}
 	n, err := lr.r.Read(p)
 	lr.n += int64(n)

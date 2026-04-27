@@ -143,12 +143,19 @@ func EncodeValue(w io.Writer, v omap.Value) error {
 // node materialisations, not only alias-driven ones, so the cap acts
 // as a total work-budget on the yaml walk.
 //
+// TASK-0018 S-3: visiting is a per-walk visited set used exclusively for
+// cycle detection during alias resolution. yaml.v3 does not permit circular
+// aliases in its current implementation, but this set provides defense-in-
+// depth if the library is ever swapped: a circular alias chain would recurse
+// forever without it.
+//
 // maxDepth <= 0 disables the depth cap.
 // maxNodes <= 0 disables the yaml-node count cap.
 type yamlWalker struct {
 	maxDepth int
 	maxNodes int
-	nodes    int // node materialisations so far
+	nodes    int                // node materialisations so far
+	visiting map[*yaml.Node]bool // cycle detection for alias resolution
 }
 
 // node materialises a single yaml.Node at tree-depth d. Follows aliases
@@ -164,7 +171,19 @@ func (w *yamlWalker) node(n *yaml.Node, d int) (omap.Value, error) {
 		}
 	}
 	if n.Kind == yaml.AliasNode && n.Alias != nil {
-		return w.node(n.Alias, d)
+		// TASK-0018 S-3: guard against circular alias chains. yaml.v3
+		// currently rejects them at parse time, but this visited-set
+		// check is defense-in-depth against a future library swap.
+		if w.visiting == nil {
+			w.visiting = make(map[*yaml.Node]bool)
+		}
+		if w.visiting[n.Alias] {
+			return omap.Value{}, fmt.Errorf("yaml: circular alias detected at line %d", n.Line)
+		}
+		w.visiting[n.Alias] = true
+		v, err := w.node(n.Alias, d)
+		delete(w.visiting, n.Alias)
+		return v, err
 	}
 	switch n.Kind {
 	case yaml.MappingNode:

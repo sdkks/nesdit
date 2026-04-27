@@ -101,6 +101,12 @@ const (
 	// its first value. Distinct from query.runtime so timeouts are
 	// filterable in log aggregators.
 	EventQueryTimeout Event = "query.timeout"
+
+	// TASK-0018 (S-2) — fired when a query run is cancelled via
+	// context.Canceled (e.g. a future SIGINT handler). Distinct from
+	// query.timeout (deadline exceeded) and query.runtime (execution error)
+	// so operators can filter clean cancellations separately.
+	EventQueryCancelled Event = "query.cancelled"
 )
 
 // knownEvents is the closed-enum registry. Every token declared above
@@ -133,6 +139,7 @@ var knownEvents = map[Event]struct{}{
 	EventDecoderLimitDepth:         {},
 	EventDecoderLimitYAMLNodeCount: {},
 	EventQueryTimeout:              {},
+	EventQueryCancelled:            {},
 }
 
 // IsKnownEvent reports whether e is a registered event token. Callers

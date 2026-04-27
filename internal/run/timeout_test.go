@@ -82,6 +82,46 @@ func Test_Run_TimeoutDisabledByDefault(t *testing.T) {
 	}
 }
 
+// Test_Run_ContextCancelled_EmitsQueryCancelled covers TASK-0018 S-2: when
+// the caller cancels the context before (or during) query execution, the
+// emitted event must be query.cancelled — not query.runtime or query.timeout.
+// This distinguishes a clean SIGINT-style cancellation from an execution error.
+func Test_Run_ContextCancelled_EmitsQueryCancelled(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.json")
+	if err := os.WriteFile(path, []byte(`{"x":0}`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Pre-cancel the context so the query sees context.Canceled immediately.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancelled before Execute is called
+
+	var stdout, stderr bytes.Buffer
+	code := run.Execute(run.RunOptions{
+		Args:   []string{path, "--query", "[range(1000000000000)]"},
+		Ctx:    ctx,
+		Stdin:  bytes.NewReader(nil),
+		Stdout: &stdout,
+		Stderr: &stderr,
+		Logger: logx.New(&stderr),
+	})
+
+	if code == 0 {
+		t.Fatalf("expected non-zero exit on cancelled context; got 0\nstderr: %s", stderr.String())
+	}
+	stderrStr := stderr.String()
+	if !strings.Contains(stderrStr, "query.cancelled") {
+		t.Errorf("stderr missing query.cancelled event: %q", stderrStr)
+	}
+	// Timeout event must NOT be emitted — no --timeout flag was supplied.
+	if strings.Contains(stderrStr, "query.timeout") {
+		t.Errorf("stderr contains unexpected query.timeout event (want query.cancelled): %q", stderrStr)
+	}
+}
+
 // Test_Run_DecoderInputSizeCap_CLIEvent verifies the CLI's
 // classifyDecodeErr maps *format.LimitError{Kind: InputSize} to the
 // decoder.limit.input_size event on stderr. Stands in for a full e2e

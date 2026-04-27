@@ -44,6 +44,8 @@ func Test_Logx_EventEnum(t *testing.T) {
 		logx.EventDecoderLimitDepth,
 		logx.EventDecoderLimitYAMLNodeCount,
 		logx.EventQueryTimeout,
+		// TASK-0018 S-2 — context cancellation distinct from timeout.
+		logx.EventQueryCancelled,
 	}
 
 	seen := map[logx.Event]bool{}
