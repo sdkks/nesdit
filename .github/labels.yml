@@ -1,0 +1,81 @@
+# Labels synced to github.com/sdkks/nesdit
+# Apply with: gh label create --force ... or use a labels-sync action
+
+# Triage
+- name: needs-triage
+  color: "e4e669"
+  description: Not yet reviewed or categorised
+
+# Type
+- name: bug
+  color: "d73a4a"
+  description: Something isn't working
+- name: enhancement
+  color: "a2eeef"
+  description: New feature or improvement
+- name: question
+  color: "d876e3"
+  description: Further information is requested
+- name: documentation
+  color: "0075ca"
+  description: Documentation only
+- name: refactor
+  color: "bfd4f2"
+  description: Internal restructure, no behaviour change
+- name: ci
+  color: "f9d0c4"
+  description: CI/CD or release pipeline
+
+# Format area
+- name: format/json
+  color: "c5def5"
+  description: JSON single-doc or JSONL stdin
+- name: format/yaml
+  color: "c5def5"
+  description: YAML input or output
+- name: format/toml
+  color: "c5def5"
+  description: TOML input or output
+
+# Feature area
+- name: area/query
+  color: "e8f4c8"
+  description: jq query language or expression evaluation
+- name: area/streaming
+  color: "e8f4c8"
+  description: Stdin streaming / JSONL pipeline
+- name: area/in-place
+  color: "e8f4c8"
+  description: --in-place atomic writes
+- name: area/check
+  color: "e8f4c8"
+  description: --check or --dry-run mode
+- name: area/output-format
+  color: "e8f4c8"
+  description: --output-format transcoding or --pretty
+- name: area/cli
+  color: "e8f4c8"
+  description: CLI flags, UX, help text
+
+# Status
+- name: good first issue
+  color: "7057ff"
+  description: Good for newcomers
+- name: help wanted
+  color: "008672"
+  description: Extra attention is needed
+- name: wontfix
+  color: "ffffff"
+  description: This will not be worked on
+- name: duplicate
+  color: "cfd3d7"
+  description: This issue or PR already exists
+- name: invalid
+  color: "e4e669"
+  description: This doesn't seem right
+- name: blocked
+  color: "b60205"
+  description: Blocked on something external
+- name: breaking-change
+  color: "b60205"
+  description: Changes existing public behaviour

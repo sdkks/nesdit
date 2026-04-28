@@ -1,0 +1,48 @@
+name: Question / help
+description: Ask how to do something with nesdit
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [docs](https://sdkks.github.io/nesdit/) and `nesdit --help` first. If you're still stuck, ask away.
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: Describe the transformation you want to achieve.
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you tried
+      description: What did you try? Include the full command and flags.
+      render: sh
+    validations:
+      required: false
+
+  - type: textarea
+    id: input
+    attributes:
+      label: Input data
+      description: Sample input (file or stdin). Redact sensitive values.
+      render: text
+    validations:
+      required: false
+
+  - type: dropdown
+    id: format
+    attributes:
+      label: Format
+      options:
+        - JSON
+        - JSONL
+        - YAML
+        - TOML
+        - Multiple / transcoding
+        - Not sure
+    validations:
+      required: false

@@ -1,0 +1,77 @@
+name: Feature request
+description: Propose a new capability or behaviour change
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the feature you'd like and the problem it solves.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do that you can't do today? Include the command you wish worked.
+      render: sh
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should it work? Include example commands and expected output.
+      render: sh
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of nesdit does this touch?
+      multiple: true
+      options:
+        - JSON support
+        - JSONL support
+        - YAML support
+        - TOML support
+        - Auto-detect
+        - Output formatting (--output-format, --pretty)
+        - Query language / jq compatibility
+        - In-place editing
+        - Stdin / streaming
+        - Check / dry-run mode
+        - CLI flags / UX
+        - Performance
+        - Documentation
+        - CI / release pipeline
+    validations:
+      required: true
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Would this be a breaking change?
+      options:
+        - "No"
+        - "Yes — changes existing behaviour"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you try? Why doesn't it work for your use case?
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — related issues, prior art in other tools, etc.
+    validations:
+      required: false

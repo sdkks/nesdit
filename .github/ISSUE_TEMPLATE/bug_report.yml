@@ -1,0 +1,109 @@
+name: Bug report
+description: Something isn't working correctly
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. The more detail you provide, the faster it gets fixed.
+
+  - type: input
+    id: version
+    attributes:
+      label: nesdit version
+      description: Run `nesdit --version`
+      placeholder: "0.3.0"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / arch
+      placeholder: "macOS 15 arm64 / Ubuntu 22.04 amd64"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: format
+    attributes:
+      label: Input format
+      description: What format were you editing?
+      options:
+        - JSON (single-doc file)
+        - JSON (single-doc stdin, --format json)
+        - JSONL (streaming stdin, --format jsonl)
+        - YAML
+        - TOML
+        - Auto-detect (no --format flag)
+        - Multiple / transcoding (--output-format)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Execution mode
+      options:
+        - File mode (positional arg)
+        - Stdin mode (piped or -)
+        - In-place (--in-place / -i)
+        - Dry-run (--dry-run)
+        - Check (--check)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command
+      description: The full command you ran, including all flags. Redact sensitive values.
+      render: sh
+      placeholder: |
+        echo '{"a": 1}' | nesdit --format json --query '.b = 2'
+    validations:
+      required: true
+
+  - type: textarea
+    id: input
+    attributes:
+      label: Input data
+      description: The exact input that triggers the bug (file contents or stdin). Redact sensitive values.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What actually happened? Include full stderr output.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest possible input + command that shows the bug. Shell one-liner preferred.
+      render: sh
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might be relevant — related flags, pipeline setup, etc.
+    validations:
+      required: false
