@@ -66,6 +66,22 @@ changelog:
   # duplicate it on the GitHub Release body.
   disable: true
 
+brews:
+  - name: nesdit
+    repository:
+      owner: sdkks
+      name: tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://sdkks.github.io/nesdit/"
+    description: "Edit structured config files with jq-style queries"
+    license: MIT
+    install: |
+      bin.install "nesdit"
+      man1.install "share/man/man1/nesdit.1"
+    test: |
+      system "#{bin}/nesdit", "--help"
+
 release:
   # GoReleaser uploads artifacts to the release that release-please already
   # created. Set draft: false so assets are immediately visible.
