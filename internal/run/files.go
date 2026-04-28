@@ -68,6 +68,9 @@ type fileResult struct {
 // NOTE: --output-format is incompatible with -i (validated by
 // validateFlagInteraction before runFiles is reached), so outputFmtOverride
 // is wired here for completeness but will always be empty in practice.
+//
+// STORY-0018: pretty enables human-friendly TOML output. Silently ignored
+// for non-TOML output formats.
 func runFiles(
 	ctx context.Context,
 	opts RunOptions,
@@ -83,6 +86,7 @@ func runFiles(
 	backupSuffix string,
 	createMissing bool,
 	yamlVersion string,
+	pretty bool,
 ) error {
 	// Deduplicate paths so two symlinks pointing to the same real file
 	// do not cause double writes.
@@ -98,7 +102,7 @@ func runFiles(
 	hasEncodeFailure := false
 
 	for i, p := range paths {
-		res := processOneFile(ctx, opts, p, queryExpr, wherePredicate, overrideFormat, outputFmtOverride, args, limits, timeout, createMissing, yamlVersion)
+		res := processOneFile(ctx, opts, p, queryExpr, wherePredicate, overrideFormat, outputFmtOverride, args, limits, timeout, createMissing, yamlVersion, pretty)
 		results[i] = res
 		if res.encErr != nil {
 			hasEncodeFailure = true
@@ -235,6 +239,7 @@ func processOneFile(
 	timeout time.Duration,
 	createMissing bool,
 	yamlVersion string,
+	pretty bool,
 ) fileResult {
 	res := fileResult{path: path}
 
@@ -281,8 +286,9 @@ func processOneFile(
 	// idempotency check — it normalises away trailing-newline and whitespace
 	// differences between what was on disk and what the encoder produces.
 	// Use outFmtName so cross-format runs detect "changed" correctly.
+	// STORY-0018: apply pretty so the comparison baseline matches the output.
 	var reencBuf bytes.Buffer
-	if reencErr := encodeFormatValue(outFmtName, &reencBuf, val); reencErr == nil {
+	if reencErr := encodeFormatValueWithPretty(outFmtName, &reencBuf, val, pretty); reencErr == nil {
 		res.reencoded = reencBuf.Bytes()
 	}
 	// If re-encode fails (e.g. the file was already corrupt), reencoded stays
@@ -330,8 +336,9 @@ func processOneFile(
 	}
 
 	// Encode using the effective output format.
+	// STORY-0018: apply pretty when set and output format is toml.
 	var buf bytes.Buffer
-	if encErr := encodeFormatValue(outFmtName, &buf, outVal); encErr != nil {
+	if encErr := encodeFormatValueWithPretty(outFmtName, &buf, outVal, pretty); encErr != nil {
 		var encodeErr *omap.EncodeError
 		if errors.As(encErr, &encodeErr) {
 			opts.Logger.Error(logx.EventFormatIncompatible, path, encErr.Error())

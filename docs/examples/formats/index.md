@@ -249,6 +249,22 @@ name = "alice"
 version = 1
 ```
 
+### Multi-document stream → TOML
+
+When the input stream contains more than one document, TOML output documents are separated by `+++` (Hugo-style multi-document TOML convention; not part of the TOML specification):
+
+```sh
+printf '{"a":1}\n{"b":2}\n' | nesdit --format jsonl --output-format toml
+```
+
+**Stdout:**
+
+```toml
+a = 1
++++
+b = 2
+```
+
 ---
 
 ## TOML → YAML (`--output-format=yaml`)

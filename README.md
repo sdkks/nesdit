@@ -63,7 +63,7 @@ nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $repli
 | YAML   | `.yaml`, `.yml` | Single-document per file    |
 | TOML   | `.toml`         | Tables and arrays of tables |
 
-Format is auto-detected from the file extension. Use `--format json|yaml|toml` to override input format, and `--output-format json|yaml|toml` to transcode to a different output format.
+Format is auto-detected from the file extension. Use `--format json|jsonl|yaml|toml` to override input format, and `--output-format json|yaml|toml` to transcode to a different output format.
 
 ## Key flags
 
@@ -74,7 +74,7 @@ Format is auto-detected from the file extension. Use `--format json|yaml|toml` t
 | `--arg K=V`                 | Bind `$K` as a string value in the query (repeatable)                               |
 | `--argjson K=V`             | Bind `$K` as a JSON-decoded value in the query (repeatable)                         |
 | `--where <jq>`              | Filter: only apply query to matching documents                                      |
-| `--format <fmt>`            | Force input format (`json\|yaml\|toml`); default is extension-based detection        |
+| `--format <fmt>`            | Force input format (`json\|jsonl\|yaml\|toml`); default is extension-based detection  |
 | `--output-format <fmt>`     | Output format (`json\|yaml\|toml`); defaults to same as input                        |
 | `--yaml-version <1.1\|1.2>` | YAML boolean dialect: `1.1` coerces `yes/no/on/off`; `1.2` (default) requires `true/false` |
 | `-i, --in-place`            | Edit file(s) atomically in place                                                    |
@@ -91,6 +91,7 @@ Format is auto-detected from the file extension. Use `--format json|yaml|toml` t
 | `--max-depth <n>`           | Reject documents nested deeper than `n` levels (default 1000; `0` disables)         |
 | `--max-yaml-nodes <n>`      | YAML alias-expansion cap, billion-laughs mitigation (default 100 000; `0` disables) |
 | `--max-query-bytes <n>`     | Reject `--from-file` queries larger than `n` bytes (default 1 MiB; `0` disables)    |
+| `--pretty`                  | Emit human-readable TOML output (multi-line arrays, expanded tables, blank lines); silently ignored for non-TOML output |
 
 See [`nesdit --help`](https://sdkks.github.io/nesdit/reference/nesdit/) for the full reference.
 

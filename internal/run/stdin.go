@@ -1,12 +1,15 @@
 package run
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/sdkks/nesdit/internal/format"
+	tomlfmt "github.com/sdkks/nesdit/internal/format/toml"
 	yamlfmt "github.com/sdkks/nesdit/internal/format/yaml"
 	"github.com/sdkks/nesdit/internal/logx"
 	"github.com/sdkks/nesdit/internal/omap"
@@ -35,7 +38,8 @@ const stdinFilename = "-"
 // through). The query is only applied to matching documents.
 //
 // fmtName is the effective input format string after auto-detection. It must
-// be one of "yaml", "jsonl", or "toml". "toml" is single-document only;
+// be one of "json", "yaml", "jsonl", or "toml". "json" routes to
+// runStdinJSON for single-document buffered decode. "toml" is single-document only;
 // a multi-doc TOML input produces ErrTOMLMultiDoc (format.unsupported).
 //
 // outputFmtOverride (STORY-0015): when non-empty, each document is encoded in
@@ -45,7 +49,18 @@ const stdinFilename = "-"
 //
 // timeout (when > 0) wraps ctx with a per-document deadline for the query
 // phase only (consistent with runOnce).
-func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing, createMissing bool, yamlVersion string) error {
+//
+// STORY-0018: pretty enables human-friendly TOML output when the effective
+// output format is "toml". Silently ignored for other output formats.
+func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing, createMissing bool, yamlVersion string, pretty bool) error {
+	// --format json on STDIN: the user explicitly requested single-document
+	// JSON. Read the entire stdin into a buffer and decode as one document,
+	// the same way runOnce handles a JSON file. This supports multi-line JSON
+	// objects that a line-by-line JSONL reader would split incorrectly.
+	if fmtName == "json" {
+		return runStdinJSON(ctx, opts, outputFmtOverride, queryExpr, wherePredicate, args, limits, timeout, createMissing, keepGoing, pretty)
+	}
+
 	// Wire the reader (always in input format). FR-18: pass yamlVersion via
 	// DecodeOpts; silently ignored for non-YAML formats.
 	reader, err := stream.NewReaderWithOpts(fmtName, opts.Stdin, limits, yamlfmt.DecodeOpts{YAMLVersion: yamlVersion})
@@ -67,10 +82,18 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 		outFmtName = outputFmtOverride
 	}
 	// Wire the writer (in effective output format).
-	writer, err := stream.NewWriter(outFmtName, opts.Stdout)
-	if err != nil {
-		opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, err.Error())
-		return &emittedError{cause: err}
+	// STORY-0018: when pretty is set and the output format is toml, use the
+	// pretty TOML writer. For all other formats, use the standard writer.
+	var writer stream.DocWriter
+	if pretty && outFmtName == "toml" {
+		writer = stream.NewTOMLWriterWithOptions(opts.Stdout, tomlfmt.EncodeOptions{Pretty: true})
+	} else {
+		var werr error
+		writer, werr = stream.NewWriter(outFmtName, opts.Stdout)
+		if werr != nil {
+			opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, werr.Error())
+			return &emittedError{cause: werr}
+		}
 	}
 	// Wire a pass-through writer (always in input format) for --where
 	// unmatched documents. Pass-through docs are emitted "unchanged" in
@@ -200,6 +223,117 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 	return nil
 }
 
+// runStdinJSON handles --format json on STDIN as a single-document decode,
+// matching the behaviour of runOnce for JSON files. The entire stdin is
+// buffered and decoded as one JSON value; the result is then queried and
+// written to stdout. This correctly handles multi-line JSON objects that a
+// line-by-line JSONL reader would otherwise split on the first newline.
+//
+// keepGoing mirrors the FR-17 semantics from runStdin: when true and an error
+// is an *emittedError, return nil instead of propagating. Since this function
+// is single-document only, keepGoing does not continue iteration — it only
+// determines whether a per-document error is suppressed (exit 0) or surfaced
+// (exit 1). Where-predicate errors are configuration errors and are never
+// suppressed regardless of keepGoing.
+//
+// STORY-0018: pretty enables human-friendly TOML output. Silently ignored
+// for non-TOML output formats.
+func runStdinJSON(ctx context.Context, opts RunOptions, outputFmtOverride, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, createMissing, keepGoing, pretty bool) error {
+	data, err := io.ReadAll(opts.Stdin)
+	if err != nil {
+		opts.Logger.Error(logx.EventIORead, stdinFilename, err.Error())
+		return &emittedError{cause: err}
+	}
+
+	val, err := decodeFormatValueWithLimitsAndVersion("json", bytes.NewReader(data), limits, "")
+	if err != nil {
+		opts.Logger.Error(classifyDecodeErr(err), stdinFilename, err.Error())
+		if keepGoing {
+			return nil
+		}
+		return &emittedError{cause: err}
+	}
+
+	// Resolve effective output format. Defaults to "json". stream.NewWriter
+	// accepts "json" as an alias for the JSONL (newline-terminated) writer.
+	outFmtName := outputFmtOverride
+	if outFmtName == "" {
+		outFmtName = "json"
+	}
+	// STORY-0018: when pretty is set and the output format is toml, use the
+	// pretty TOML writer. For all other formats, use the standard writer.
+	var writer stream.DocWriter
+	if pretty && outFmtName == "toml" {
+		writer = stream.NewTOMLWriterWithOptions(opts.Stdout, tomlfmt.EncodeOptions{Pretty: true})
+	} else {
+		var werr error
+		writer, werr = stream.NewWriter(outFmtName, opts.Stdout)
+		if werr != nil {
+			opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, werr.Error())
+			return &emittedError{cause: werr}
+		}
+	}
+
+	// --where: test the predicate. Documents that do not match are written
+	// unchanged (pass-through). A where predicate error halts even under
+	// --keep-going (misconfiguration, not a per-doc data error).
+	if wherePredicate != "" {
+		match, whereErr := query.ApplyWhere(ctx, val, wherePredicate)
+		if whereErr != nil {
+			opts.Logger.ErrorAt(classifyQueryErr(ctx, whereErr, 0), stdinFilename, 1, whereErr.Error())
+			return &emittedError{cause: whereErr}
+		}
+		if !match {
+			opts.Logger.WarnAt(logx.EventWhereSkipped, stdinFilename, 1, "--where predicate did not match; doc passed through")
+			passthroughWriter, ptErr := stream.NewWriter("json", opts.Stdout)
+			if ptErr != nil {
+				opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, ptErr.Error())
+				return &emittedError{cause: ptErr}
+			}
+			if wErr := passthroughWriter.WriteDoc(val); wErr != nil {
+				opts.Logger.ErrorAt(classifyEncodeErr(wErr), stdinFilename, 1, wErr.Error())
+				return &emittedError{cause: wErr}
+			}
+			return nil
+		}
+	}
+
+	queryCtx := ctx
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		queryCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	outVal, qErr := query.RunValueWithArgs(queryCtx, val, queryExpr, args)
+	if qErr != nil {
+		opts.Logger.ErrorAt(classifyQueryErr(queryCtx, qErr, timeout), stdinFilename, 1, qErr.Error())
+		if keepGoing {
+			return nil
+		}
+		return &emittedError{cause: qErr}
+	}
+
+	if !createMissing {
+		if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
+			opts.Logger.ErrorAt(logx.EventQueryMissingPath, stdinFilename, 1, mpErr.Error())
+			if keepGoing {
+				return nil
+			}
+			return &emittedError{cause: mpErr}
+		}
+	}
+
+	if wErr := writer.WriteDoc(outVal); wErr != nil {
+		opts.Logger.ErrorAt(classifyEncodeErr(wErr), stdinFilename, 1, wErr.Error())
+		if keepGoing {
+			return nil
+		}
+		return &emittedError{cause: wErr}
+	}
+	return nil
+}
+
 // classifyEncodeErr maps an encode-phase error to the right logx event.
 // Mirrors the logic in runOnce.
 func classifyEncodeErr(err error) logx.Event {
@@ -212,22 +346,22 @@ func classifyEncodeErr(err error) logx.Event {
 
 // stdinFormatName resolves the effective format for STDIN mode.
 //
-//   - If overrideFormat is non-empty, it is used directly (after mapping
-//     "json" to "jsonl" for STDIN, since file JSON is single-doc but STDIN
-//     JSON is streamed line-by-line for JSONL — caller must pass "jsonl"
-//     explicitly or use auto-detect).
+//   - If overrideFormat is non-empty, it is used directly. "--format json" is
+//     passed through as "json" so runStdin dispatches to runStdinJSON for
+//     single-document buffered decode. All other explicit overrides are used as-is.
 //   - Otherwise, format.Detect is called to peek at stdin. The peeked reader
 //     replaces opts.Stdin so the full content is still available downstream.
+//     When auto-detect returns "json" (the input looks like a single-document
+//     JSON value, not a newline-delimited stream), it is returned as-is so
+//     runStdin dispatches to runStdinJSON automatically.
 //
 // Returns the resolved format name and the (possibly replaced) opts, or an
 // error when detection is inconclusive.
 func stdinFormatName(opts RunOptions, overrideFormat string) (string, RunOptions, error) {
 	if overrideFormat != "" {
-		// Normalize "json" to "jsonl" for stdin streaming when user passes --format json.
-		// Single-object JSON on stdin is handled as a 1-doc JSONL stream.
-		if overrideFormat == "json" {
-			overrideFormat = "jsonl"
-		}
+		// Pass --format json through as "json" so runStdin can take the
+		// single-document decode path (runStdinJSON). All other explicit
+		// overrides are used as-is.
 		return overrideFormat, opts, nil
 	}
 	// Auto-detect by peeking.
@@ -236,11 +370,8 @@ func stdinFormatName(opts RunOptions, overrideFormat string) (string, RunOptions
 	if detected == "" {
 		return "", opts, fmt.Errorf("cannot detect format from stdin; use --format to specify (json, jsonl, yaml, toml)")
 	}
-	// Normalize "json" to "jsonl" for stdin: all stdin JSON is streamed
-	// as newline-separated documents (one per logical value). A single-
-	// object stdin is handled as a 1-doc JSONL stream.
-	if detected == "json" {
-		detected = "jsonl"
-	}
+	// When auto-detect returns "json", runStdin's `if fmtName == "json"` guard
+	// already dispatches to runStdinJSON for single-document buffered decode.
+	// No normalisation to "jsonl" is needed here.
 	return detected, opts, nil
 }

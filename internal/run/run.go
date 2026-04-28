@@ -178,6 +178,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		createMissing bool
 		backupSuffix  string
 		yamlVersion   string
+		pretty        bool
 		timeout       time.Duration
 		maxBytes      int64
 		maxDepth      int
@@ -344,7 +345,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
 					return &emittedError{cause: errors.New(msg)}
 				}
-				return runDryRun(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing, yamlVersion)
+				return runDryRun(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing, yamlVersion, pretty)
 			}
 
 			// --check (FR-12): compare encoded result to re-encoded original.
@@ -355,12 +356,12 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
 					return &emittedError{cause: errors.New(msg)}
 				}
-				return runCheck(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing, yamlVersion)
+				return runCheck(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing, yamlVersion, pretty)
 			}
 
 			// -i / --in-place: route through the two-pass file orchestrator.
 			if effectiveInPlace {
-				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, outputFormat, jqArgs, limits, timeout, keepGoing, backupSuffix, createMissing, yamlVersion)
+				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, outputFormat, jqArgs, limits, timeout, keepGoing, backupSuffix, createMissing, yamlVersion, pretty)
 			}
 
 			// STDIN mode (FR-3, STORY-0005): no file args, or explicit "-".
@@ -370,14 +371,14 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 					opts.Logger.ErrorGlobal(logx.EventFormatUnknown, fmtErr.Error())
 					return &emittedError{cause: fmtErr}
 				}
-				return runStdin(cmd.Context(), resolvedOpts, fmtName, outputFormat, qText, wherePredicate, jqArgs, limits, timeout, keepGoing, createMissing, yamlVersion)
+				return runStdin(cmd.Context(), resolvedOpts, fmtName, outputFormat, qText, wherePredicate, jqArgs, limits, timeout, keepGoing, createMissing, yamlVersion, pretty)
 			}
 
 			// Default: single-file file→stdout path (STORY-0003).
 			// --where is not meaningful in single-file mode (there's nothing to
 			// filter against a batch), so wherePredicate is intentionally not
 			// passed to runOnce.
-			return runOnce(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing, yamlVersion)
+			return runOnce(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing, yamlVersion, pretty)
 		},
 	}
 
@@ -391,13 +392,13 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	// STORY-0009 flag: --where (FR-10). Inner jq predicate; implementation
 	// wraps it as select(<predicate>) at evaluation time.
 	cmd.Flags().StringVar(&wherePredicate, "where", "", "filter docs by jq predicate: only matching docs have --query applied (stream: others pass through; file mode: others are skipped)")
-	cmd.Flags().StringVar(&formatName, "format", "", "force input format (json|yaml|toml); default is extension-based detection")
+	cmd.Flags().StringVar(&formatName, "format", "", "force input format (json|jsonl|yaml|toml); default is extension-based detection")
 	// STORY-0015: --output-format overrides the encode format independently of the input format.
 	// When absent, the effective output format equals the detected/overridden input format.
 	// When given, the output is encoded in the specified format regardless of input format.
 	// Incompatible with -i (in-place), because transcoding a file in-place silently changes
 	// its format, which is almost always destructive and unintentional.
-	cmd.Flags().StringVar(&outputFormat, "output-format", "", "output format (json|yaml|toml); defaults to same as input format when not specified")
+	cmd.Flags().StringVar(&outputFormat, "output-format", "", "output format (json|yaml|toml); defaults to same as input format when not specified. When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)")
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "bind $K=V in the query as a literal string (repeatable)")
 	cmd.Flags().StringArrayVar(&argJSONPairs, "argjson", nil, "bind $K=V in the query as a JSON-decoded value (repeatable)")
 	// -i / --in-place flag (STORY-0004 FR-1): edit files in-place atomically.
@@ -439,6 +440,12 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	cmd.Flags().IntVar(&maxDepth, "max-depth", defaults.MaxDepth, "reject documents nested deeper than this; 0 disables the cap")
 	cmd.Flags().IntVar(&maxYAMLNodes, "max-yaml-nodes", defaults.MaxYAMLNodes, "YAML node-materialisation cap (billion-laughs mitigation); 0 disables the cap")
 	cmd.Flags().Int64Var(&maxQueryBytes, "max-query-bytes", format.DefaultQueryMaxBytes, "reject query files (--from-file) larger than this many bytes; 0 disables the cap")
+	// STORY-0018: --pretty enables human-friendly TOML output. When set with
+	// --output-format toml (or when the input format is toml), arrays with >1
+	// element are expanded to multi-line, inline tables with >1 key are expanded
+	// to block form, and blank lines are inserted between top-level entries.
+	// Silently ignored for non-TOML output formats (json, yaml, jsonl).
+	cmd.Flags().BoolVar(&pretty, "pretty", false, "emit human-friendly TOML output: multi-line arrays, expanded tables, blank lines between entries (currently only affects TOML output)")
 
 	cmd.SetOut(opts.Stdout)
 	cmd.SetErr(opts.Stderr)
@@ -453,11 +460,14 @@ Supported modes:
   - STDIN stream mode: omit the file argument (or pass -) to read from stdin.
   - --edit to open $EDITOR on the file, then emit a suggested query from the diff.
   - --arg K=V (string) and --argjson K=V (JSON-decoded) bindings.
-  - --format <json|yaml|toml> to override extension-based detection.
+  - --format <json|jsonl|yaml|toml> to override extension-based detection.
   - $${VAR} literal escape in a query (nesdit never expands shell env).
   - -i / --in-place to edit files atomically in place.
   - -n / --dry-run to preview changes as a unified diff (no writes).
   - --check to gate on drift: exit 2 if the query changes the input.
+  - --pretty to emit human-friendly TOML output (multi-line arrays, expanded
+    inline tables, blank lines between entries); silently ignored for non-TOML
+    output formats.
   - --timeout <dur> to cancel a runaway query on a deadline.
   - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
     resource caps for decode-phase hardening.`
@@ -835,7 +845,10 @@ func unescapeDollarBrace(q string) string {
 // STORY-0015: outputFmtOverride, when non-empty, selects the encode
 // format independently of the input format. When empty, the encode format
 // equals the detected/overridden input format (no behaviour change).
-func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat, outputFmtOverride string, args []query.Arg, limits format.Limits, timeout time.Duration, createMissing bool, yamlVersion string) error {
+//
+// STORY-0018: pretty enables human-friendly TOML output when the effective
+// output format is "toml". Silently ignored for other output formats.
+func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat, outputFmtOverride string, args []query.Arg, limits format.Limits, timeout time.Duration, createMissing bool, yamlVersion string, pretty bool) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
 		fmtName = detectFormatByExt(path)
@@ -896,7 +909,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 	}
 
 	var buf bytes.Buffer
-	if err := encodeFormatValue(outFmtName, &buf, outVal); err != nil {
+	if err := encodeFormatValueWithPretty(outFmtName, &buf, outVal, pretty); err != nil {
 		// Distinguish cross-format incompatibility (FR-19) from
 		// generic encode failures for better user diagnostics.
 		var encErr *omap.EncodeError
@@ -1020,13 +1033,20 @@ func decodeFormatValueWithLimitsAndVersion(fmtName string, r io.Reader, limits f
 // encodeFormatValue is the top-level-agnostic encoder. The TOML implementation
 // rejects non-map tops with a path-aware error so the TOML spec is preserved.
 func encodeFormatValue(fmtName string, w io.Writer, v omap.Value) error {
+	return encodeFormatValueWithPretty(fmtName, w, v, false)
+}
+
+// encodeFormatValueWithPretty is encodeFormatValue with STORY-0018 pretty
+// support. When pretty is true and fmtName is "toml", pretty-printing is
+// enabled. For all other formats, pretty is silently ignored.
+func encodeFormatValueWithPretty(fmtName string, w io.Writer, v omap.Value, pretty bool) error {
 	switch fmtName {
 	case "json":
 		return jsonfmt.EncodeValue(w, v)
 	case "yaml":
 		return yamlfmt.EncodeValue(w, v)
 	case "toml":
-		return tomlfmt.EncodeValue(w, v)
+		return tomlfmt.EncodeValueWithOptions(w, v, tomlfmt.EncodeOptions{Pretty: pretty})
 	default:
 		return fmt.Errorf("unknown format %q", fmtName)
 	}

@@ -46,6 +46,9 @@ import (
 // for the "after" half of the diff independently of the input format. The
 // "before" baseline is always encoded in the input format so the diff shows
 // the full cross-format transformation.
+//
+// STORY-0018: pretty enables human-friendly TOML output for the "after"
+// half of the diff. Silently ignored for non-TOML output formats.
 func runDryRun(
 	ctx context.Context,
 	opts RunOptions,
@@ -55,6 +58,7 @@ func runDryRun(
 	timeout time.Duration,
 	createMissing bool,
 	yamlVersion string,
+	pretty bool,
 ) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
@@ -92,6 +96,8 @@ func runDryRun(
 	// Re-encode original without query for the diff "before" baseline.
 	// The "before" is always in the input format so the diff spans the full
 	// cross-format transformation when --output-format differs from input.
+	// Intentionally compact (not pretty) so the diff shows formatting changes
+	// as deliberate — the user sees exactly what --pretty would change.
 	var beforeBuf bytes.Buffer
 	if reencErr := encodeFormatValue(fmtName, &beforeBuf, val); reencErr != nil {
 		opts.Logger.Error(logx.EventEncodeError, path, reencErr.Error())
@@ -121,8 +127,9 @@ func runDryRun(
 	}
 
 	// Encode the query result for the diff "after" using the effective output format.
+	// STORY-0018: apply pretty when set and output format is toml.
 	var afterBuf bytes.Buffer
-	if encErr := encodeFormatValue(outFmtName, &afterBuf, outVal); encErr != nil {
+	if encErr := encodeFormatValueWithPretty(outFmtName, &afterBuf, outVal, pretty); encErr != nil {
 		var encodeErr *omap.EncodeError
 		if errors.As(encErr, &encodeErr) {
 			opts.Logger.Error(logx.EventFormatIncompatible, path, encErr.Error())
@@ -175,6 +182,9 @@ func runDryRun(
 // format; a cross-format --check with identity query will therefore always
 // report drift (the two representations differ), which is the correct
 // behaviour — the file would be changed if written.
+//
+// STORY-0018: pretty enables human-friendly TOML output. Silently ignored
+// for non-TOML output formats.
 func runCheck(
 	ctx context.Context,
 	opts RunOptions,
@@ -184,6 +194,7 @@ func runCheck(
 	timeout time.Duration,
 	createMissing bool,
 	yamlVersion string,
+	pretty bool,
 ) error {
 	fmtName := overrideFormat
 	if fmtName == "" {
@@ -219,8 +230,14 @@ func runCheck(
 	}
 
 	// Re-encode original for the baseline (normalised form, in input format).
+	// STORY-0018: apply pretty here so the baseline matches the "after" encoding
+	// when --pretty is set — without this, --check --pretty on an already-
+	// prettified TOML file would always report drift (compact != pretty output).
+	// We deliberately keep fmtName (input format, not outFmtName) so that
+	// cross-format --check (e.g. json→yaml) still detects drift correctly: the
+	// two serialisations are never byte-identical across formats.
 	var beforeBuf bytes.Buffer
-	if reencErr := encodeFormatValue(fmtName, &beforeBuf, val); reencErr != nil {
+	if reencErr := encodeFormatValueWithPretty(fmtName, &beforeBuf, val, pretty); reencErr != nil {
 		opts.Logger.Error(logx.EventEncodeError, path, reencErr.Error())
 		return &emittedError{cause: reencErr}
 	}
@@ -248,8 +265,9 @@ func runCheck(
 	}
 
 	// Encode the query result using the effective output format.
+	// STORY-0018: apply pretty when set and output format is toml.
 	var afterBuf bytes.Buffer
-	if encErr := encodeFormatValue(outFmtName, &afterBuf, outVal); encErr != nil {
+	if encErr := encodeFormatValueWithPretty(outFmtName, &afterBuf, outVal, pretty); encErr != nil {
 		var encodeErr *omap.EncodeError
 		if errors.As(encErr, &encodeErr) {
 			opts.Logger.Error(logx.EventFormatIncompatible, path, encErr.Error())

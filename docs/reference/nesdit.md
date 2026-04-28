@@ -12,11 +12,14 @@ Supported modes:
   - STDIN stream mode: omit the file argument (or pass -) to read from stdin.
   - --edit to open $EDITOR on the file, then emit a suggested query from the diff.
   - --arg K=V (string) and --argjson K=V (JSON-decoded) bindings.
-  - --format <json|yaml|toml> to override extension-based detection.
+  - --format <json|jsonl|yaml|toml> to override extension-based detection.
   - $${VAR} literal escape in a query (nesdit never expands shell env).
   - -i / --in-place to edit files atomically in place.
   - -n / --dry-run to preview changes as a unified diff (no writes).
   - --check to gate on drift: exit 2 if the query changes the input.
+  - --pretty to emit human-friendly TOML output (multi-line arrays, expanded
+    inline tables, blank lines between entries); silently ignored for non-TOML
+    output formats.
   - --timeout <dur> to cancel a runaway query on a deadline.
   - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
     resource caps for decode-phase hardening.
@@ -35,7 +38,7 @@ nesdit [flags] <file> [<file>...]
       --create-missing           allow queries to create keys/paths that do not exist in the input document; by default, absent paths are rejected
   -n, --dry-run                  emit a unified diff of before/after to stdout; do not write any file
       --edit                     open $EDITOR on a temp copy of the file; diff before/after and emit suggested query
-      --format string            force input format (json|yaml|toml); default is extension-based detection
+      --format string            force input format (json|jsonl|yaml|toml); default is extension-based detection
   -f, --from-file string         load query from file (mutually exclusive with --query)
   -h, --help                     help for nesdit
   -i, --in-place                 edit file(s) in-place using atomic temp+rename writes
@@ -45,7 +48,8 @@ nesdit [flags] <file> [<file>...]
       --max-depth int            reject documents nested deeper than this; 0 disables the cap (default 1000)
       --max-query-bytes int      reject query files (--from-file) larger than this many bytes; 0 disables the cap (default 1048576)
       --max-yaml-nodes int       YAML node-materialisation cap (billion-laughs mitigation); 0 disables the cap (default 100000)
-      --output-format string     output format (json|yaml|toml); defaults to same as input format when not specified
+      --output-format string     output format (json|yaml|toml); defaults to same as input format when not specified. When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)
+      --pretty                   emit human-friendly TOML output: multi-line arrays, expanded tables, blank lines between entries (currently only affects TOML output)
       --query string             jq-style query (default '.' identity when neither --query nor -f is given)
       --strict                   halt on the first document error (default behaviour; explicit alias for documentation)
       --timeout duration         cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap

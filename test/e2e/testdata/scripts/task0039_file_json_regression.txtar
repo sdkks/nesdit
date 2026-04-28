@@ -1,0 +1,24 @@
+# task0039_file_json_regression.txtar — TASK-0039: file mode JSON regression.
+#
+# Verifies that the TASK-0039 fix (stdin --format json single-doc path) did not
+# regress the existing file mode path for .json files.
+
+# Sub-test 1: .json file with a multi-line JSON object (file mode, runOnce).
+# This path was already correct before the fix; confirm it stays correct.
+nesdit --query '.' input.json
+stdout '"name":"alice"'
+stdout '"version":3'
+! stderr .
+
+# Sub-test 2: .json file in-place edit adds a field.
+cp input.json out.json
+nesdit -i --query '.active = true' --create-missing out.json
+nesdit --query '.' out.json
+stdout '"active":true'
+! stderr .
+
+-- input.json --
+{
+  "name": "alice",
+  "version": 3
+}

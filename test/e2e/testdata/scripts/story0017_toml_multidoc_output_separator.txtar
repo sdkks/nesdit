@@ -1,0 +1,23 @@
+# story0017_toml_multidoc_output_separator.txtar — STORY-0017: TOML multi-doc
+# output stream separator.
+#
+# When a JSONL input stream with two documents is piped through nesdit with
+# --output-format toml, the output MUST contain a `+++` separator between the
+# two TOML documents (Hugo-style multi-doc convention). No separator before the
+# first document, no separator after the last.
+#
+# SC-4: printf '{"a":1}\n{"b":2}\n' | nesdit --format jsonl --output-format toml
+# produces:
+#   a = 1
+#   +++
+#   b = 2
+# with exit code 0 and no stderr.
+
+stdin input.jsonl
+nesdit --format jsonl --output-format toml
+stdout '^a = 1\n\+\+\+\nb = 2\n$'
+! stderr .
+
+-- input.jsonl --
+{"a":1}
+{"b":2}

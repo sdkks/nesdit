@@ -20,6 +20,11 @@ echo '{"x":1,"y":2}' | nesdit --format json --query '.x = 99'
 {"x":99,"y":2}
 ```
 
+```sh
+# Multi-line JSON is handled correctly — no need for --format json when auto-detecting
+printf '{\n  "x": 1,\n  "y": 2\n}\n' | nesdit --query '.x = 99'
+```
+
 ## Multi-document YAML stream
 
 YAML documents separated by `---` are each transformed independently:
@@ -62,7 +67,7 @@ Key order is preserved per document (NFR-3): `name` appears before `version` in 
 JSON Lines (one JSON object per line) are also supported. Each line is treated as a separate document:
 
 ```sh
-printf '{"id":1}\n{"id":2}\n{"id":3}\n' | nesdit --format json --create-missing --query '.processed = true'
+printf '{"id":1}\n{"id":2}\n{"id":3}\n' | nesdit --format jsonl --create-missing --query '.processed = true'
 ```
 
 **Stdout:**
@@ -73,9 +78,11 @@ printf '{"id":1}\n{"id":2}\n{"id":3}\n' | nesdit --format json --create-missing 
 {"id":3,"processed":true}
 ```
 
+`--format jsonl` explicitly selects JSON Lines mode. `--format json` also works and auto-detects the stream format from content.
+
 ## TOML
 
-TOML is single-document only. Piping a multi-document TOML stream is an error:
+TOML is single-document only on **input**. Piping a multi-document TOML input stream is an error:
 
 ```sh
 cat multi.toml | nesdit --format toml --query '.'
@@ -83,6 +90,28 @@ cat multi.toml | nesdit --format toml --query '.'
 
 ```
 nesdit: error: -: format.unsupported: TOML input contains multiple top-level documents; TOML is single-doc only
+```
+
+### Multi-document TOML output
+
+When the **output** format is `toml` and the input stream contains more than one document, `nesdit` separates each output document with `+++` (a line containing only three plus signs). This follows the Hugo-style multi-document TOML convention and is not part of the TOML specification.
+
+```sh
+printf '{"a":1}\n{"b":2}\n' | nesdit --format jsonl --output-format toml
+```
+
+**Stdout:**
+
+```toml
+a = 1
++++
+b = 2
+```
+
+A YAML multi-document stream can be transcoded the same way:
+
+```sh
+nesdit --format yaml --output-format toml < stream.yaml
 ```
 
 ## --where: selective transform
@@ -172,9 +201,34 @@ version: 1
 !!! note
     In STDIN stream mode, `nesdit` adds `---` separators between documents in YAML output. In file→stdout mode, single-document YAML output does not include a leading `---`.
 
+## TOML pretty-print
+
+Use `--pretty` to emit human-readable TOML output. Arrays with more than one
+element are expanded across multiple lines with 2-space indentation, and blank
+lines are inserted between top-level entries:
+
+```sh
+printf '{"name":"alice","tags":["go","toml"]}\n' | nesdit --format json --output-format toml --pretty
+```
+
+**Stdout:**
+
+```toml
+name = "alice"
+
+tags = [
+  "go",
+  "toml",
+]
+```
+
+`--pretty` is silently ignored for non-TOML output formats (JSON, YAML, JSONL).
+Compact TOML output (no `--pretty`) is unchanged from today's behaviour.
+
 ## Related flags
 
 - [`--format`](../reference/nesdit.md) — override format detection for STDIN.
 - [`--where`](../reference/nesdit.md) — filter documents by a jq predicate.
 - [`--strict`](../reference/nesdit.md) / [`--keep-going`](../reference/nesdit.md) — error policy for multi-document streams.
 - [`--output-format`](../reference/nesdit.md) — transcode output to a different format.
+- [`--pretty`](../reference/nesdit.md) — emit human-friendly TOML output (currently only affects TOML).

@@ -1,0 +1,74 @@
+# story0018_toml_pretty.txtar — STORY-0018: TOML pretty-print output.
+#
+# Verifies that --pretty with --output-format toml produces multi-line arrays
+# with 2-space indentation and blank lines between top-level entries.
+# Also verifies that --pretty is silently ignored for non-TOML output formats.
+
+# File mode: TOML input → pretty TOML output.
+# Arrays with >1 element must be expanded; blank lines between top-level keys.
+nesdit input.toml --output-format toml --pretty
+stdout 'name = "example"'
+stdout 'tags = \['
+stdout '  "a",'
+stdout '  "b",'
+stdout '  "c",'
+stdout '\]'
+! stderr .
+
+# STDIN mode: YAML input → pretty TOML output.
+stdin input.yaml
+nesdit --format yaml --output-format toml --pretty
+stdout 'host = "localhost"'
+stdout 'ports = \['
+stdout '  8080,'
+stdout '  8443,'
+stdout '\]'
+! stderr .
+
+# Non-TOML output: --pretty is silently ignored for YAML output.
+nesdit input.toml --output-format yaml --pretty
+stdout 'name: example'
+! stderr .
+
+# Non-TOML output: --pretty is silently ignored for JSON output.
+nesdit input.toml --output-format json --pretty
+stdout '"name":"example"'
+! stderr .
+
+# Compact mode (no --pretty): arrays must stay on one line.
+nesdit input.toml --output-format toml
+stdout 'tags = \["a", "b", "c"\]'
+! stderr .
+
+# --check --pretty with identity query on a pre-prettified TOML file → exit 0 (no drift).
+# STORY-0018 bug fix: before the fix, this always reported drift because the
+# "before" baseline was encoded compact while "after" was encoded pretty.
+nesdit pretty.toml --check --pretty --query '.'
+! stdout .
+! stderr .
+
+# --check --pretty with a query that changes a value → exit 2 (drift detected).
+! nesdit pretty.toml --check --pretty --query '.version = 99'
+! stdout .
+
+-- input.toml --
+name = "example"
+version = 1
+tags = ["a", "b", "c"]
+
+-- input.yaml --
+host: localhost
+ports:
+  - 8080
+  - 8443
+
+-- pretty.toml --
+name = "example"
+
+version = 1
+
+tags = [
+  "a",
+  "b",
+  "c",
+]

@@ -9,8 +9,11 @@
 //   - JSONL: newline-separated JSON documents, one per line. Empty lines
 //     are skipped. The reader yields one omap.Value per non-empty line; the
 //     writer emits each document followed by `\n`.
-//   - TOML: single-document only. Any input containing a `---` separator
-//     is rejected immediately with a format.unsupported error naming TOML.
+//   - TOML: single-document only on input. Any input containing a `---`
+//     separator is rejected immediately with a format.unsupported error
+//     naming TOML. Multi-document TOML output is supported: the writer
+//     emits `+++\n` between documents (Hugo-style convention; not part of
+//     the TOML spec).
 //
 // # NFR-8 contract
 //
@@ -291,19 +294,39 @@ func (tr *tomlDocReader) Next() bool {
 func (tr *tomlDocReader) Value() omap.Value { return tr.val }
 func (tr *tomlDocReader) Err() error        { return tr.err }
 
-// tomlDocWriter writes a single TOML document to w.
+// tomlDocWriter writes TOML documents to w, emitting a `+++\n` separator
+// before the second and each subsequent document (Hugo-style multi-doc
+// convention; not part of the TOML spec).
 type tomlDocWriter struct {
-	w io.Writer
+	w            io.Writer
+	firstWritten bool
+	opts         tomlfmt.EncodeOptions
 }
 
-// NewTOMLWriter returns a DocWriter for TOML. TOML does not support
-// multi-document streams; callers must ensure exactly one WriteDoc call.
+// NewTOMLWriter returns a DocWriter for TOML. WriteDoc may be called multiple
+// times; a `+++\n` separator is emitted before every document except the
+// first. This follows the Hugo-style multi-document TOML convention and is not
+// part of the TOML specification.
 func NewTOMLWriter(w io.Writer) DocWriter {
 	return &tomlDocWriter{w: w}
 }
 
+// NewTOMLWriterWithOptions returns a DocWriter for TOML with configurable
+// encode options. The zero EncodeOptions value produces output identical to
+// NewTOMLWriter. Use EncodeOptions{Pretty: true} to enable pretty-printing
+// (multi-line arrays, expanded inline tables, blank lines between entries).
+func NewTOMLWriterWithOptions(w io.Writer, opts tomlfmt.EncodeOptions) DocWriter {
+	return &tomlDocWriter{w: w, opts: opts}
+}
+
 func (tw *tomlDocWriter) WriteDoc(v omap.Value) error {
-	return tomlfmt.EncodeValue(tw.w, v)
+	if tw.firstWritten {
+		if _, err := io.WriteString(tw.w, "+++\n"); err != nil {
+			return fmt.Errorf("toml: write separator: %w", err)
+		}
+	}
+	tw.firstWritten = true
+	return tomlfmt.EncodeValueWithOptions(tw.w, v, tw.opts)
 }
 
 // --- Factory helpers ---

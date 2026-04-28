@@ -1,0 +1,51 @@
+# task0039_stdin_json_multiline.txtar — TASK-0039: --format json with multi-line
+# JSON on stdin must succeed.
+#
+# Before the fix, --format json was normalised to "jsonl" before being passed
+# to the stream reader, which split the input on newlines. The first line
+# ("{"a": 1,") was decoded as a complete document and failed with json: EOF.
+# After the fix, --format json routes through a single-document decode that
+# buffers all of stdin and decodes it as one JSON value.
+
+# Sub-test 1: multi-line JSON object with --format json and an identity query.
+# The object spans four lines; all fields must appear in the output.
+stdin multiline.json
+nesdit --format json --query '.'
+stdout '"a":1'
+stdout '"b":2'
+! stderr .
+
+# Sub-test 2: multi-line JSON object with --format json, --query that adds a
+# field, and --create-missing. Reproduces the exact scenario from the bug report.
+stdin multiline.json
+nesdit --format json --output-format yaml --query '.c=4' --create-missing
+stdout 'a: 1'
+stdout 'b: 2'
+stdout 'c: 4'
+! stderr .
+
+# Sub-test 3: single-line JSON object with --format json (regression: must not
+# break the previously working case).
+stdin singleline.json
+nesdit --format json --query '.'
+stdout '^{"x":10}$'
+! stderr .
+
+# Sub-test 4: --format jsonl with a two-document JSONL stream (regression: the
+# JSONL streaming path must still work after the json path change).
+stdin stream.jsonl
+nesdit --format jsonl --query '.ok = true' --create-missing
+stdout '^{"id":1,"ok":true}$'
+stdout '^{"id":2,"ok":true}$'
+! stderr .
+
+-- multiline.json --
+{
+  "a": 1,
+  "b": 2
+}
+-- singleline.json --
+{"x":10}
+-- stream.jsonl --
+{"id":1}
+{"id":2}

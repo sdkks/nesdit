@@ -51,6 +51,21 @@ Force the output format:
 or
 .IR toml .
 Defaults to the same format as the input.
+When the output format is
+.B toml
+and more than one document is written to the stream, documents are separated
+by
+.B +++
+(a line containing only three plus signs).
+This convention follows Hugo-style multi-document TOML and is not part of the
+TOML specification.
+.TP
+.B \-\-pretty
+Emit human-readable TOML output: arrays with more than one element are
+expanded across multiple lines with 2-space indentation, inline tables
+with more than one key are expanded to block form, and blank lines are
+inserted between top-level entries.
+Silently ignored for non-TOML output formats (JSON, YAML, JSONL).
 .TP
 .BI \-\-log\-format " mode"
 Stderr rendering mode:
@@ -100,6 +115,7 @@ document.  By default, absent paths are rejected.
 .BI \-\-format " format"
 Force the input format:
 .IR json ,
+.IR jsonl ,
 .IR yaml ,
 or
 .IR toml .

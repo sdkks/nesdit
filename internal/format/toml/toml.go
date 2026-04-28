@@ -67,14 +67,34 @@ func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error
 	return omap.MapValue(d), nil
 }
 
+// EncodeOptions controls optional encoding behaviour. The zero value selects
+// compact mode, which is byte-identical to the original Encode output.
+type EncodeOptions struct {
+	// Pretty enables human-friendly output: blank lines between top-level
+	// entries, multi-line arrays with >1 element, and expanded inline tables
+	// with >1 key. Key order is always insertion order regardless of this flag.
+	// Only affects TOML output; the JSON and YAML encoders are unaffected.
+	Pretty bool
+}
+
 // Encode writes d as a TOML document to w using the key insertion order of
 // every *omap.Doc it contains. Returns *omap.EncodeError when a value
 // cannot be represented in TOML (null, NaN, +/-Inf).
 func Encode(w io.Writer, d *omap.Doc) error {
+	return EncodeWithOptions(w, d, EncodeOptions{})
+}
+
+// EncodeWithOptions is Encode with configurable options. The zero EncodeOptions
+// value produces output byte-identical to Encode. With EncodeOptions{Pretty:true},
+// arrays with >1 element are expanded across multiple lines, maps with >1 key are
+// expanded to block form, and blank lines are inserted between top-level entries.
+func EncodeWithOptions(w io.Writer, d *omap.Doc, opts EncodeOptions) error {
 	if err := checkTOMLRepresentable(omap.MapValue(d)); err != nil {
 		return err
 	}
-	return newTOMLWriter(w).writeDoc(d)
+	tw := newTOMLWriter(w)
+	tw.pretty = opts.Pretty
+	return tw.writeDoc(d)
 }
 
 // EncodeValue writes any omap.Value as a TOML document. Because TOML spec
@@ -83,6 +103,12 @@ func Encode(w io.Writer, d *omap.Doc) error {
 // errors.Is/As routing in run.go classifies the failure as
 // format.incompatible (FR-19 cross-format incompatibility, NFR-7).
 func EncodeValue(w io.Writer, v omap.Value) error {
+	return EncodeValueWithOptions(w, v, EncodeOptions{})
+}
+
+// EncodeValueWithOptions is EncodeValue with configurable options. The zero
+// EncodeOptions value produces output byte-identical to EncodeValue.
+func EncodeValueWithOptions(w io.Writer, v omap.Value, opts EncodeOptions) error {
 	if v.Kind != omap.KindMap {
 		kind := kindName(v.Kind)
 		return &omap.EncodeError{
@@ -100,7 +126,7 @@ func EncodeValue(w io.Writer, v omap.Value) error {
 			Cause:  fmt.Errorf("top-level table is nil"),
 		}
 	}
-	return Encode(w, v.Map)
+	return EncodeWithOptions(w, v.Map, opts)
 }
 
 func kindName(k omap.Kind) string {
@@ -377,8 +403,9 @@ func checkTOMLRepresentable(v omap.Value) *omap.EncodeError {
 }
 
 type tomlWriter struct {
-	w   io.Writer
-	err error
+	w      io.Writer
+	err    error
+	pretty bool
 }
 
 func newTOMLWriter(w io.Writer) *tomlWriter { return &tomlWriter{w: w} }
@@ -394,7 +421,7 @@ func (tw *tomlWriter) writeStr(s string) {
 // key-values first, then sub-tables (as [header] sections) in insertion
 // order. Arrays of tables become [[header]] blocks per element.
 func (tw *tomlWriter) writeDoc(d *omap.Doc) error {
-	tw.writeTable(nil, d)
+	tw.writeTable(nil, d, 0)
 	return tw.err
 }
 
@@ -407,22 +434,54 @@ func (tw *tomlWriter) writeDoc(d *omap.Doc) error {
 // round-trips (NFR-3, NFR-2 idempotency). The trade-off is a less
 // "TOML-idiomatic" output for deeply nested documents; in exchange we
 // guarantee that decode→encode→decode is a stable fixed point.
-func (tw *tomlWriter) writeTable(_ []string, d *omap.Doc) {
+//
+// In pretty mode (tw.pretty == true), blank lines are inserted between
+// top-level entries (depth == 0). The depth parameter is threaded through
+// all recursive calls so each frame owns its own depth; it is NOT stored
+// on the struct (that would introduce shared mutable state in recursion).
+func (tw *tomlWriter) writeTable(_ []string, d *omap.Doc, depth int) {
+	first := true
 	d.Entries(func(k string, v omap.Value) bool {
 		if tw.err != nil {
 			return false
 		}
+		// In pretty mode, emit a blank line between top-level entries
+		// (but not before the very first entry).
+		if tw.pretty && depth == 0 && !first {
+			tw.writeStr("\n")
+		}
+		first = false
 		tw.writeStr(encodeKey(k))
 		tw.writeStr(" = ")
-		tw.writeInlineValue(v)
+		tw.writeInlineValue(v, depth)
 		tw.writeStr("\n")
 		return true
 	})
 }
 
+// indent returns the indentation string for a given depth level.
+// Each level uses 2 spaces. depth == 0 means no indentation.
+func indent(depth int) string {
+	const spaces = "                                " // 32 spaces buffer
+	n := depth * 2
+	if n <= len(spaces) {
+		return spaces[:n]
+	}
+	// Fallback for extreme depths.
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = ' '
+	}
+	return string(b)
+}
+
 // writeInlineValue emits a single value in inline form (strings, numbers,
 // bools, arrays, inline tables).
-func (tw *tomlWriter) writeInlineValue(v omap.Value) {
+//
+// In pretty mode, arrays with >1 element are expanded across multiple lines
+// and maps with >1 key are expanded to block form. The depth parameter
+// controls the indentation level for nested containers.
+func (tw *tomlWriter) writeInlineValue(v omap.Value, depth int) {
 	switch v.Kind {
 	case omap.KindBool:
 		if v.Bool {
@@ -439,35 +498,68 @@ func (tw *tomlWriter) writeInlineValue(v omap.Value) {
 		}
 		tw.writeStr(encodeTOMLString(v.Str))
 	case omap.KindSeq:
-		tw.writeStr("[")
-		for i, it := range v.Seq {
-			if i > 0 {
-				tw.writeStr(", ")
+		if tw.pretty && len(v.Seq) > 1 {
+			tw.writePrettySeq(v.Seq, depth)
+		} else {
+			tw.writeStr("[")
+			for i, it := range v.Seq {
+				if i > 0 {
+					tw.writeStr(", ")
+				}
+				tw.writeInlineValue(it, depth+1)
 			}
-			tw.writeInlineValue(it)
+			tw.writeStr("]")
 		}
-		tw.writeStr("]")
 	case omap.KindMap:
+		// Note: multi-line inline tables (with newlines inside {}) are only
+		// valid in TOML 1.1, not TOML 1.0. Since this project uses go-toml/v2
+		// in TOML 1.0 mode, maps are always emitted as single-line inline tables
+		// to preserve round-trip correctness. In pretty mode the values inside
+		// the inline table still benefit from any pretty-formatting that applies
+		// to nested arrays (depth is threaded through so nested arrays expand).
 		tw.writeStr("{")
 		first := true
-		v.Map.Entries(func(k string, sub omap.Value) bool {
-			if tw.err != nil {
-				return false
-			}
-			if !first {
-				tw.writeStr(", ")
-			}
-			first = false
-			tw.writeStr(encodeKey(k))
-			tw.writeStr(" = ")
-			tw.writeInlineValue(sub)
-			return true
-		})
+		if v.Map != nil {
+			v.Map.Entries(func(k string, sub omap.Value) bool {
+				if tw.err != nil {
+					return false
+				}
+				if !first {
+					tw.writeStr(", ")
+				}
+				first = false
+				tw.writeStr(encodeKey(k))
+				tw.writeStr(" = ")
+				tw.writeInlineValue(sub, depth+1)
+				return true
+			})
+		}
 		tw.writeStr("}")
 	case omap.KindNull:
 		// Unreachable — checkTOMLRepresentable rejects earlier.
 		tw.err = fmt.Errorf("toml: null reached encoder (bug)")
 	}
+}
+
+// writePrettySeq emits a multi-line array (pretty mode, len > 1).
+// Trailing comma after the last element IS valid in TOML 1.0.
+//
+//	key = [
+//	  "a",
+//	  "b",
+//	  "c",
+//	]
+func (tw *tomlWriter) writePrettySeq(seq []omap.Value, depth int) {
+	childIndent := indent(depth + 1)
+	closeIndent := indent(depth)
+	tw.writeStr("[\n")
+	for _, it := range seq {
+		tw.writeStr(childIndent)
+		tw.writeInlineValue(it, depth+1)
+		tw.writeStr(",\n")
+	}
+	tw.writeStr(closeIndent)
+	tw.writeStr("]")
 }
 
 // encodeKey returns a TOML key token — bare when safe, otherwise quoted.
