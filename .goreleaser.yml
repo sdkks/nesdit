@@ -70,7 +70,7 @@ brews:
   - name: nesdit
     repository:
       owner: sdkks
-      name: tap
+      name: homebrew-tap
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     directory: Formula
     homepage: "https://sdkks.github.io/nesdit/"
