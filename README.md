@@ -1,6 +1,6 @@
 # nesdit
 
-A CLI for deterministic, format-preserving edits to JSON, YAML, and TOML documents using jq-style queries.
+A CLI for deterministic, format-preserving edits to JSON, YAML, and TOML documents using jq-style queries. Key order and value types are preserved; comments and YAML anchors are not.
 
 - Reads a file (or stdin), applies a query, and writes the result — without reformatting untouched content.
 - Supports in-place editing (`-i`), dry-run diffs (`-n`), drift checking (`--check`), and editor-assisted query building (`--edit`).
@@ -59,9 +59,9 @@ nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $repli
 
 | Format | Extensions      | Notes                       |
 | ------ | --------------- | --------------------------- |
-| JSON   | `.json`         | Preserves key order         |
-| YAML   | `.yaml`, `.yml` | Single-document per file    |
-| TOML   | `.toml`         | Tables and arrays of tables |
+| JSON   | `.json`         | Preserves key order; output is always compact (single-line) |
+| YAML   | `.yaml`, `.yml` | Single-document per file; anchors/aliases resolved on decode, not re-emitted |
+| TOML   | `.toml`         | Tables and arrays of tables; nested tables emitted as inline syntax |
 
 Format is auto-detected from the file extension. Use `--format json|jsonl|yaml|toml` to override input format, and `--output-format json|yaml|toml` to transcode to a different output format.
 

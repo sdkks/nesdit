@@ -2,8 +2,10 @@
 
 `nesdit` reads and writes JSON, YAML, and TOML. By default the output format equals the input format. Use `--output-format` to transcode to a different format.
 
-!!! note
-    Comments are not preserved across round-trips. This is an explicit non-goal for v1. If your files contain comments that matter, keep the source-of-truth file elsewhere and generate the deployed copy from it.
+!!! note "Current limitations"
+    - **Comments** are not preserved across round-trips. This is an explicit non-goal for v1. If your files contain comments that matter, keep the source-of-truth file elsewhere and generate the deployed copy from it.
+    - **YAML anchors and aliases** are resolved on decode and not re-emitted. Output always contains the fully expanded values, not the original anchor references.
+    - **JSON output is always compact** (single-line, no indentation). `--pretty` currently only affects TOML output.
 
 ## JSON → JSON
 

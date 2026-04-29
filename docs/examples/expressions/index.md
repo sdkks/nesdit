@@ -320,38 +320,6 @@ The shell environment variable `FOO` is never read. `$${FOO}` is always the lite
 
 ---
 
-## `$ENV`: read a shell environment variable directly
-
-`$ENV.VARNAME` exposes the process environment as a jq object — no `--arg` or `--argjson` needed. The value is always a string (environment variables have no type); use `tonumber` or `test(...)` to coerce when necessary.
-
-**Input (`deploy.yaml`):**
-
-```yaml
-replicas: 3
-```
-
-```sh
-# Given: export REPLICAS=5
-REPLICAS=5 nesdit --format yaml --query '.replicas = ($ENV.REPLICAS | tonumber)' deploy.yaml
-```
-
-**Stdout:**
-
-```yaml
-replicas: 5
-```
-
-The shell variable `REPLICAS` is read directly from the process environment — no `--arg REPLICAS=$REPLICAS` required.
-
-!!! note "Contrast with `$${VAR}` escaping"
-    `$ENV.VARNAME` is native jq syntax for reading the process environment at query runtime.
-    `$${VAR}` (double-dollar) is nesdit's escape for producing the literal string `${VAR}` in output — it does **not** read the environment. The two mechanisms are independent:
-
-    - Use `$ENV.VARNAME` when you want the runtime value of a shell variable inside your query.
-    - Use `$${VAR}` when you need the literal text `${VAR}` in a value (e.g., a Kubernetes env-var template that must contain `${FOO}` as a placeholder string).
-
----
-
 ## `--create-missing`: allow queries to create new keys
 
 By default, assigning to a path that does not exist is an error:

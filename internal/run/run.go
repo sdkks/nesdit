@@ -391,14 +391,14 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	cmd.Flags().StringVarP(&queryFile, "from-file", "f", "", "load query from file (mutually exclusive with --query)")
 	// STORY-0009 flag: --where (FR-10). Inner jq predicate; implementation
 	// wraps it as select(<predicate>) at evaluation time.
-	cmd.Flags().StringVar(&wherePredicate, "where", "", "filter docs by jq predicate: only matching docs have --query applied (stream: others pass through; file mode: others are skipped)")
+	cmd.Flags().StringVar(&wherePredicate, "where", "", "filter docs by jq predicate: only matching docs have --query applied (stream: others pass through; in-place batch mode (-i): non-matching files are skipped; not supported in single-file stdout mode)")
 	cmd.Flags().StringVar(&formatName, "format", "", "force input format (json|jsonl|yaml|toml); default is extension-based detection")
 	// STORY-0015: --output-format overrides the encode format independently of the input format.
 	// When absent, the effective output format equals the detected/overridden input format.
 	// When given, the output is encoded in the specified format regardless of input format.
 	// Incompatible with -i (in-place), because transcoding a file in-place silently changes
 	// its format, which is almost always destructive and unintentional.
-	cmd.Flags().StringVar(&outputFormat, "output-format", "", "output format (json|yaml|toml); defaults to same as input format when not specified. When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)")
+	cmd.Flags().StringVar(&outputFormat, "output-format", "", "output format (json|yaml|toml); defaults to same as input format when not specified. jsonl is not a valid output format: JSONL output happens automatically when the input format is jsonl (one output line per input line). When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)")
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "bind $K=V in the query as a literal string (repeatable)")
 	cmd.Flags().StringArrayVar(&argJSONPairs, "argjson", nil, "bind $K=V in the query as a JSON-decoded value (repeatable)")
 	// -i / --in-place flag (STORY-0004 FR-1): edit files in-place atomically.

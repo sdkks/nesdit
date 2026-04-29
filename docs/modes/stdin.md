@@ -2,9 +2,13 @@
 
 When no file argument is given, `nesdit` reads from **stdin** and writes to **stdout**. This makes it a drop-in filter in shell pipelines.
 
-Use `--format` to specify the input format (or pass `-` as the file argument):
+`--format` is optional: nesdit auto-detects the input format by scanning the first bytes of the stream. JSON and JSONL are distinguished by whether the first non-whitespace byte opens an object/array (`json`) or whether the stream contains multiple top-level values separated by newlines (`jsonl`). YAML is detected by `---` stream markers or YAML-specific syntax; TOML by key-value and section-header patterns. If detection is ambiguous or fails, pass `--format` explicitly.
 
 ```sh
+# --format is optional when the content is unambiguous
+echo '{"x": 1}' | nesdit --query '.x = 2'
+
+# Use --format to be explicit or override detection
 cat config.yaml | nesdit --format yaml --query '.version = 2'
 ```
 
