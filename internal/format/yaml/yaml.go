@@ -254,6 +254,24 @@ func (w *yamlWalker) node(n *yaml.Node, d int) (omap.Value, error) {
 			if kn.Kind != yaml.ScalarNode {
 				return omap.Value{}, fmt.Errorf("yaml: non-scalar map key at line %d (kind=%v)", kn.Line, kn.Kind)
 			}
+			// YAML 1.1 merge key: <<: *anchor expands the anchor's map into
+			// the current map. Explicit keys already set take precedence over
+			// merged defaults, so only set keys that are not already present.
+			if kn.Tag == "!!merge" {
+				merged, err := w.node(vn, d+1)
+				if err != nil {
+					return omap.Value{}, err
+				}
+				if merged.Kind == omap.KindMap && merged.Map != nil {
+					for _, mk := range merged.Map.Keys() {
+						if !doc.Has(mk) {
+							mv, _ := merged.Map.Get(mk)
+							doc.Set(mk, mv)
+						}
+					}
+				}
+				continue
+			}
 			v, err := w.node(vn, d+1)
 			if err != nil {
 				return omap.Value{}, err
