@@ -63,6 +63,8 @@ nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $repli
 | YAML   | `.yaml`, `.yml` | Single-document per file; anchors/aliases resolved on decode, not re-emitted |
 | TOML   | `.toml`         | Tables and arrays of tables; nested tables emitted as inline syntax |
 
+> **Known behaviors:** Comments are stripped from all formats on output. YAML anchors/aliases are resolved and not re-emitted. YAML quoted strings are normalized to bare scalars. TOML `[section]` headers are rewritten to inline-table syntax (`{key = value}`). JSON output is always compact (single-line). None of these affect the parsed value — only the serialized form.
+
 Format is auto-detected from the file extension. Use `--format json|jsonl|yaml|toml` to override input format, and `--output-format json|yaml|toml` to transcode to a different output format.
 
 ## Key flags

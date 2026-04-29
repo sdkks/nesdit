@@ -6,6 +6,7 @@
     - **Comments** are not preserved across round-trips. This is an explicit non-goal for v1. If your files contain comments that matter, keep the source-of-truth file elsewhere and generate the deployed copy from it.
     - **YAML anchors and aliases** are resolved on decode and not re-emitted. Output always contains the fully expanded values, not the original anchor references.
     - **JSON output is always compact** (single-line, no indentation). `--pretty` currently only affects TOML output.
+    - **YAML quoted strings** are normalized to bare scalars on output. A value like `"100m"` becomes `100m`. This applies to all keys in the document, not only those touched by the query.
 
 ## JSON → JSON
 
