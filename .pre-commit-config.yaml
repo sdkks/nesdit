@@ -26,3 +26,10 @@ repos:
         language: system
         types: [go]
         pass_filenames: false
+
+      - id: commit-msg-semantic
+        name: Semantic release commit message
+        entry: scripts/check-commit-msg.sh
+        language: script
+        stages: [commit-msg]
+        pass_filenames: false
