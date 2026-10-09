@@ -100,8 +100,8 @@ func TestTerminalJSONOutputPaths(t *testing.T) {
 	terminalRun(t, []string{"--format", "jsonl"}, "null\nfalse\n[1,\"x\"]\n", "\x1b[39mnull\x1b[0m\n\x1b[35mfalse\x1b[0m\n[\x1b[36m1\x1b[0m,\x1b[32m\"x\"\x1b[0m]\n", 0)
 	// Output format, not input format or global override, owns the style.
 	terminalRun(t, []string{"--format", "yaml", "--output-format", "json"}, "n: 2\n", "{\x1b[1;39m\"n\"\x1b[0m:\x1b[36m2\x1b[0m}\n", 0)
-	terminalRun(t, []string{"--format", "jsonl", "--output-format", "yaml", "--where", ".n == 1", "--query", ".n=7"}, "{\"n\":1}\n{\"n\":2}\n", "---\nn: 7\n{\x1b[1;39m\"n\"\x1b[0m:\x1b[36m2\x1b[0m}\n", 0)
-	terminalRun(t, []string{"--format", "yaml", "--output-format", "json", "--where", ".n == 1", "--query", ".n=7"}, "n: 1\n---\nn: 2\n", "{\x1b[1;39m\"n\"\x1b[0m:\x1b[36m7\x1b[0m}\n---\nn: 2\n", 0)
+	terminalRun(t, []string{"--format", "jsonl", "--output-format", "yaml", "--where", ".n == 1", "--query", ".n=7"}, "{\"n\":1}\n{\"n\":2}\n", "---\n\x1b[1;39mn\x1b[0m: \x1b[36m7\x1b[0m\n{\x1b[1;39m\"n\"\x1b[0m:\x1b[36m2\x1b[0m}\n", 0)
+	terminalRun(t, []string{"--format", "yaml", "--output-format", "json", "--where", ".n == 1", "--query", ".n=7"}, "n: 1\n---\nn: 2\n", "{\x1b[1;39m\"n\"\x1b[0m:\x1b[36m7\x1b[0m}\n---\n\x1b[1;39mn\x1b[0m: \x1b[36m2\x1b[0m\n", 0)
 	terminalRun(t, []string{"--format", "json", "--output-format", "yaml", "--where", ".n == 1", "--query", ".n=7"}, "{\"n\":2}", "{\x1b[1;39m\"n\"\x1b[0m:\x1b[36m2\x1b[0m}\n", 0)
 	// A later encode error emits no partial colored document under keep-going.
 	terminalRun(t, []string{"--format", "jsonl", "--query", "if . == 2 then nan else . end", "--keep-going"}, "1\n2\n3\n", "\x1b[36m1\x1b[0m\n\x1b[36m3\x1b[0m\n", 1)

@@ -146,7 +146,8 @@ func (yr *yamlDocReader) Err() error        { return yr.err }
 
 // yamlDocWriter writes `---`-framed YAML documents to w.
 type yamlDocWriter struct {
-	w io.Writer
+	w     io.Writer
+	color bool
 }
 
 // NewYAMLWriter returns a DocWriter that writes `---`-framed YAML documents to w.
@@ -156,8 +157,14 @@ func NewYAMLWriter(w io.Writer) DocWriter {
 
 func (yw *yamlDocWriter) WriteDoc(v omap.Value) error {
 	// Emit `---\n` before every document (including the first).
-	if _, err := io.WriteString(yw.w, "---\n"); err != nil {
-		return fmt.Errorf("yaml: write separator: %w", err)
+	var separatorErr error
+	if yw.color {
+		separatorErr = display.Write(yw.w, []byte("---\n"), nil)
+	} else {
+		_, separatorErr = io.WriteString(yw.w, "---\n")
+	}
+	if separatorErr != nil {
+		return fmt.Errorf("yaml: write separator: %w", separatorErr)
 	}
 	// Encode the value. yaml.EncodeValue writes a trailing newline via
 	// enc.Close, so we don't add one ourselves.
@@ -170,8 +177,11 @@ func (yw *yamlDocWriter) WriteDoc(v omap.Value) error {
 	// simple documents, but strip defensively).
 	out := buf.Bytes()
 	// yaml.v3 encoder output ends with \n; write as-is.
-	_, err := yw.w.Write(out)
-	return err
+	if !yw.color {
+		_, err := yw.w.Write(out)
+		return err
+	}
+	return display.Write(yw.w, out, yamlfmt.DisplaySpans(out))
 }
 
 // --- JSONL ---
@@ -384,6 +394,9 @@ func NewReaderWithOpts(fmtName string, r io.Reader, limits format.Limits, opts y
 // NewDisplayWriter selects styling from the actual format and output file.
 // Plain NewWriter remains available for non-display consumers.
 func NewDisplayWriter(fmtName string, w io.Writer) (DocWriter, error) {
+	if fmtName == "yaml" {
+		return &yamlDocWriter{w: w, color: display.Enabled(w)}, nil
+	}
 	if fmtName == "json" || fmtName == "jsonl" {
 		return &jsonlDocWriter{w: w, color: display.Enabled(w)}, nil
 	}

@@ -69,7 +69,7 @@ For version `0.4.1`, GitHub receives:
 - `nesdit_0.4.1_darwin_arm64.tar.gz`
 - `nesdit_0.4.1_checksums.txt` (SHA-256 of the three archives)
 
-Each archive contains `nesdit`, `README.md`, and
+Each archive contains `nesdit`, `README.md`, `THIRD-PARTY-NOTICES.md`, and
 `share/man/man1/nesdit.1`. Binaries use `CGO_ENABLED=0`, `-trimpath`, stripped
 symbols, and injected version/12-character commit metadata. Every binary must
 be smaller than 8 MiB. No additional platform support is implied.

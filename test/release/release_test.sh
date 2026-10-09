@@ -104,7 +104,7 @@ new_case() {
     mkdir -p "$CASE_STATE/repo/scripts" "$CASE_STATE/repo/docs"
     repo="$CASE_STATE/repo"
     cp "$src"/scripts/{bump-version,release-common,release,package-release}.sh "$repo/scripts/"
-    cp "$src/Makefile" "$src/README.md" "$repo/"
+    cp "$src/Makefile" "$src/README.md" "$src/THIRD-PARTY-NOTICES.md" "$repo/"
     cp "$src/docs/nesdit.1" "$repo/docs/"
     cd "$repo"
     # Fixtures have their own stable base, independent of the version being
@@ -226,6 +226,9 @@ for mode in release release-cli; do
         tar -tzf "$out/nesdit_0.4.0_${target}.tar.gz" > "$CASE_STATE/manifest"
         grep -Fxq nesdit "$CASE_STATE/manifest"
         grep -Fxq README.md "$CASE_STATE/manifest"
+        grep -Fxq THIRD-PARTY-NOTICES.md "$CASE_STATE/manifest"
+        tar -xOf "$out/nesdit_0.4.0_${target}.tar.gz" THIRD-PARTY-NOTICES.md > "$CASE_STATE/notice"
+        cmp "$src/THIRD-PARTY-NOTICES.md" "$CASE_STATE/notice"
         grep -Fxq share/man/man1/nesdit.1 "$CASE_STATE/manifest"
     done
     mkdir "$CASE_STATE/extracted"

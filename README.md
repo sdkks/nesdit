@@ -61,7 +61,7 @@ nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $repli
 
 Format is auto-detected from the file extension. Use `--format json|jsonl|yaml|toml` to override input format, and `--output-format json|yaml|toml` to transcode to a different output format.
 
-JSON, JSONL, and TOML data output, including JSON and TOML editor previews, is automatically syntax-highlighted when stdout is a terminal on Unix. Keys are bold; strings, numbers, and booleans use distinct basic terminal colors. Native TOML date/time literals remain uncolored. Set `NO_COLOR` to a nonempty value or `TERM=dumb` to disable highlighting. Pipes, redirected files, in-place edits, backups, diffs, help, diagnostics, and editor query text remain plain. YAML and Windows output remain uncolored.
+JSON, JSONL, YAML, and TOML data output, including serialized editor previews, is automatically syntax-highlighted when stdout is a terminal on Unix. Keys are bold; strings, numbers, and booleans use distinct basic terminal colors. Nulls use the terminal's default color. Native TOML date/time literals and YAML timestamps/custom-tagged values remain uncolored. Set `NO_COLOR` to a nonempty value or `TERM=dumb` to disable highlighting. Pipes, redirected files, in-place edits, backups, diffs, help, diagnostics, and editor query text remain plain. Windows output remains uncolored.
 
 ## Key flags
 
@@ -122,4 +122,4 @@ asset names, and partial-upload recovery.
 
 ## License
 
-See [LICENSE](LICENSE).
+See [LICENSE](LICENSE). The YAML highlighting dependency's attribution and supplied license are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), also included in release archives.

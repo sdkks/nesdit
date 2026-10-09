@@ -53,7 +53,7 @@ func TestTerminalTOMLMixedFramingAndFailures(t *testing.T) {
 	t.Setenv("TERM", "xterm")
 	terminalRun(t, []string{"--format", "jsonl", "--output-format", "toml"}, "{\"n\":1}\n{\"n\":2}\n", "\x1b[1;39mn\x1b[0m = \x1b[36m1\x1b[0m\n+++\n\x1b[1;39mn\x1b[0m = \x1b[36m2\x1b[0m\n", 0)
 	terminalRun(t, []string{"--format", "jsonl", "--output-format", "toml", "--where", ".n != 2", "--query", ".n=7"}, "{\"n\":1}\n{\"n\":2}\n{\"n\":3}\n", "\x1b[1;39mn\x1b[0m = \x1b[36m7\x1b[0m\n{\x1b[1;39m\"n\"\x1b[0m:\x1b[36m2\x1b[0m}\n+++\n\x1b[1;39mn\x1b[0m = \x1b[36m7\x1b[0m\n", 0)
-	terminalRun(t, []string{"--format", "yaml", "--output-format", "toml", "--where", ".n != 2", "--query", ".n=7"}, "n: 1\n---\nn: 2\n---\nn: 3\n", "\x1b[1;39mn\x1b[0m = \x1b[36m7\x1b[0m\n---\nn: 2\n+++\n\x1b[1;39mn\x1b[0m = \x1b[36m7\x1b[0m\n", 0)
+	terminalRun(t, []string{"--format", "yaml", "--output-format", "toml", "--where", ".n != 2", "--query", ".n=7"}, "n: 1\n---\nn: 2\n---\nn: 3\n", "\x1b[1;39mn\x1b[0m = \x1b[36m7\x1b[0m\n---\n\x1b[1;39mn\x1b[0m: \x1b[36m2\x1b[0m\n+++\n\x1b[1;39mn\x1b[0m = \x1b[36m7\x1b[0m\n", 0)
 	// Existing state/separator ordering is preserved even on encode failures.
 	terminalRun(t, []string{"--format", "jsonl", "--output-format", "toml", "--keep-going"}, "{\"n\":1}\n{\"n\":null}\n{\"n\":3}\n", "\x1b[1;39mn\x1b[0m = \x1b[36m1\x1b[0m\n+++\n+++\n\x1b[1;39mn\x1b[0m = \x1b[36m3\x1b[0m\n", 1)
 	terminalRun(t, []string{"--format", "jsonl", "--output-format", "toml", "--keep-going"}, "{\"n\":null}\n{\"n\":3}\n", "+++\n\x1b[1;39mn\x1b[0m = \x1b[36m3\x1b[0m\n", 1)

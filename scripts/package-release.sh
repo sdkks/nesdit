@@ -31,9 +31,10 @@ for target in linux/amd64 linux/arm64 darwin/arm64; do
     bytes=$(wc -c < "$stage/nesdit")
     [ "$bytes" -lt 8388608 ] || fail "$target binary is $bytes bytes (limit: < 8388608)."
     cp README.md "$stage/README.md"
+    cp THIRD-PARTY-NOTICES.md "$stage/THIRD-PARTY-NOTICES.md"
     cp docs/nesdit.1 "$stage/share/man/man1/nesdit.1"
     asset="nesdit_${VERSION}_${os}_${arch}.tar.gz"
-    tar -czf "$out/$asset" -C "$stage" nesdit README.md share/man/man1/nesdit.1
+    tar -czf "$out/$asset" -C "$stage" nesdit README.md THIRD-PARTY-NOTICES.md share/man/man1/nesdit.1
     assets+=("$asset")
     echo "$target: $bytes bytes -> $out/$asset"
 done

@@ -3,6 +3,7 @@ module github.com/sdkks/nesdit
 go 1.27.2
 
 require (
+	github.com/goccy/go-yaml v1.19.2
 	github.com/itchyny/gojq v0.12.17
 	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/pmezard/go-difflib v1.0.0
