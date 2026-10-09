@@ -61,7 +61,7 @@ nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $repli
 
 Format is auto-detected from the file extension. Use `--format json|jsonl|yaml|toml` to override input format, and `--output-format json|yaml|toml` to transcode to a different output format.
 
-JSON and JSONL data output, including JSON editor previews, is automatically syntax-highlighted when stdout is a terminal on Unix. Keys are bold; strings, numbers, and booleans use distinct basic terminal colors. Set `NO_COLOR` to a nonempty value or `TERM=dumb` to disable highlighting. Pipes, redirected files, in-place edits, backups, diffs, help, diagnostics, and editor query text remain plain. YAML, TOML, and Windows output remain uncolored.
+JSON, JSONL, and TOML data output, including JSON and TOML editor previews, is automatically syntax-highlighted when stdout is a terminal on Unix. Keys are bold; strings, numbers, and booleans use distinct basic terminal colors. Native TOML date/time literals remain uncolored. Set `NO_COLOR` to a nonempty value or `TERM=dumb` to disable highlighting. Pipes, redirected files, in-place edits, backups, diffs, help, diagnostics, and editor query text remain plain. YAML and Windows output remain uncolored.
 
 ## Key flags
 

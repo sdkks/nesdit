@@ -307,6 +307,7 @@ type tomlDocWriter struct {
 	w            io.Writer
 	firstWritten bool
 	opts         tomlfmt.EncodeOptions
+	color        bool
 }
 
 // NewTOMLWriter returns a DocWriter for TOML. WriteDoc may be called multiple
@@ -325,14 +326,34 @@ func NewTOMLWriterWithOptions(w io.Writer, opts tomlfmt.EncodeOptions) DocWriter
 	return &tomlDocWriter{w: w, opts: opts}
 }
 
+// NewTOMLDisplayWriterWithOptions enables semantic styling only for an eligible
+// output terminal. Other writers retain direct, unbuffered TOML encoding.
+func NewTOMLDisplayWriterWithOptions(w io.Writer, opts tomlfmt.EncodeOptions) DocWriter {
+	return &tomlDocWriter{w: w, opts: opts, color: display.Enabled(w)}
+}
+
 func (tw *tomlDocWriter) WriteDoc(v omap.Value) error {
 	if tw.firstWritten {
-		if _, err := io.WriteString(tw.w, "+++\n"); err != nil {
+		var err error
+		if tw.color {
+			err = display.Write(tw.w, []byte("+++\n"), nil)
+		} else {
+			_, err = io.WriteString(tw.w, "+++\n")
+		}
+		if err != nil {
 			return fmt.Errorf("toml: write separator: %w", err)
 		}
 	}
 	tw.firstWritten = true
-	return tomlfmt.EncodeValueWithOptions(tw.w, v, tw.opts)
+	if !tw.color {
+		return tomlfmt.EncodeValueWithOptions(tw.w, v, tw.opts)
+	}
+	var buf bytes.Buffer
+	var spans []display.Span
+	if err := tomlfmt.EncodeValueObserved(&buf, v, tw.opts, func(s display.Span) { spans = append(spans, s) }); err != nil {
+		return err
+	}
+	return display.Write(tw.w, buf.Bytes(), spans)
 }
 
 // --- Factory helpers ---
@@ -365,6 +386,9 @@ func NewReaderWithOpts(fmtName string, r io.Reader, limits format.Limits, opts y
 func NewDisplayWriter(fmtName string, w io.Writer) (DocWriter, error) {
 	if fmtName == "json" || fmtName == "jsonl" {
 		return &jsonlDocWriter{w: w, color: display.Enabled(w)}, nil
+	}
+	if fmtName == "toml" {
+		return NewTOMLDisplayWriterWithOptions(w, tomlfmt.EncodeOptions{}), nil
 	}
 	return NewWriter(fmtName, w)
 }

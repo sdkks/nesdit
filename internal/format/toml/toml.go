@@ -21,6 +21,7 @@ import (
 
 	tomlunstable "github.com/pelletier/go-toml/v2/unstable"
 
+	"github.com/sdkks/nesdit/internal/display"
 	"github.com/sdkks/nesdit/internal/format"
 	"github.com/sdkks/nesdit/internal/omap"
 )
@@ -89,11 +90,16 @@ func Encode(w io.Writer, d *omap.Doc) error {
 // arrays with >1 element are expanded across multiple lines, maps with >1 key are
 // expanded to block form, and blank lines are inserted between top-level entries.
 func EncodeWithOptions(w io.Writer, d *omap.Doc, opts EncodeOptions) error {
+	return encodeObserved(w, d, opts, nil)
+}
+
+func encodeObserved(w io.Writer, d *omap.Doc, opts EncodeOptions, observe func(display.Span)) error {
 	if err := checkTOMLRepresentable(omap.MapValue(d)); err != nil {
 		return err
 	}
 	tw := newTOMLWriter(w)
 	tw.pretty = opts.Pretty
+	tw.observe = observe
 	return tw.writeDoc(d)
 }
 
@@ -109,6 +115,13 @@ func EncodeValue(w io.Writer, v omap.Value) error {
 // EncodeValueWithOptions is EncodeValue with configurable options. The zero
 // EncodeOptions value produces output byte-identical to EncodeValue.
 func EncodeValueWithOptions(w io.Writer, v omap.Value, opts EncodeOptions) error {
+	return EncodeValueObserved(w, v, opts, nil)
+}
+
+// EncodeValueObserved emits the same bytes as EncodeValueWithOptions and
+// optionally observes successful key/scalar writes. Spans are usable only if
+// encoding succeeds; native datetime literals remain unstyled.
+func EncodeValueObserved(w io.Writer, v omap.Value, opts EncodeOptions, observe func(display.Span)) error {
 	if v.Kind != omap.KindMap {
 		kind := kindName(v.Kind)
 		return &omap.EncodeError{
@@ -126,7 +139,7 @@ func EncodeValueWithOptions(w io.Writer, v omap.Value, opts EncodeOptions) error
 			Cause:  fmt.Errorf("top-level table is nil"),
 		}
 	}
-	return EncodeWithOptions(w, v.Map, opts)
+	return encodeObserved(w, v.Map, opts, observe)
 }
 
 func kindName(k omap.Kind) string {
@@ -403,18 +416,31 @@ func checkTOMLRepresentable(v omap.Value) *omap.EncodeError {
 }
 
 type tomlWriter struct {
-	w      io.Writer
-	err    error
-	pretty bool
+	w        io.Writer
+	err      error
+	pretty   bool
+	position int
+	observe  func(display.Span)
 }
 
 func newTOMLWriter(w io.Writer) *tomlWriter { return &tomlWriter{w: w} }
 
-func (tw *tomlWriter) writeStr(s string) {
+func (tw *tomlWriter) writeStr(s string) { tw.writeRole(0, s) }
+
+func (tw *tomlWriter) writeRole(role display.Role, s string) {
 	if tw.err != nil {
 		return
 	}
-	_, tw.err = io.WriteString(tw.w, s)
+	start := tw.position
+	n, err := io.WriteString(tw.w, s)
+	tw.position += n
+	if tw.observe != nil && err == nil && n != len(s) {
+		err = io.ErrShortWrite
+	}
+	tw.err = err
+	if err == nil && n == len(s) && role != 0 && tw.observe != nil {
+		tw.observe(display.Span{Start: start, End: tw.position, Role: role})
+	}
 }
 
 // writeDoc writes the root table. It emits scalar / array / inline-table
@@ -451,7 +477,7 @@ func (tw *tomlWriter) writeTable(_ []string, d *omap.Doc, depth int) {
 			tw.writeStr("\n")
 		}
 		first = false
-		tw.writeStr(encodeKey(k))
+		tw.writeRole(display.Key, encodeKey(k))
 		tw.writeStr(" = ")
 		tw.writeInlineValue(v, depth)
 		tw.writeStr("\n")
@@ -485,18 +511,18 @@ func (tw *tomlWriter) writeInlineValue(v omap.Value, depth int) {
 	switch v.Kind {
 	case omap.KindBool:
 		if v.Bool {
-			tw.writeStr("true")
+			tw.writeRole(display.Bool, "true")
 		} else {
-			tw.writeStr("false")
+			tw.writeRole(display.Bool, "false")
 		}
 	case omap.KindNum:
-		tw.writeStr(v.Num.String())
+		tw.writeRole(display.Number, v.Num.String())
 	case omap.KindStr:
 		if v.Tag == "!!timestamp" {
 			tw.writeStr(v.Str) // emit as native datetime
 			return
 		}
-		tw.writeStr(encodeTOMLString(v.Str))
+		tw.writeRole(display.String, encodeTOMLString(v.Str))
 	case omap.KindSeq:
 		if tw.pretty && len(v.Seq) > 1 {
 			tw.writePrettySeq(v.Seq, depth)
@@ -528,7 +554,7 @@ func (tw *tomlWriter) writeInlineValue(v omap.Value, depth int) {
 					tw.writeStr(", ")
 				}
 				first = false
-				tw.writeStr(encodeKey(k))
+				tw.writeRole(display.Key, encodeKey(k))
 				tw.writeStr(" = ")
 				tw.writeInlineValue(sub, depth+1)
 				return true

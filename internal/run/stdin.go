@@ -86,7 +86,7 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 	// pretty TOML writer. For all other formats, use the standard writer.
 	var writer stream.DocWriter
 	if pretty && outFmtName == "toml" {
-		writer = stream.NewTOMLWriterWithOptions(opts.Stdout, tomlfmt.EncodeOptions{Pretty: true})
+		writer = stream.NewTOMLDisplayWriterWithOptions(opts.Stdout, tomlfmt.EncodeOptions{Pretty: true})
 	} else {
 		var werr error
 		writer, werr = stream.NewDisplayWriter(outFmtName, opts.Stdout)
@@ -264,7 +264,7 @@ func runStdinJSON(ctx context.Context, opts RunOptions, outputFmtOverride, query
 	// pretty TOML writer. For all other formats, use the standard writer.
 	var writer stream.DocWriter
 	if pretty && outFmtName == "toml" {
-		writer = stream.NewTOMLWriterWithOptions(opts.Stdout, tomlfmt.EncodeOptions{Pretty: true})
+		writer = stream.NewTOMLDisplayWriterWithOptions(opts.Stdout, tomlfmt.EncodeOptions{Pretty: true})
 	} else {
 		var werr error
 		writer, werr = stream.NewDisplayWriter(outFmtName, opts.Stdout)
