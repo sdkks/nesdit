@@ -28,7 +28,7 @@ repos:
         pass_filenames: false
 
       - id: commit-msg-semantic
-        name: Semantic release commit message
+        name: Conventional commit message
         entry: scripts/check-commit-msg.sh
         language: script
         stages: [commit-msg]

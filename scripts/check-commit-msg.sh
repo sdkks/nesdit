@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Enforce Angular/semantic-release commit message format on the first line.
-# Allowed types match the default @semantic-release/commit-analyzer preset.
+# Enforce conventional commit message format on the first line.
+# Keep the established Angular-style types for local version detection.
 # Pattern: <type>[optional scope][optional !]: <description>
 
 set -eo pipefail
@@ -18,7 +18,7 @@ PATTERN="^(${TYPES})(\([^)]+\))?(!)?: .+"
 
 if ! echo "${FIRST_LINE}" | grep -qE "${PATTERN}"; then
     echo ""
-    echo "  commit-msg: first line does not match semantic-release format."
+    echo "  commit-msg: first line does not match conventional commit format."
     echo ""
     echo "  Expected:  <type>[(<scope>)][!]: <description>"
     echo "  Got:       ${FIRST_LINE}"

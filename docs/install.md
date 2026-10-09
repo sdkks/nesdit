@@ -16,26 +16,45 @@ Download a prebuilt binary from the [GitHub Releases page](https://github.com/sd
 
 Binaries built with the Go 1.27 baseline require macOS 13 Ventura or later, or Linux kernel 3.2 or later on amd64/arm64. Prebuilt binaries do not require a Go installation.
 
-Linux (amd64):
+Archives are versioned and contain the executable, README, and manpage. Select
+an available version from the releases page (the examples use `0.3.2`).
+
+Linux (amd64; use `linux_arm64` for ARM64):
 
 ```sh
-curl -Lo nesdit "https://github.com/sdkks/nesdit/releases/latest/download/nesdit-linux-amd64"
-chmod +x nesdit
-mv nesdit /usr/local/bin/
+version=0.3.2
+platform=linux_amd64
 ```
 
-macOS (arm64):
+macOS (Apple Silicon):
 
 ```sh
-curl -Lo nesdit "https://github.com/sdkks/nesdit/releases/latest/download/nesdit-darwin-arm64"
-chmod +x nesdit
-mv nesdit /usr/local/bin/
+version=0.3.2
+platform=darwin_arm64
 ```
 
-## Homebrew
+Then download and verify the chosen archive in a fresh directory:
 
-!!! note
-    Homebrew support is planned for a future release. For now, use `go install` or the prebuilt binary.
+```sh
+scratch=$(mktemp -d)
+cd "$scratch"
+asset="nesdit_${version}_${platform}.tar.gz"
+base="https://github.com/sdkks/nesdit/releases/download/v${version}"
+curl -fLO "$base/$asset"
+curl -fLO "$base/nesdit_${version}_checksums.txt"
+grep "  ${asset}$" "nesdit_${version}_checksums.txt" > checksum.txt
+# macOS (Linux can use: sha256sum -c checksum.txt)
+shasum -a 256 -c checksum.txt
+# Continue only if checksum verification succeeds:
+tar -xzf "$asset"
+install -m 755 nesdit /usr/local/bin/nesdit
+# Optional manpage installation (may require elevated permissions):
+# install -m 644 share/man/man1/nesdit.1 /usr/local/share/man/man1/nesdit.1
+```
+
+Installation into `/usr/local/bin` may require elevated permissions; alternatively,
+install into a user-owned directory on your `PATH`. Homebrew publication is not
+part of the local release workflow.
 
 ## Verify the installation
 
@@ -46,7 +65,7 @@ nesdit --version
 Expected output (version number will vary):
 
 ```
-nesdit version v0.1.0
+nesdit version 0.4.1 (0123456789ab)
 ```
 
 Quick smoke-test:

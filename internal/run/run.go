@@ -40,9 +40,8 @@ import (
 	"github.com/sdkks/nesdit/internal/query"
 )
 
-// Version and Commit are injected at build time via -X ldflags by GoReleaser.
-// They remain empty strings in local dev builds.
-// Version is the release version, injected at build time via -X ldflags.
+// Version is the release version, injected by the local release build via -X
+// ldflags. Version and Commit remain empty strings in ordinary dev builds.
 var Version string
 
 // Commit is the short git commit SHA, injected at build time via -X ldflags.

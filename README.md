@@ -18,12 +18,6 @@ go install github.com/sdkks/nesdit/cmd/nesdit@latest
 
 **Pre-built binaries** (linux/amd64, linux/arm64, darwin/arm64) are available on the [releases page](https://github.com/sdkks/nesdit/releases).
 
-**Homebrew**:
-
-```sh
-brew tap sdkks/tap && brew install sdkks/tap/nesdit
-```
-
 ## Quick start
 
 ```sh
@@ -103,7 +97,8 @@ See [`nesdit --help`](https://sdkks.github.io/nesdit/reference/nesdit/) for the 
 make build      # go build -o bin/nesdit ./cmd/nesdit
 make test       # go test -race -count=1 ./...
 make test-e2e   # integration tests (builds first)
-make test-all   # unit + integration
+make test-release # sandboxed local release checks (no GitHub writes)
+make test-all   # lint + unit + integration + release checks
 make lint       # golangci-lint run
 make docs       # generate reference docs + build site
 ```
@@ -117,6 +112,11 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 ```
 
 Go 1.27-built binaries require macOS 13 Ventura or later, or Linux kernel 3.2 or later on the supported Linux targets. Prebuilt binary users do not need Go installed.
+
+Releases are prepared and published locally with `make bump-version`, `make release`,
+and `make release-cli`; CI does not publish binaries or Homebrew formulas.
+See [the maintainer release guide](docs/releasing.md) for prerequisites, safeguards,
+asset names, and partial-upload recovery.
 
 ## License
 

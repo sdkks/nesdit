@@ -5,7 +5,10 @@ GO        ?= go
 BIN       := bin/nesdit
 PKGS      := ./...
 
-.PHONY: all build test test-e2e test-all lint check-pins docs site clean
+.PHONY: all build test test-e2e test-release test-all lint check-pins docs site clean bump-version release release-cli
+
+# Pass overrides as data, not interpolated shell source in recipes.
+export BUMP GO
 
 all: test-all
 
@@ -18,7 +21,10 @@ test:
 test-e2e: build
 	$(GO) test -tags=e2e -race -count=1 ./test/e2e/...
 
-test-all: lint test test-e2e
+test-release:
+	bash test/release/release_test.sh
+
+test-all: lint test test-e2e test-release
 
 lint:
 	@LINT=golangci-lint; \
@@ -53,6 +59,13 @@ site:
 		exit 0; \
 	fi; \
 	mkdocs build --strict
+
+# Local-only versioning and publication. Each release is sequential even with -j.
+bump-version:
+	bash scripts/bump-version.sh
+
+release release-cli:
+	bash scripts/release.sh
 
 clean:
 	rm -rf bin/ site/
