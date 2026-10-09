@@ -2,7 +2,7 @@
 
 ## go install (recommended)
 
-If you have Go 1.22 or later installed:
+Use Go 1.27.2 or later. Older Go installations with automatic toolchain selection enabled may download the required compiler; offline builds or `GOTOOLCHAIN=local` require a sufficiently new installed Go.
 
 ```sh
 go install github.com/sdkks/nesdit/cmd/nesdit@latest
@@ -13,6 +13,8 @@ The binary is placed in `$GOPATH/bin` (usually `~/go/bin`). Make sure that direc
 ## Prebuilt binaries
 
 Download a prebuilt binary from the [GitHub Releases page](https://github.com/sdkks/nesdit/releases).
+
+Binaries built with the Go 1.27 baseline require macOS 13 Ventura or later, or Linux kernel 3.2 or later on amd64/arm64. Prebuilt binaries do not require a Go installation.
 
 Linux (amd64):
 

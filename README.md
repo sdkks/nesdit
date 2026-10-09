@@ -10,7 +10,7 @@ A CLI for deterministic, format-preserving edits to JSON, YAML, and TOML documen
 
 ## Installation
 
-**Go:**
+**Go (1.27.2 or later):**
 
 ```sh
 go install github.com/sdkks/nesdit/cmd/nesdit@latest
@@ -108,7 +108,15 @@ make lint       # golangci-lint run
 make docs       # generate reference docs + build site
 ```
 
-CI runs on Go 1.22 and 1.23 across ubuntu and macOS. A weekly canary job tests against the latest Go toolchain and dependency versions (non-blocking).
+Development requires Go 1.27.2 or later and golangci-lint v2.14.0 (built with Go 1.27 or later). CI selects the baseline from `go.mod` across Ubuntu and macOS. A weekly, non-blocking canary tests the latest gojq and go-toml/v2 dependencies starting from that baseline; automatic toolchain selection may advance Go if those dependencies require it.
+
+Install the matching linter with:
+
+```sh
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
+```
+
+Go 1.27-built binaries require macOS 13 Ventura or later, or Linux kernel 3.2 or later on the supported Linux targets. Prebuilt binary users do not need Go installed.
 
 ## License
 
