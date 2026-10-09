@@ -35,6 +35,7 @@ import (
 	"os/exec"
 
 	"github.com/sdkks/nesdit/internal/diff"
+	"github.com/sdkks/nesdit/internal/display"
 	"github.com/sdkks/nesdit/internal/format"
 	"github.com/sdkks/nesdit/internal/logx"
 )
@@ -199,12 +200,17 @@ func runEdit(opts RunOptions, path, fmtName string, limits format.Limits, yamlVe
 
 	// Re-encode edited value as the source-format preview.
 	var previewBuf bytes.Buffer
-	if previewErr := encodeFormatValue(fmtName, &previewBuf, editedVal); previewErr != nil {
+	spans, previewErr := encodeDisplayValue(fmtName, &previewBuf, editedVal, false, display.Enabled(opts.Stdout))
+	if previewErr != nil {
 		opts.Logger.Error(logx.EventEncodeError, path, previewErr.Error())
 		return &emittedError{cause: previewErr}
 	}
 
-	result := diff.BuildResult(path, fmtName, previewBuf.String(), changes)
+	var styledPreview bytes.Buffer
+	if err := display.Write(&styledPreview, previewBuf.Bytes(), spans); err != nil {
+		return err
+	}
+	result := diff.BuildResult(path, fmtName, styledPreview.String(), changes)
 	if wErr := result.Format(opts.Stdout); wErr != nil {
 		opts.Logger.Error(logx.EventIOWrite, path, wErr.Error())
 		return &emittedError{cause: wErr}

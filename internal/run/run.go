@@ -31,6 +31,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sdkks/nesdit/internal/display"
 	"github.com/sdkks/nesdit/internal/format"
 	jsonfmt "github.com/sdkks/nesdit/internal/format/json"
 	tomlfmt "github.com/sdkks/nesdit/internal/format/toml"
@@ -908,7 +909,8 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 	}
 
 	var buf bytes.Buffer
-	if err := encodeFormatValueWithPretty(outFmtName, &buf, outVal, pretty); err != nil {
+	spans, err := encodeDisplayValue(outFmtName, &buf, outVal, pretty, display.Enabled(opts.Stdout))
+	if err != nil {
 		// Distinguish cross-format incompatibility (FR-19) from
 		// generic encode failures for better user diagnostics.
 		var encErr *omap.EncodeError
@@ -919,7 +921,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 		}
 		return &emittedError{cause: err}
 	}
-	if _, err := opts.Stdout.Write(buf.Bytes()); err != nil {
+	if err := display.Write(opts.Stdout, buf.Bytes(), spans); err != nil {
 		opts.Logger.Error(logx.EventIOWrite, path, err.Error())
 		return &emittedError{cause: err}
 	}

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sdkks/nesdit/internal/display"
 	"github.com/sdkks/nesdit/internal/format"
 	"github.com/sdkks/nesdit/internal/omap"
 )
@@ -86,7 +87,7 @@ func Encode(w io.Writer, d *omap.Doc) error {
 	if err := checkJSONRepresentable(omap.MapValue(d)); err != nil {
 		return err
 	}
-	return encodeDoc(w, d)
+	return (&encoder{w: w}).encodeDoc(d)
 }
 
 // EncodeValue writes any omap.Value as a JSON document to w. Unlike Encode
@@ -97,10 +98,17 @@ func Encode(w io.Writer, d *omap.Doc) error {
 // Representability checks (NaN/Inf rejection) run before any bytes are
 // written, consistent with Encode.
 func EncodeValue(w io.Writer, v omap.Value) error {
+	return EncodeValueObserved(w, v, nil)
+}
+
+// EncodeValueObserved emits the same bytes as EncodeValue and optionally
+// observes successful key/scalar writes. Spans are usable only if encoding
+// succeeds; the observer never changes the serialized data.
+func EncodeValueObserved(w io.Writer, v omap.Value, observe func(display.Span)) error {
 	if err := checkJSONRepresentable(v); err != nil {
 		return err
 	}
-	return encodeValue(w, v)
+	return (&encoder{w: w, observe: observe}).encodeValue(v)
 }
 
 // checkJSONRepresentable walks v and returns an *omap.EncodeError for any
@@ -251,15 +259,43 @@ func decodeArrayBounded(dec *stdjson.Decoder, depth, maxDepth int) ([]omap.Value
 
 // ----------------------------- encode -----------------------------
 
-func encodeDoc(w io.Writer, d *omap.Doc) error {
-	if _, err := io.WriteString(w, "{"); err != nil {
+type encoder struct {
+	w        io.Writer
+	position int
+	observe  func(display.Span)
+}
+
+func (e *encoder) written(n, size int, role display.Role, err error) error {
+	start := e.position
+	e.position += n
+	if e.observe != nil && err == nil && n != size {
+		err = io.ErrShortWrite
+	}
+	if err == nil && n == size && role != 0 && e.observe != nil {
+		e.observe(display.Span{Start: start, End: e.position, Role: role})
+	}
+	return err
+}
+
+func (e *encoder) writeString(role display.Role, s string) error {
+	n, err := io.WriteString(e.w, s)
+	return e.written(n, len(s), role, err)
+}
+
+func (e *encoder) writeBytes(role display.Role, b []byte) error {
+	n, err := e.w.Write(b)
+	return e.written(n, len(b), role, err)
+}
+
+func (e *encoder) encodeDoc(d *omap.Doc) error {
+	if err := e.writeString(0, "{"); err != nil {
 		return err
 	}
 	first := true
 	var encErr error
 	d.Entries(func(k string, v omap.Value) bool {
 		if !first {
-			if _, encErr = io.WriteString(w, ","); encErr != nil {
+			if encErr = e.writeString(0, ","); encErr != nil {
 				return false
 			}
 		}
@@ -269,13 +305,13 @@ func encodeDoc(w io.Writer, d *omap.Doc) error {
 			encErr = fmt.Errorf("json: marshal key %q: %w", k, err)
 			return false
 		}
-		if _, encErr = w.Write(kb); encErr != nil {
+		if encErr = e.writeBytes(display.Key, kb); encErr != nil {
 			return false
 		}
-		if _, encErr = io.WriteString(w, ":"); encErr != nil {
+		if encErr = e.writeString(0, ":"); encErr != nil {
 			return false
 		}
-		if encErr = encodeValue(w, v); encErr != nil {
+		if encErr = e.encodeValue(v); encErr != nil {
 			return false
 		}
 		return true
@@ -283,27 +319,22 @@ func encodeDoc(w io.Writer, d *omap.Doc) error {
 	if encErr != nil {
 		return encErr
 	}
-	_, err := io.WriteString(w, "}")
-	return err
+	return e.writeString(0, "}")
 }
 
-func encodeValue(w io.Writer, v omap.Value) error {
+func (e *encoder) encodeValue(v omap.Value) error {
 	switch v.Kind {
 	case omap.KindNull:
-		_, err := io.WriteString(w, "null")
-		return err
+		return e.writeString(display.Null, "null")
 	case omap.KindBool:
 		if v.Bool {
-			_, err := io.WriteString(w, "true")
-			return err
+			return e.writeString(display.Bool, "true")
 		}
-		_, err := io.WriteString(w, "false")
-		return err
+		return e.writeString(display.Bool, "false")
 	case omap.KindNum:
 		s := v.Num.String()
 		if s == "" {
-			_, err := io.WriteString(w, "0")
-			return err
+			return e.writeString(display.Number, "0")
 		}
 		// Validate as a finite numeric literal. checkJSONRepresentable (called
 		// from Encode) has already rejected NaN/Inf; this catches any other
@@ -312,33 +343,30 @@ func encodeValue(w io.Writer, v omap.Value) error {
 		if _, err := strconv.ParseFloat(s, 64); err != nil {
 			return fmt.Errorf("json: invalid number %q: %w", s, err)
 		}
-		_, err := io.WriteString(w, s)
-		return err
+		return e.writeString(display.Number, s)
 	case omap.KindStr:
 		b, err := stdjson.Marshal(v.Str)
 		if err != nil {
 			return err
 		}
-		_, err = w.Write(b)
-		return err
+		return e.writeBytes(display.String, b)
 	case omap.KindSeq:
-		if _, err := io.WriteString(w, "["); err != nil {
+		if err := e.writeString(0, "["); err != nil {
 			return err
 		}
 		for i, item := range v.Seq {
 			if i > 0 {
-				if _, err := io.WriteString(w, ","); err != nil {
+				if err := e.writeString(0, ","); err != nil {
 					return err
 				}
 			}
-			if err := encodeValue(w, item); err != nil {
+			if err := e.encodeValue(item); err != nil {
 				return err
 			}
 		}
-		_, err := io.WriteString(w, "]")
-		return err
+		return e.writeString(0, "]")
 	case omap.KindMap:
-		return encodeDoc(w, v.Map)
+		return e.encodeDoc(v.Map)
 	default:
 		return fmt.Errorf("json: unknown value kind %v", v.Kind)
 	}

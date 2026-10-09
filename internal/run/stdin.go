@@ -89,7 +89,7 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 		writer = stream.NewTOMLWriterWithOptions(opts.Stdout, tomlfmt.EncodeOptions{Pretty: true})
 	} else {
 		var werr error
-		writer, werr = stream.NewWriter(outFmtName, opts.Stdout)
+		writer, werr = stream.NewDisplayWriter(outFmtName, opts.Stdout)
 		if werr != nil {
 			opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, werr.Error())
 			return &emittedError{cause: werr}
@@ -102,7 +102,7 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 	var passthroughWriter stream.DocWriter
 	if wherePredicate != "" {
 		var ptErr error
-		passthroughWriter, ptErr = stream.NewWriter(fmtName, opts.Stdout)
+		passthroughWriter, ptErr = stream.NewDisplayWriter(fmtName, opts.Stdout)
 		if ptErr != nil {
 			opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, ptErr.Error())
 			return &emittedError{cause: ptErr}
@@ -267,7 +267,7 @@ func runStdinJSON(ctx context.Context, opts RunOptions, outputFmtOverride, query
 		writer = stream.NewTOMLWriterWithOptions(opts.Stdout, tomlfmt.EncodeOptions{Pretty: true})
 	} else {
 		var werr error
-		writer, werr = stream.NewWriter(outFmtName, opts.Stdout)
+		writer, werr = stream.NewDisplayWriter(outFmtName, opts.Stdout)
 		if werr != nil {
 			opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, werr.Error())
 			return &emittedError{cause: werr}
@@ -285,7 +285,7 @@ func runStdinJSON(ctx context.Context, opts RunOptions, outputFmtOverride, query
 		}
 		if !match {
 			opts.Logger.WarnAt(logx.EventWhereSkipped, stdinFilename, 1, "--where predicate did not match; doc passed through")
-			passthroughWriter, ptErr := stream.NewWriter("json", opts.Stdout)
+			passthroughWriter, ptErr := stream.NewDisplayWriter("json", opts.Stdout)
 			if ptErr != nil {
 				opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, ptErr.Error())
 				return &emittedError{cause: ptErr}

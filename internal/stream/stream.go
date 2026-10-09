@@ -32,6 +32,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/sdkks/nesdit/internal/display"
 	"github.com/sdkks/nesdit/internal/format"
 	jsonfmt "github.com/sdkks/nesdit/internal/format/json"
 	tomlfmt "github.com/sdkks/nesdit/internal/format/toml"
@@ -223,7 +224,8 @@ func (jr *jsonlDocReader) Err() error        { return jr.err }
 
 // jsonlDocWriter writes newline-terminated JSON documents to w.
 type jsonlDocWriter struct {
-	w io.Writer
+	w     io.Writer
+	color bool
 }
 
 // NewJSONLWriter returns a DocWriter that writes each document as a single
@@ -234,14 +236,18 @@ func NewJSONLWriter(w io.Writer) DocWriter {
 
 func (jw *jsonlDocWriter) WriteDoc(v omap.Value) error {
 	var buf bytes.Buffer
-	if err := jsonfmt.EncodeValue(&buf, v); err != nil {
+	var spans []display.Span
+	var observe func(display.Span)
+	if jw.color {
+		observe = func(s display.Span) { spans = append(spans, s) }
+	}
+	if err := jsonfmt.EncodeValueObserved(&buf, v, observe); err != nil {
 		return err
 	}
-	if _, err := jw.w.Write(buf.Bytes()); err != nil {
+	if err := display.Write(jw.w, buf.Bytes(), spans); err != nil {
 		return fmt.Errorf("jsonl: write: %w", err)
 	}
-	_, err := io.WriteString(jw.w, "\n")
-	return err
+	return display.Write(jw.w, []byte("\n"), nil)
 }
 
 // --- TOML (single-doc only) ---
@@ -352,6 +358,15 @@ func NewReaderWithOpts(fmtName string, r io.Reader, limits format.Limits, opts y
 	default:
 		return nil, fmt.Errorf("stream: unknown format %q", fmtName)
 	}
+}
+
+// NewDisplayWriter selects styling from the actual format and output file.
+// Plain NewWriter remains available for non-display consumers.
+func NewDisplayWriter(fmtName string, w io.Writer) (DocWriter, error) {
+	if fmtName == "json" || fmtName == "jsonl" {
+		return &jsonlDocWriter{w: w, color: display.Enabled(w)}, nil
+	}
+	return NewWriter(fmtName, w)
 }
 
 // NewWriter returns the DocWriter for fmtName.
