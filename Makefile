@@ -5,7 +5,7 @@ GO        ?= go
 BIN       := bin/nesdit
 PKGS      := ./...
 
-.PHONY: all build test test-e2e test-release test-all lint check-pins docs site clean bump-version release release-cli
+.PHONY: all build install test test-e2e test-release test-install test-all lint check-pins docs site clean bump-version release release-cli
 
 # Pass overrides as data, not interpolated shell source in recipes.
 export BUMP GO
@@ -14,6 +14,11 @@ all: test-all
 
 build:
 	$(GO) build -ldflags='-s -w' -o $(BIN) ./cmd/nesdit
+
+install: export GOBIN := $(GOBIN)
+install: export GOPATH := $(GOPATH)
+install:
+	bash scripts/install.sh
 
 test:
 	$(GO) test -race -count=1 $(PKGS)
@@ -24,7 +29,10 @@ test-e2e: build
 test-release:
 	bash test/release/release_test.sh
 
-test-all: lint test test-e2e test-release
+test-install:
+	bash test/install/install_test.sh
+
+test-all: lint test test-e2e test-release test-install
 
 lint:
 	@LINT=golangci-lint; \

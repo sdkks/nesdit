@@ -16,6 +16,20 @@ A CLI for deterministic, format-preserving edits to JSON, YAML, and TOML documen
 go install github.com/sdkks/nesdit/cmd/nesdit@latest
 ```
 
+**From a local checkout:**
+
+```sh
+make install
+# Optional destination override:
+make install GOBIN="$HOME/.local/bin"
+```
+
+This builds the current source for your machine. It installs into configured `GOBIN`
+(including Go's saved setting), otherwise the first configured `GOPATH/bin` listed
+on `PATH`, otherwise `$HOME/.local/bin`. Missing destination directories are
+created. Add the destination to `PATH` yourself if needed; no shell settings are changed.
+`GO` can select an alternate Go executable.
+
 **Pre-built binaries** (linux/amd64, linux/arm64, darwin/arm64) are available on the [releases page](https://github.com/sdkks/nesdit/releases).
 
 ## Quick start
@@ -100,7 +114,8 @@ make build      # go build -o bin/nesdit ./cmd/nesdit
 make test       # go test -race -count=1 ./...
 make test-e2e   # integration tests (builds first)
 make test-release # sandboxed local release checks (no GitHub writes)
-make test-all   # lint + unit + integration + release checks
+make test-install # sandboxed native install checks
+make test-all   # lint + unit + integration + release + install checks
 make lint       # golangci-lint run
 make docs       # generate reference docs + build site
 ```
