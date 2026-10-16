@@ -37,6 +37,7 @@ nav:
   - Home: index.md
   - Installation: install.md
   - Quickstart: quickstart.md
+  - Roadmap: roadmap.md
   - Modes:
     - In-place (-i): modes/in-place.md
     - Stdout (default): modes/stdout.md
