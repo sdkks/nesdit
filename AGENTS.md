@@ -55,7 +55,7 @@ Preserve deterministic serialization, key order, value types, and atomic in-plac
 Keep input, nesting, YAML expansion, query-file, and timeout safeguards intact;
 `internal/format/format.go` and CLI flag definitions are the default-limit sources.
 Release packaging targets `linux/amd64`, `linux/arm64`, and `darwin/arm64`, with
-each binary smaller than 8 MiB; see `scripts/package-release.sh` and CI for the checks.
+each binary smaller than 16 MiB; see `scripts/package-release.sh` and CI for the checks.
 
 ## Documentation and site
 

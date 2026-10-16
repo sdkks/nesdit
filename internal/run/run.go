@@ -37,6 +37,7 @@ import (
 	tomlfmt "github.com/sdkks/nesdit/internal/format/toml"
 	yamlfmt "github.com/sdkks/nesdit/internal/format/yaml"
 	"github.com/sdkks/nesdit/internal/logx"
+	"github.com/sdkks/nesdit/internal/natsinspect"
 	"github.com/sdkks/nesdit/internal/omap"
 	"github.com/sdkks/nesdit/internal/query"
 )
@@ -81,20 +82,26 @@ func NewRootCmd() *cobra.Command {
 //   - 0 — success
 //   - 1 — any error
 //   - 2 — --check drift detected (DR-002: only this path returns 2)
+//   - 130 — native observation interrupted or cancelled
 func Run(args []string) int {
-	return Execute(RunOptions{
+	process := &natsProcess{exit: os.Exit}
+	defer process.finish()
+	return execute(RunOptions{
 		Args:   args,
 		Ctx:    context.Background(),
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
-	})
+	}, process)
 }
 
 // Execute is the in-process entrypoint taking a RunOptions struct. It
 // fills in defaults for any zero-valued field and dispatches to the
-// cobra command tree.
-func Execute(opts RunOptions) int {
+// cobra command tree. Native observation is cooperative here: no process signal
+// handlers or exit hooks are installed, and writers must respond to cancellation.
+func Execute(opts RunOptions) int { return execute(opts, nil) }
+
+func execute(opts RunOptions, process *natsProcess) int {
 	if opts.Ctx == nil {
 		opts.Ctx = context.Background()
 	}
@@ -111,7 +118,7 @@ func Execute(opts RunOptions) int {
 		opts.Logger = logx.NewFormat(opts.Stderr, opts.LogFormat)
 	}
 
-	root := newRootCmd(opts)
+	root := newRootCmdProcess(opts, process)
 	root.SetArgs(opts.Args)
 	// Suppress cobra's default usage print on error; we route all
 	// stderr through logx to keep the NFR-10 canonical shape.
@@ -119,8 +126,15 @@ func Execute(opts RunOptions) int {
 	root.SilenceErrors = true
 
 	err := root.ExecuteContext(opts.Ctx)
+	if process != nil && process.stop != nil && err != nil {
+		process.stop.request("failure", "configuration: observation did not complete", 1)
+	}
 	if err == nil {
 		return int(ExitOK)
+	}
+	var cancelled *natsCancelled
+	if errors.As(err, &cancelled) {
+		return 130
 	}
 	// DR-002: driftError is the sole source of exit 2. The --check path
 	// returns this sentinel when the query would change the input.
@@ -154,7 +168,10 @@ func (e *emittedError) Unwrap() error { return e.cause }
 // closure. All state captured via closure is per-invocation — no
 // package globals. That's important because tests run many Execute
 // calls in parallel.
-func newRootCmd(opts RunOptions) *cobra.Command {
+func newRootCmd(opts RunOptions) *cobra.Command { return newRootCmdProcess(opts, nil) }
+
+func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
+	var natsOpts natsOptions
 	var (
 		queryExpr      string
 		queryFile      string
@@ -209,6 +226,9 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("nats") {
+				return nil
+			}
 			// --edit mode requires exactly one file argument (FR-4).
 			if cmd.Flag("edit").Changed {
 				if len(args) != 1 {
@@ -248,6 +268,9 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 		// Logger is re-constructed with the requested format (if the
 		// caller did not supply a Logger explicitly via RunOptions).
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("nats") && process != nil {
+				process.start(opts.Ctx)
+			}
 			// FR-15: validate --log-format before any IO.
 			if cmd.Flag("log-format").Changed {
 				switch logx.Format(logFormatStr) {
@@ -267,6 +290,12 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 				// This is safe: no emit has occurred yet (flag-conflict
 				// checks below may be the first).
 				opts.Logger = logx.NewFormat(opts.Stderr, logx.Format(logFormatStr))
+			}
+			if err := natsOpts.validate(cmd, args); err != nil {
+				return err
+			}
+			if cmd.Flags().Changed("nats") {
+				return nil
 			}
 			// STORY-0015: validate --output-format before any IO.
 			if cmd.Flag("output-format").Changed {
@@ -290,6 +319,14 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 			return validateFlagInteraction(opts.Logger, cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("nats") {
+				opts.Ctx = cmd.Context()
+				var stop *natsStop
+				if process != nil {
+					stop = process.stop
+				}
+				return runNATS(opts, natsOpts, stop, natsinspect.Open)
+			}
 			limits := format.Limits{
 				MaxBytes:     maxBytes,
 				MaxDepth:     maxDepth,
@@ -447,6 +484,7 @@ func newRootCmd(opts RunOptions) *cobra.Command {
 	// Silently ignored for non-TOML output formats (json, yaml, jsonl).
 	cmd.Flags().BoolVar(&pretty, "pretty", false, "emit human-friendly TOML output: multi-line arrays, expanded tables, blank lines between entries (currently only affects TOML output)")
 
+	natsOpts.flags(cmd)
 	cmd.SetOut(opts.Stdout)
 	cmd.SetErr(opts.Stderr)
 	return cmd
@@ -470,7 +508,20 @@ Supported modes:
     output formats.
   - --timeout <dur> to cancel a runaway query on a deadline.
   - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
-    resource caps for decode-phase hardening.`
+    resource caps for decode-phase hardening.
+
+Live Core NATS JSON observation (reads neither files nor stdin):
+  nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
+Server and positive total duration are required; count is optional and counts
+messages admitted for processing, not all publications. Observation is live and
+at-most-once; readiness does not guarantee complete delivery. No reconnect.
+--nats-output auto uses pretty JSON on a terminal, JSONL when redirected;
+explicit pretty is a sequence of multiline JSON documents, not JSONL.
+One interrupt stops observation on Linux/macOS. A one-second forced-stop fallback
+may truncate the final record and omit final diagnostics. Check exit status and
+validate redirected output. Exit 0 means normal count/ready-duration completion,
+1 means failure, and 130 means interruption. Earlier complete output is retained.
+See the NATS observation guide for component limits and trust assumptions.`
 
 // flagConflictRule is one row of the FR-21 / DR-001 flag-interaction
 // matrix for ERROR cells. If every flag in IfSet is explicitly set, and

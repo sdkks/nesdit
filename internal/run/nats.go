@@ -1,0 +1,231 @@
+package run
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+	"unicode"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+
+	"github.com/sdkks/nesdit/internal/display"
+	"github.com/sdkks/nesdit/internal/logx"
+	"github.com/sdkks/nesdit/internal/natsinspect"
+)
+
+type natsOptions struct {
+	subject, server, output string
+	duration                time.Duration
+	count                   uint64
+}
+
+func (n *natsOptions) flags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&n.subject, "nats", "", "NATS: observe one live JSON subject expression; reads neither files nor stdin")
+	cmd.Flags().StringVar(&n.server, "server", "", "NATS: required explicit nats://host:port or tls://host:port")
+	cmd.Flags().DurationVar(&n.duration, "duration", 0, "NATS: required total observation limit including connection setup; not an idle timeout")
+	cmd.Flags().Uint64Var(&n.count, "count", 0, "NATS: stop after N messages admitted for processing; may show fewer events")
+	cmd.Flags().StringVar(&n.output, "nats-output", "auto", "NATS: auto (terminal pretty, redirected JSONL), jsonl, or pretty (multiline documents)")
+}
+
+func (n natsOptions) validate(cmd *cobra.Command, args []string) error {
+	selected := cmd.Flags().Changed("nats")
+	var conflict error
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		isNATS := f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output"
+		if !selected && isNATS {
+			conflict = errors.New("NATS flags require --nats")
+		}
+		if selected && !isNATS && f.Name != "log-format" {
+			hint := ""
+			if f.Name == "timeout" {
+				hint = "; use --duration"
+			}
+			if f.Name == "pretty" || f.Name == "output-format" {
+				hint = "; use --nats-output"
+			}
+			conflict = fmt.Errorf("--%s is not supported with --nats%s", f.Name, hint)
+		}
+	})
+	if conflict != nil {
+		return conflict
+	}
+	if !selected {
+		return nil
+	}
+	if len(args) != 0 {
+		return errors.New("--nats accepts no file arguments")
+	}
+	if !cmd.Flags().Changed("server") || !cmd.Flags().Changed("duration") || n.duration <= 0 {
+		return errors.New("--nats requires --server and a positive --duration")
+	}
+	if cmd.Flags().Changed("count") && n.count == 0 {
+		return errors.New("--count must be positive")
+	}
+	if n.output != "auto" && n.output != "jsonl" && n.output != "pretty" {
+		return errors.New("--nats-output must be auto, jsonl, or pretty")
+	}
+	if n.subject == "" || len(n.subject) > 4096 || strings.ContainsFunc(n.subject, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+		return errors.New("invalid NATS subject: use nonempty tokens without whitespace, at most 4 KiB")
+	}
+	tokens := strings.Split(n.subject, ".")
+	for i, token := range tokens {
+		if token == "" || (strings.ContainsAny(token, "*>") && token != "*" && (token != ">" || i != len(tokens)-1)) {
+			return errors.New("invalid NATS subject: wildcards must be whole tokens and > must be last")
+		}
+	}
+	u, err := url.Parse(n.server)
+	if err != nil || u == nil || (u.Scheme != "nats" && u.Scheme != "tls") || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(n.server, "#") || (u.Path != "" && u.Path != "/") || strings.Contains(u.Host, ",") {
+		return errors.New("--server must be one explicit nats://host:port or tls://host:port without credentials, query, or fragment")
+	}
+	host, port, err := net.SplitHostPort(u.Host)
+	p, portErr := strconv.ParseUint(port, 10, 16)
+	if err != nil || host == "" || portErr != nil || p == 0 {
+		return errors.New("--server requires a host and port from 1 to 65535")
+	}
+	return nil
+}
+
+type natsCancelled struct{}
+
+func (*natsCancelled) Error() string { return "observation cancelled" }
+
+type natsOpen func(context.Context, string, string, func(error)) (natsinspect.Session, error)
+
+type natsRender func(context.Context, natsinspect.Record, bool, bool) ([]byte, []display.Span, error)
+
+func runNATS(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen) error {
+	return runNATSWithRenderer(opts, n, stop, open, natsEvent)
+}
+
+func runNATSWithRenderer(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen, render natsRender) error {
+	if stop == nil {
+		stop = newNATSStop(opts.Ctx, nil)
+		defer stop.finish()
+	}
+	// The session deadline begins here, after local validation. The independent
+	// stop timer arms the CLI watchdog even when the processing goroutine blocks.
+	ctx, cancel := context.WithTimeout(stop.ctx, n.duration)
+	defer cancel()
+	deadline := time.AfterFunc(n.duration, func() { stop.request("duration", "", 0) })
+	defer deadline.Stop()
+	var admitted, emitted uint64
+	var ready, unfinished bool
+	session, err := open(ctx, n.server, n.subject, func(err error) { stop.incomplete(err.Error()) })
+	if err != nil {
+		stop.failure(err.Error())
+		// Startup needs its own actionable stage, not an empty-observation footer.
+		stop.mu.Lock()
+		if stop.code != 130 {
+			stop.message = err.Error()
+			stop.code = 1
+			stop.reason = "failure"
+		}
+		stop.mu.Unlock()
+	} else {
+		pretty := n.output == "pretty" || (n.output == "auto" && display.Terminal(opts.Stdout))
+		color := display.Enabled(opts.Stdout)
+		ready = true
+		if err = opts.Logger.Emit(logx.Record{Sev: logx.SeverityInfo, Event: logx.EventNATSReady, Msg: "Ready for live observation; delivery is at-most-once"}); err != nil {
+			stop.incomplete("write: readiness diagnostic failed")
+		}
+		for ctx.Err() == nil {
+			if err = session.Err(); err != nil {
+				stop.incomplete(err.Error())
+				break
+			}
+			record, recvErr := session.Next(ctx)
+			if ctx.Err() != nil {
+				break
+			}
+			if errors.Is(recvErr, natsinspect.ErrEmptyPayload) {
+				admitted++
+				unfinished = true
+				stop.failure(recvErr.Error())
+				break
+			}
+			if recvErr != nil {
+				stop.failure("delivery: receive failed")
+				break
+			}
+			admitted++
+			unfinished = true
+			data, spans, eventErr := render(ctx, record, pretty, color)
+			if eventErr != nil {
+				if !errors.Is(eventErr, context.Canceled) && !errors.Is(eventErr, context.DeadlineExceeded) {
+					stop.failure(eventErr.Error())
+				}
+				break
+			}
+			if err = session.Err(); err != nil {
+				stop.incomplete(err.Error())
+				break
+			}
+			if ctx.Err() != nil {
+				break
+			}
+			writer := &natsWriter{ctx: ctx, w: opts.Stdout}
+			err = display.Write(writer, data, spans)
+			if err != nil {
+				if writer.started || ctx.Err() == nil {
+					stop.incomplete("write: output failed; final record may be incomplete")
+				}
+				break
+			}
+			emitted++
+			unfinished = false
+			if n.count > 0 && admitted >= n.count {
+				stop.request("count", "", 0)
+				break
+			}
+		}
+		if err = session.Err(); err != nil {
+			stop.incomplete(err.Error())
+		}
+	}
+	if reason, _, _ := stop.result(); reason == "" {
+		if opts.Ctx.Err() != nil {
+			stop.request("cancel", "cancel: observation cancelled", 130)
+		} else {
+			stop.request("duration", "", 0)
+		}
+	}
+	// Arm stopping before cleanup and final diagnostics, not after either can
+	// block. Close does not drain the queue or wait for unsubscribe confirmation.
+	if session != nil {
+		session.Close()
+		if err = session.Err(); err != nil {
+			stop.incomplete(err.Error())
+		}
+	}
+	reason, message, code := stop.result()
+	if !ready && code == 0 {
+		code = 1
+		message = "connect: subscription was not ready"
+	}
+	fields := []logx.Field{{Key: "reason", Value: reason}, {Key: "admitted", Value: admitted}, {Key: "emitted", Value: emitted}, {Key: "unfinished_event", Value: unfinished}}
+	event, severity := logx.EventNATSStopped, logx.SeverityInfo
+	if code != 0 {
+		event, severity = logx.EventNATSFailed, logx.SeverityError
+		message += "; observation incomplete"
+	} else {
+		message = "Stopped: reason=" + reason
+	}
+	message += fmt.Sprintf("; admitted=%d emitted=%d unfinished_event=%t", admitted, emitted, unfinished)
+	if unfinished && code == 0 {
+		message += "; unfinished event discarded before output"
+	}
+	logErr := opts.Logger.Emit(logx.Record{Sev: severity, Event: event, Msg: message, Fields: fields})
+	if code == 130 {
+		return &natsCancelled{}
+	}
+	if code != 0 || logErr != nil {
+		return &emittedError{cause: errors.New(message)}
+	}
+	return nil
+}

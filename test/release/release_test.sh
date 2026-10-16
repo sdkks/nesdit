@@ -88,7 +88,11 @@ echo "build $GOOS/$GOARCH $CGO_ENABLED $*" >> "$CASE_STATE/events"
 while [ "$1" != -o ]; do shift; done
 shift
 if [ -f "$CASE_STATE/oversize" ]; then
-    dd if=/dev/zero of="$1" bs=1048576 count=8
+    dd if=/dev/zero of="$1" bs=1048576 count=16
+elif [ -f "$CASE_STATE/binary-size" ]; then
+    # Sparse fixture: exercise the exact byte boundary without huge logs.
+    size=$(<"$CASE_STATE/binary-size")
+    dd if=/dev/zero of="$1" bs=1 count=1 seek="$((size - 1))"
 else
     printf '#!/usr/bin/env bash\necho "nesdit version %s (%s)"\n' "$(<VERSION)" "$(git rev-parse --short=12 HEAD)" > "$1"
 fi
@@ -198,7 +202,7 @@ for guard in auth api remote dirty index version-index untracked test build over
         remote) grep -q 'Cannot read remote tag' "$CASE_STATE/failure.log" ;;
         test) grep -q '^verify ' "$CASE_STATE/events" ;;
         build) grep -q '^build ' "$CASE_STATE/events" ;;
-        oversize) grep -q 'binary is.*8388608' "$CASE_STATE/failure.log" ;;
+        oversize) grep -q 'binary is.*16777216' "$CASE_STATE/failure.log" ;;
     esac
     if [ "$guard" = index ]; then [ "$("$REAL_GIT" diff --cached --name-only)" = README.md ]; fi
     if [ "$guard" = local-tag ]; then [ "$("$REAL_GIT" rev-parse v0.3.3)" = "$("$REAL_GIT" rev-parse v0.3.2)" ]; fi
@@ -209,6 +213,20 @@ mkdir "$CASE_STATE/no-gh"
 for tool in bash dirname git; do ln -s "$(command -v "$tool")" "$CASE_STATE/no-gh/$tool"; done
 expect_failure /usr/bin/env PATH="$CASE_STATE/no-gh" /bin/bash scripts/release.sh
 no_publication
+
+# Packaging accepts exactly one byte below the ceiling and rejects the ceiling
+# and one byte above it, without ever invoking publication.
+for size in 16777215 16777216 16777217; do
+    new_case
+    printf '%s\n' "$size" > "$CASE_STATE/binary-size"
+    if [ "$size" -lt 16777216 ]; then
+        bash scripts/package-release.sh "$CASE_STATE/packages"
+    else
+        expect_failure bash scripts/package-release.sh "$CASE_STATE/packages"
+        grep -q "binary is.*$size.*limit: < 16777216" "$CASE_STATE/failure.log"
+    fi
+    no_publication
+done
 
 # Parallel make still runs one ordered release; prepared versions are not bumped twice.
 for mode in release release-cli; do

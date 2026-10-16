@@ -32,6 +32,11 @@ func Enabled(w io.Writer) bool {
 	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
 		return false
 	}
+	return Terminal(w)
+}
+
+// Terminal reports stdout layout eligibility independently of color settings.
+func Terminal(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	return ok && terminal(f)
 }

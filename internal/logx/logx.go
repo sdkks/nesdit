@@ -64,6 +64,11 @@ type Event string
 // of truth; IsKnownEvent consults it so no ad-hoc token can reach
 // stderr.
 const (
+	// Native observation lifecycle; event data is written only to stdout.
+	EventNATSReady   Event = "nats.ready"
+	EventNATSStopped Event = "nats.stopped"
+	EventNATSFailed  Event = "nats.failed"
+
 	// Format / parse / decode errors across all format packages.
 	EventParseError         Event = "parse.error"
 	EventFormatUnknown      Event = "format.unknown"
@@ -192,6 +197,9 @@ const (
 // registry entry); callers that reference an unregistered token fail
 // IsKnownEvent at the edge.
 var knownEvents = map[Event]struct{}{
+	EventNATSReady:          {},
+	EventNATSStopped:        {},
+	EventNATSFailed:         {},
 	EventParseError:         {},
 	EventFormatUnknown:      {},
 	EventFormatUnsupported:  {},
@@ -353,7 +361,10 @@ func (l *Logger) InfoGlobal(event Event, msg string) {
 // here so the rendering format is enforced in one place. In text mode
 // the NFR-10 canonical shape is produced; in JSON mode (FR-15) an NDJSON
 // line is produced.
-func (l *Logger) emit(r Record) {
+func (l *Logger) emit(r Record) { _ = l.Emit(r) }
+
+// Emit writes a canonical record and reports sink failures to lifecycle owners.
+func (l *Logger) Emit(r Record) error {
 	var s string
 	if l.fmt == FormatJSON {
 		s = renderJSON(r)
@@ -362,7 +373,11 @@ func (l *Logger) emit(r Record) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	_, _ = io.WriteString(l.w, s)
+	n, err := io.WriteString(l.w, s)
+	if err == nil && n != len(s) {
+		return io.ErrShortWrite
+	}
+	return err
 }
 
 // FormatRecord is exposed for callers (e.g. cobra's SilenceErrors path)

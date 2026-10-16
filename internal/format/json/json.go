@@ -105,10 +105,16 @@ func EncodeValue(w io.Writer, v omap.Value) error {
 // observes successful key/scalar writes. Spans are usable only if encoding
 // succeeds; the observer never changes the serialized data.
 func EncodeValueObserved(w io.Writer, v omap.Value, observe func(display.Span)) error {
+	return EncodeValueLayout(w, v, false, observe)
+}
+
+// EncodeValueLayout adds opt-in two-space indentation. Whitespace goes through
+// the same writer as values, so callers can bound the entire serialized view.
+func EncodeValueLayout(w io.Writer, v omap.Value, pretty bool, observe func(display.Span)) error {
 	if err := checkJSONRepresentable(v); err != nil {
 		return err
 	}
-	return (&encoder{w: w, observe: observe}).encodeValue(v)
+	return (&encoder{w: w, observe: observe, pretty: pretty}).encodeValue(v)
 }
 
 // checkJSONRepresentable walks v and returns an *omap.EncodeError for any
@@ -263,6 +269,15 @@ type encoder struct {
 	w        io.Writer
 	position int
 	observe  func(display.Span)
+	pretty   bool
+	depth    int
+}
+
+func (e *encoder) newline() error {
+	if !e.pretty {
+		return nil
+	}
+	return e.writeString(0, "\n"+strings.Repeat("  ", e.depth))
 }
 
 func (e *encoder) written(n, size int, role display.Role, err error) error {
@@ -291,6 +306,7 @@ func (e *encoder) encodeDoc(d *omap.Doc) error {
 	if err := e.writeString(0, "{"); err != nil {
 		return err
 	}
+	e.depth++
 	first := true
 	var encErr error
 	d.Entries(func(k string, v omap.Value) bool {
@@ -300,6 +316,9 @@ func (e *encoder) encodeDoc(d *omap.Doc) error {
 			}
 		}
 		first = false
+		if encErr = e.newline(); encErr != nil {
+			return false
+		}
 		kb, err := stdjson.Marshal(k)
 		if err != nil {
 			encErr = fmt.Errorf("json: marshal key %q: %w", k, err)
@@ -308,7 +327,11 @@ func (e *encoder) encodeDoc(d *omap.Doc) error {
 		if encErr = e.writeBytes(display.Key, kb); encErr != nil {
 			return false
 		}
-		if encErr = e.writeString(0, ":"); encErr != nil {
+		separator := ":"
+		if e.pretty {
+			separator = ": "
+		}
+		if encErr = e.writeString(0, separator); encErr != nil {
 			return false
 		}
 		if encErr = e.encodeValue(v); encErr != nil {
@@ -318,6 +341,12 @@ func (e *encoder) encodeDoc(d *omap.Doc) error {
 	})
 	if encErr != nil {
 		return encErr
+	}
+	e.depth--
+	if !first {
+		if err := e.newline(); err != nil {
+			return err
+		}
 	}
 	return e.writeString(0, "}")
 }
@@ -354,13 +383,23 @@ func (e *encoder) encodeValue(v omap.Value) error {
 		if err := e.writeString(0, "["); err != nil {
 			return err
 		}
+		e.depth++
 		for i, item := range v.Seq {
 			if i > 0 {
 				if err := e.writeString(0, ","); err != nil {
 					return err
 				}
 			}
+			if err := e.newline(); err != nil {
+				return err
+			}
 			if err := e.encodeValue(item); err != nil {
+				return err
+			}
+		}
+		e.depth--
+		if len(v.Seq) > 0 {
+			if err := e.newline(); err != nil {
 				return err
 			}
 		}

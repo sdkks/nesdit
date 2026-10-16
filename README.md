@@ -4,7 +4,7 @@ A CLI for deterministic, format-preserving edits to JSON, YAML, and TOML documen
 
 - Reads a file (or stdin), applies a query, and writes the result — without reformatting untouched content.
 - Supports in-place editing (`-i`), dry-run diffs (`-n`), drift checking (`--check`), and editor-assisted query building (`--edit`).
-- Enforces per-run resource caps by default to handle adversarial inputs safely.
+- Enforces file/pipe resource caps by default; native NATS observation uses separate component limits and assumes a trusted broker.
 
 **Full documentation:** https://sdkks.github.io/nesdit/
 
@@ -63,15 +63,33 @@ nesdit config.json --output-format yaml --query '.'
 nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $replicas'
 ```
 
+## Live NATS observation
+
+```sh
+nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
+```
+
+This explicit mode reads neither files nor stdin. It displays each complete JSON
+message with its delivered subject and repeated headers, using pretty JSON on a
+Unix terminal and JSONL when redirected. Server and total duration are required;
+count is an optional cap on messages admitted for processing, not all publications.
+Readiness and completion diagnostics go to stderr. There is no reconnect, history,
+application publishing, filtering or projection in this observation command.
+
+Observation is live and at-most-once, not a complete or byte-exact capture.
+Interrupt/output failure can leave a partial final record; check exit status.
+See the [NATS guide](docs/modes/nats.md) for limits, verified TLS, cancellation,
+output modes, and disposable-broker testing.
+
 ## Supported formats
 
 | Format | Extensions      | Notes                       |
 | ------ | --------------- | --------------------------- |
-| JSON   | `.json`         | Preserves key order; output is always compact (single-line) |
+| JSON   | `.json`         | Preserves key order; file/pipe output is compact (single-line) |
 | YAML   | `.yaml`, `.yml` | Single-document per file; anchors/aliases and merge keys (`<<:`) resolved on decode, not re-emitted |
 | TOML   | `.toml`         | Tables and arrays of tables; nested tables emitted as inline syntax |
 
-> **Known behaviors:** Comments are stripped from all formats on output. YAML anchors/aliases are resolved and not re-emitted; merge keys (`<<: *anchor`) are applied at decode time. YAML quoted strings are normalized to bare scalars. TOML `[section]` headers are rewritten to inline-table syntax (`{key = value}`). JSON output is always compact (single-line). None of these affect the parsed value — only the serialized form.
+> **Known behaviors:** Comments are stripped from all formats on output. YAML anchors/aliases are resolved and not re-emitted; merge keys (`<<: *anchor`) are applied at decode time. YAML quoted strings are normalized to bare scalars. TOML `[section]` headers are rewritten to inline-table syntax (`{key = value}`). JSON file/pipe output is compact (single-line). None of these affect the parsed value — only the serialized form.
 
 Format is auto-detected from the file extension. Use `--format json|jsonl|yaml|toml` to override input format, and `--output-format json|yaml|toml` to transcode to a different output format.
 
@@ -137,4 +155,4 @@ asset names, and partial-upload recovery.
 
 ## License
 
-See [LICENSE](LICENSE). The YAML highlighting dependency's attribution and supplied license are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), also included in release archives.
+See [LICENSE](LICENSE). YAML highlighting and native NATS dependency attributions and supplied licenses are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), also included in release archives.

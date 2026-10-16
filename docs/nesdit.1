@@ -182,6 +182,58 @@ flag is an explicit alias provided for documentation purposes.
 .TP
 .BR \-h ", " \-\-help
 Show help and exit.
+.SH NATS OBSERVATION
+.B nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
+.PP
+Observe live Core NATS JSON without reading files or stdin. Server and positive
+finite total duration are required; duration includes connection setup, not just
+idle time. The optional positive count limits messages admitted for processing,
+not every publication or the number successfully displayed. A malformed message
+consumes a slot before failure. No reconnect, queue group, history, publishing,
+filtering or projection is performed. File editing/query flags are rejected.
+.PP
+Each message must contain one complete JSON value. Multiline bodies and scalars
+work; empty, malformed and concatenated values fail. The JSON envelope contains
+subject, sorted headers with repeated-value arrays, and payload, in that order.
+Payload metadata-like keys remain separate. This is a decoded view, not byte-exact
+capture. Readiness and stop/error diagnostics are on stderr, with admitted/emitted
+counts and an unfinished-event indication; stdout contains events only.
+.PP
+Use one explicit nats://host:port or tls://host:port endpoint. TLS verifies the
+server certificate and hostname using system trust. URL credentials, lists,
+queries and fragments are rejected; there is no insecure TLS mode or credential,
+custom-CA or client-certificate file flag in this command.
+.PP
+.B --nats-output auto
+selects two-space pretty JSON on a Unix stdout terminal and JSONL when redirected.
+.B --nats-output jsonl
+forces compact layout;
+.B --nats-output pretty
+writes consecutive multiline JSON documents, not JSONL. Redirected output stays
+plain. NO_COLOR and TERM=dumb disable color, not pretty layout. Windows stays plain.
+.PP
+Observation is at-most-once. Readiness is a processing barrier, not a complete
+delivery guarantee. A quiet ready duration is successful; expiration before
+readiness fails. Detected disconnection, pending overflow, malformed data, resource
+or output errors fail immediately and retain earlier complete output.
+.PP
+Fixed limits: 10 MiB payload, 1000 container depth, eight pending messages and
+64 MiB pending payload-only bytes, 64 KiB admitted wire headers, 4 KiB each subject
+and reply, and 16 MiB serialized output including whitespace and final newline.
+At-limit values are allowed. Client frame/header allocations precede application
+checks; these are component limits, not a whole-process memory bound. Use a trusted,
+correctly configured broker. Output contains application data and is not sanitized.
+.PP
+One interrupt requests cancellation on Linux/macOS. The first stop request starts
+a one-second cleanup allowance; a CLI-only forced-exit fallback can truncate the
+final event, skip cleanup and omit final diagnostics if output or other work blocks.
+Check exit status and validate redirected output. In-process Execute never exits
+its host and requires responsive writers. No new Windows interrupt bound is claimed.
+.PP
+Normal count or cooperative ready-duration completion exits 0. Duration before
+emission may discard an unfinished event with an explicit indication and exit 0;
+incomplete emission and forced stops exit 1. Interruption exits 130. Earlier fatal
+errors are not erased by the deadline. Existing file-mode exit meanings are unchanged.
 .SH EXIT STATUS
 .TP
 .B 0
@@ -189,6 +241,9 @@ Success.
 .TP
 .B 1
 Error (bad query, unreadable file, parse failure, etc.).
+.TP
+.B 130
+Native observation interrupted or cancelled (Linux/macOS CLI interrupt handling).
 .TP
 .B 2
 Drift detected: the query would change the input (only when

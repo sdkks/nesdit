@@ -72,7 +72,7 @@ For version `0.4.1`, GitHub receives:
 Each archive contains `nesdit`, `README.md`, `THIRD-PARTY-NOTICES.md`, and
 `share/man/man1/nesdit.1`. Binaries use `CGO_ENABLED=0`, `-trimpath`, stripped
 symbols, and injected version/12-character commit metadata. Every binary must
-be smaller than 8 MiB. No additional platform support is implied.
+be smaller than 16 MiB (16,777,216 bytes). No additional platform support is implied.
 
 To package committed source without publication:
 
