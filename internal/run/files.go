@@ -1,16 +1,16 @@
 // Package run — files.go implements the two-pass file/glob orchestrator
-// for the -i (in-place) mode (STORY-0004 / NFR-7).
+// for the -i (in-place) mode.
 //
-// Pass structure (NFR-7):
-//  1. Detect mixed formats (FR-5): reject before any IO side-effect.
+// Pass structure:
+//  1. Detect mixed formats: reject before any IO side-effect.
 //  2. Decode all inputs.
 //  3. Apply the jq query to every decoded value.
 //  4. Encode all results (catching encode failures).
 //  5. Validate: if any encode step failed, abort before any write.
 //  6. Write atomically (per-file temp+rename).
-//  7. Emit batch summary (FR-6).
+//  7. Emit batch summary.
 //
-// Non-transactional write behavior (NFR-9): each file's write is atomic
+// Non-transactional write behavior: each file's write is atomic
 // but the batch is not. A write-time IO failure (disk full, permission)
 // may leave earlier files already written and later files at their original
 // bytes. The batch summary reflects what actually landed.
@@ -46,22 +46,22 @@ type fileResult struct {
 // runFiles is the in-place (-i) orchestrator. Callers pass the already-
 // expanded list of file paths (glob expansion is the caller's responsibility).
 //
-// Mixed-format detection (FR-5) happens before any file is opened, using
+// Mixed-format detection happens before any file is opened, using
 // only extension-based detection on the path names. This ensures the
 // rejection is a pure metadata operation with no IO side-effects.
 //
-// wherePredicate (FR-10 / STORY-0009): when non-empty, each file is decoded
+// wherePredicate: when non-empty, each file is decoded
 // and tested against select(<wherePredicate>) before the query is applied.
 // Files that do not satisfy the predicate are logged as where.skipped and
 // counted in the batch summary as skipped (excluded from changed/unchanged).
 //
-// keepGoing (FR-17 / STORY-0013 --keep-going): when true, errored files are
+// keepGoing (--keep-going): when true, errored files are
 // counted in the batch summary K errored slot and processing continues to the
 // next file rather than aborting. No files are written for the batch until
 // after all files are processed; errored files are excluded from the write
 // phase. Exit code is 1 if any errors occurred.
 //
-// When backupSuffix is non-empty (--backup flag, FR-14), each file that will
+// When backupSuffix is non-empty (--backup flag), each file that will
 // be changed is backed up to <path><suffix> BEFORE the atomic rename step.
 // Unchanged files are not backed up.
 //
@@ -69,7 +69,7 @@ type fileResult struct {
 // validateFlagInteraction before runFiles is reached), so outputFmtOverride
 // is wired here for completeness but will always be empty in practice.
 //
-// STORY-0018: pretty enables human-friendly TOML output. Silently ignored
+// pretty enables human-friendly TOML output. Silently ignored
 // for non-TOML output formats.
 func runFiles(
 	ctx context.Context,
@@ -92,7 +92,7 @@ func runFiles(
 	// do not cause double writes.
 	paths = nesio.DeduplicatePaths(paths)
 
-	// --- FR-5: mixed-format detection (before any file open) ---
+	// --- Mixed-format detection (before any file open) ---
 	if err := detectMixedFormats(opts, paths, overrideFormat); err != nil {
 		return err
 	}
@@ -109,7 +109,7 @@ func runFiles(
 		}
 	}
 
-	// --- NFR-7 / FR-17: if any encode/query step failed ---
+	// --- If any encode/query step failed ---
 	// Strict (default): abort before any write.
 	// --keep-going: continue to the write phase; errored files are skipped
 	// and counted in the batch summary.
@@ -122,7 +122,7 @@ func runFiles(
 		return &emittedError{cause: errors.New("one or more files failed encode/query; no files were written")}
 	}
 
-	// --- Write phase: atomic per-file (NFR-9: non-transactional batch) ---
+	// --- Write phase: atomic per-file (non-transactional batch) ---
 	for i := range results {
 		r := &results[i]
 		if r.skipped {
@@ -135,7 +135,7 @@ func runFiles(
 			// reach here if there were no encode failures (guarded above).
 			continue
 		}
-		// FR-14: unchanged files are not backed up. isUnchanged is true when
+		// Unchanged files are not backed up. isUnchanged is true when
 		// the encoded query output matches the re-encoded original.
 		isUnchanged := r.reencoded != nil && bytes.Equal(r.reencoded, r.encoded)
 		writeSuffix := ""
@@ -153,7 +153,7 @@ func runFiles(
 		}
 	}
 
-	// --- FR-6: batch summary (only for multi-file / glob operations) ---
+	// --- Batch summary (only for multi-file / glob operations) ---
 	if len(results) > 1 {
 		emitBatchSummary(opts.Logger, results)
 	}
@@ -173,7 +173,7 @@ func runFiles(
 // one format is found.
 //
 // This function reads no file bytes — it operates only on path names,
-// so it has zero IO side-effects and satisfies FR-5's "before any write
+// so it has zero IO side-effects and satisfies the "before any write
 // or output" contract.
 func detectMixedFormats(opts RunOptions, paths []string, overrideFormat string) error {
 	if overrideFormat != "" {
@@ -253,7 +253,7 @@ func processOneFile(
 		res.encErr = errors.New(msg)
 		return res
 	}
-	// STORY-0015: resolve effective output format.
+	// Resolve effective output format.
 	outFmtName := outputFmtOverride
 	if outFmtName == "" {
 		outFmtName = fmtName
@@ -286,7 +286,7 @@ func processOneFile(
 	// idempotency check — it normalises away trailing-newline and whitespace
 	// differences between what was on disk and what the encoder produces.
 	// Use outFmtName so cross-format runs detect "changed" correctly.
-	// STORY-0018: apply pretty so the comparison baseline matches the output.
+	// Apply pretty so the comparison baseline matches the output.
 	var reencBuf bytes.Buffer
 	if reencErr := encodeFormatValueWithPretty(outFmtName, &reencBuf, val, pretty); reencErr == nil {
 		res.reencoded = reencBuf.Bytes()
@@ -294,7 +294,7 @@ func processOneFile(
 	// If re-encode fails (e.g. the file was already corrupt), reencoded stays
 	// nil and the summary will count it as changed (conservative).
 
-	// --where (FR-10 / STORY-0009): test the predicate before running the
+	// --where: test the predicate before running the
 	// query. Files that do not match are logged as where.skipped and returned
 	// immediately; the query and encode steps are skipped.
 	if wherePredicate != "" {
@@ -326,7 +326,7 @@ func processOneFile(
 		return res
 	}
 
-	// FR-16 / STORY-0012: reject missing-path creation unless --create-missing.
+	// Reject missing-path creation unless --create-missing.
 	if !createMissing {
 		if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
 			opts.Logger.Error(logx.EventQueryMissingPath, path, mpErr.Error())
@@ -336,7 +336,7 @@ func processOneFile(
 	}
 
 	// Encode using the effective output format.
-	// STORY-0018: apply pretty when set and output format is toml.
+	// Apply pretty when set and output format is toml.
 	var buf bytes.Buffer
 	if encErr := encodeFormatValueWithPretty(outFmtName, &buf, outVal, pretty); encErr != nil {
 		var encodeErr *omap.EncodeError
@@ -354,7 +354,7 @@ func processOneFile(
 }
 
 // emitBatchSummary counts changed/unchanged/skipped/errored from results and
-// emits the FR-6 `N changed, M unchanged, K errored` line on stderr via
+// emits the `N changed, M unchanged, K errored` line on stderr via
 // InfoGlobal. Skipped files (--where predicate mismatch) are excluded from
 // changed/unchanged/errored — they appear only in the per-file where.skipped
 // warn lines already emitted by processOneFile.

@@ -1,6 +1,6 @@
-# identity_toml.txtar — STORY-0002 NFR-2 identity invariant (TOML).
+# identity_toml.txtar — identity invariant (TOML).
 #
-# Per DR-006, nesdit emits TOML as flat key-values with inline tables for
+# By default, nesdit emits TOML as flat key-values with inline tables for
 # every nested mapping (so omap key order is byte-stable across round-trip).
 # The source matches that shape.
 

@@ -11,7 +11,7 @@ import (
 	yamlfmt "github.com/sdkks/nesdit/internal/format/yaml"
 )
 
-// Test_YAMLDecoder_InputSizeCap covers STORY-0008 M2 for YAML: sub/at/above.
+// Test_YAMLDecoder_InputSizeCap covers the YAML byte cap: sub/at/above.
 func Test_YAMLDecoder_InputSizeCap(t *testing.T) {
 	t.Parallel()
 	src := []byte("a: 1\nb: 2\nc: 3\n")
@@ -34,7 +34,7 @@ func Test_YAMLDecoder_InputSizeCap(t *testing.T) {
 	}
 }
 
-// Test_YAMLDecoder_NestingDepthCap covers STORY-0008 M3 for YAML.
+// Test_YAMLDecoder_NestingDepthCap covers the nesting-depth cap for YAML.
 func Test_YAMLDecoder_NestingDepthCap(t *testing.T) {
 	t.Parallel()
 	// YAML flow-style nested sequences: [[[...]]]
@@ -60,7 +60,7 @@ func Test_YAMLDecoder_NestingDepthCap(t *testing.T) {
 	}
 }
 
-// Test_YAMLDecoder_BillionLaughs_Rejected covers STORY-0008 M1: a small
+// Test_YAMLDecoder_BillionLaughs_Rejected covers alias-expansion limits: a small
 // (< 1KB) YAML alias-expansion bomb must be rejected via the alias-
 // expansion cap *before* exhausting memory. Expands to ~10^7 node
 // materialisations if allowed to run to completion.

@@ -16,7 +16,7 @@ import (
 // original tags forward for keys that were not touched.
 //
 // Numbers are emitted as json.Number so int64 / arbitrary-precision
-// values (NFR-4, e.g. 9007199254740993) survive the bridge.
+// values (e.g. 9007199254740993) survive the bridge.
 func (d *Doc) ToAny() map[string]any {
 	if d == nil {
 		return nil
@@ -59,7 +59,7 @@ func valueToAny(v Value) any {
 // go-jq accepts. Mirrors (*Doc).ToAny but handles non-map tops: arrays become
 // []any, scalars stay as their Go equivalents, and maps delegate to Doc.ToAny.
 //
-// BUG-0001: JSON (RFC 8259) and YAML (1.2) permit any value at the document
+// JSON (RFC 8259) and YAML (1.2) permit any value at the document
 // root, not just maps. This function is the map-agnostic counterpart to
 // ToAny so the CLI pipeline can carry a top-level array or scalar from
 // decode through query to encode.
@@ -68,10 +68,10 @@ func ValueToAny(v Value) any { return valueToAny(v) }
 // ValueFromAny converts a go-jq result rooted at any value type back into
 // an omap.Value. It uses prev (the pre-query snapshot at the same path) to
 // preserve key insertion order in nested maps (same reconciliation rules as
-// FromAny — see its doc for DR-007 positional seq reconciliation). Pass the
+// FromAny — see its doc for positional seq reconciliation). Pass the
 // zero Value when no prev exists.
 //
-// BUG-0001: the map-rooted FromAny remains for callers that specifically
+// The map-rooted FromAny remains for callers that specifically
 // want *Doc; this is the top-level-agnostic version.
 func ValueFromAny(v any, prev Value) Value { return anyToValue(v, prev) }
 
@@ -80,7 +80,7 @@ func ValueFromAny(v any, prev Value) Value { return anyToValue(v, prev) }
 // — int, float64, *big.Int) back into an *omap.Doc. Key order is
 // reconciled against prev: at every map boundary, keys present in prev
 // (in prev order) emit first, followed by keys new to the jq result in
-// lexicographic order (SPEC-0001 §2, Open Question 7).
+// lexicographic order.
 //
 // Recursion rules:
 //   - Map value at a key: if prev has a *Doc at the same key, use it as
@@ -94,7 +94,7 @@ func ValueFromAny(v any, prev Value) Value { return anyToValue(v, prev) }
 // the same scalar kind at the same leaf, so e.g. !!timestamp strings
 // that jq did not touch round-trip with their tag intact.
 //
-// ARRAY-OF-MAPS RECONCILIATION IS POSITIONAL (DR-007, SPEC-0001).
+// ARRAY-OF-MAPS RECONCILIATION IS POSITIONAL.
 // For []any values, element-wise reconciliation is by index: result[i]
 // inherits map-order from prev[i]. This is correct-by-construction for
 // identity, scalar-assignment, and del() queries (result[i] IS the
@@ -102,10 +102,9 @@ func ValueFromAny(v any, prev Value) Value { return anyToValue(v, prev) }
 // reverse, unique_by, map() producing restructured elements, slice
 // operations) will produce key orders reflecting positional match,
 // NOT element identity — deterministic but potentially surprising.
-// See SPEC-0001 DR-007 for the full rationale and the lock-in corpus
-// in internal/query.TestBridgeGoNoGo (json_dr007_reshape case). The
-// v1.1 roadmap item tracks revisiting if real-world usage surfaces
-// pain; do not change this behaviour without re-opening DR-007.
+// The array-reshape cases in internal/query.TestBridgeGoNoGo pin these
+// bytes. Changing to identity matching would change serialized key order
+// and must be treated as a compatibility change.
 func FromAny(v any, prev *Doc) *Doc {
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -125,7 +124,7 @@ func fromAnyMap(m map[string]any, prev *Doc) *Doc {
 
 	// 1. Emit keys from prev in prev order, when still present in m.
 	//    Iterate the internal slice directly to avoid the per-call clone
-	//    cost of the public (*Doc).Keys (TASK-0004 API hygiene).
+	//    cost of the public (*Doc).Keys.
 	if prev != nil {
 		for i, k := range prev.keys {
 			rawNew, ok := m[k]

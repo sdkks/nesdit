@@ -18,22 +18,22 @@ import (
 )
 
 // stdinFilename is the canonical file slot used in logx lines when the input
-// source is STDIN. NFR-10 mandates `-` for STDIN, not "stdin" or "".
+// source is STDIN. Use `-` for STDIN, not "stdin" or "".
 const stdinFilename = "-"
 
-// runStdin is the NFR-8 single-pass STDIN pipeline. It reads one document at
+// runStdin is the single-pass STDIN pipeline. It reads one document at
 // a time via a stream.DocReader, applies the query, and writes to stdout.
 //
 // Default (strict) behaviour: on the first document failure, runStdin halts
 // with a non-zero exit via emittedError. Earlier documents already written to
-// stdout are documented NFR-8 behavior (single-pass, not transactional).
+// stdout are documented behavior (single-pass, not transactional).
 //
-// With keepGoing=true (FR-17 / STORY-0013 --keep-going): a query or encode
+// With keepGoing=true (--keep-going): a query or encode
 // error on one document is logged and processing continues to the next
 // document. The errored document is NOT written to stdout. Exit code is
 // non-zero at the end if any errors occurred.
 //
-// wherePredicate (FR-10 / STORY-0009): when non-empty, each document that does
+// wherePredicate: when non-empty, each document that does
 // not satisfy select(<wherePredicate>) is written to stdout unchanged (passed
 // through). The query is only applied to matching documents.
 //
@@ -42,7 +42,7 @@ const stdinFilename = "-"
 // runStdinJSON for single-document buffered decode. "toml" is single-document only;
 // a multi-doc TOML input produces ErrTOMLMultiDoc (format.unsupported).
 //
-// outputFmtOverride (STORY-0015): when non-empty, each document is encoded in
+// outputFmtOverride: when non-empty, each document is encoded in
 // the specified output format instead of the input format. Pass-through docs
 // (--where predicate mismatch) are still encoded in the input format so they
 // are byte-identical to the input.
@@ -50,7 +50,7 @@ const stdinFilename = "-"
 // timeout (when > 0) wraps ctx with a per-document deadline for the query
 // phase only (consistent with runOnce).
 //
-// STORY-0018: pretty enables human-friendly TOML output when the effective
+// pretty enables human-friendly TOML output when the effective
 // output format is "toml". Silently ignored for other output formats.
 func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, keepGoing, createMissing bool, yamlVersion string, pretty bool) error {
 	// --format json on STDIN: the user explicitly requested single-document
@@ -61,14 +61,14 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 		return runStdinJSON(ctx, opts, outputFmtOverride, queryExpr, wherePredicate, args, limits, timeout, createMissing, keepGoing, pretty)
 	}
 
-	// Wire the reader (always in input format). FR-18: pass yamlVersion via
+	// Wire the reader (always in input format). Pass yamlVersion via
 	// DecodeOpts; silently ignored for non-YAML formats.
 	reader, err := stream.NewReaderWithOpts(fmtName, opts.Stdin, limits, yamlfmt.DecodeOpts{YAMLVersion: yamlVersion})
 	if err != nil {
 		opts.Logger.ErrorGlobal(logx.EventFormatUnsupported, err.Error())
 		return &emittedError{cause: err}
 	}
-	// STORY-0015: resolve effective output format. Defaults to the input format.
+	// Resolve effective output format. Defaults to the input format.
 	// Normalize "json" to "jsonl" for stdin streaming, consistent with how
 	// the input format is normalised in stdinFormatName.
 	var outFmtName string
@@ -82,7 +82,7 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 		outFmtName = outputFmtOverride
 	}
 	// Wire the writer (in effective output format).
-	// STORY-0018: when pretty is set and the output format is toml, use the
+	// When pretty is set and the output format is toml, use the
 	// pretty TOML writer. For all other formats, use the standard writer.
 	var writer stream.DocWriter
 	if pretty && outFmtName == "toml" {
@@ -115,7 +115,7 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 		docIndex++
 		val := reader.Value()
 
-		// --where (FR-10 / STORY-0009): test the predicate before running the
+		// --where: test the predicate before running the
 		// query. Documents that do not match are written to stdout unchanged
 		// (pass-through in input format). A where predicate error halts the stream
 		// (even under --keep-going: this is a misconfiguration, not a per-doc
@@ -128,12 +128,12 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 			}
 			if !match {
 				opts.Logger.WarnAt(logx.EventWhereSkipped, stdinFilename, docIndex, "--where predicate did not match; doc passed through")
-				// NFR-8 partial-write trade-off: passthroughWriter writes
+				// Partial-write trade-off: passthroughWriter writes
 				// directly to the streaming stdout. A write failure here
 				// (e.g. broken pipe or, theoretically, an encode error if the
 				// value could not be re-serialised in the input format) may
 				// leave a partial document on stdout before the error is
-				// detected — the same NFR-8 single-pass trade-off that applies
+				// detected — the same single-pass trade-off that applies
 				// to the main write path. Under --keep-going the error is
 				// logged, hadError is set, and processing continues; there is
 				// no rollback of bytes already emitted. Callers must treat
@@ -165,13 +165,13 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 			if !keepGoing {
 				return &emittedError{cause: qErr}
 			}
-			// --keep-going (FR-17): log error, skip this doc, continue to next.
+			// --keep-going: log error, skip this doc, continue to next.
 			// The errored document is NOT written to stdout.
 			hadError = true
 			continue
 		}
 
-		// FR-16 / STORY-0012: reject missing-path creation unless --create-missing.
+		// Reject missing-path creation unless --create-missing.
 		if !createMissing {
 			if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
 				opts.Logger.ErrorAt(logx.EventQueryMissingPath, stdinFilename, docIndex, mpErr.Error())
@@ -214,7 +214,7 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 		return &emittedError{cause: rErr}
 	}
 
-	// FR-17: if any per-document errors were encountered under --keep-going,
+	// If any per-document errors were encountered under --keep-going,
 	// exit 1 at end of run (non-zero, even though processing continued).
 	if hadError {
 		return &emittedError{cause: errors.New("one or more documents failed processing")}
@@ -229,14 +229,14 @@ func runStdin(ctx context.Context, opts RunOptions, fmtName, outputFmtOverride, 
 // written to stdout. This correctly handles multi-line JSON objects that a
 // line-by-line JSONL reader would otherwise split on the first newline.
 //
-// keepGoing mirrors the FR-17 semantics from runStdin: when true and an error
+// keepGoing mirrors the semantics from runStdin: when true and an error
 // is an *emittedError, return nil instead of propagating. Since this function
 // is single-document only, keepGoing does not continue iteration — it only
 // determines whether a per-document error is suppressed (exit 0) or surfaced
 // (exit 1). Where-predicate errors are configuration errors and are never
 // suppressed regardless of keepGoing.
 //
-// STORY-0018: pretty enables human-friendly TOML output. Silently ignored
+// pretty enables human-friendly TOML output. Silently ignored
 // for non-TOML output formats.
 func runStdinJSON(ctx context.Context, opts RunOptions, outputFmtOverride, queryExpr, wherePredicate string, args []query.Arg, limits format.Limits, timeout time.Duration, createMissing, keepGoing, pretty bool) error {
 	data, err := io.ReadAll(opts.Stdin)
@@ -260,7 +260,7 @@ func runStdinJSON(ctx context.Context, opts RunOptions, outputFmtOverride, query
 	if outFmtName == "" {
 		outFmtName = "json"
 	}
-	// STORY-0018: when pretty is set and the output format is toml, use the
+	// When pretty is set and the output format is toml, use the
 	// pretty TOML writer. For all other formats, use the standard writer.
 	var writer stream.DocWriter
 	if pretty && outFmtName == "toml" {

@@ -9,10 +9,10 @@ import (
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
-// BUG-0001 regression: YAML decoder previously required a top-level mapping.
+// Regression: YAML decoder previously required a top-level mapping.
 // YAML 1.2 allows any node (mapping, sequence, scalar) at the top level.
 // These tests exercise DecodeValue/EncodeValue — the top-level-agnostic API
-// added to fix BUG-0001.
+// added to support non-mapping roots.
 
 func TestYAMLDecodeValue_TopLevelSequence(t *testing.T) {
 	t.Parallel()

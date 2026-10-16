@@ -13,7 +13,7 @@ import (
 // Test_Run_HonorsContextCancellation proves query.Run plumbs the caller's
 // context into gojq's RunWithContext: a pathological query (materializing
 // a billion-element range into an array) is aborted when the context's
-// deadline fires. This is the seam STORY-0003's --timeout will cancel.
+// deadline fires. This is the seam the CLI's --timeout cancels.
 //
 // The test asserts both:
 //   - query.Run returns a non-nil error (gojq propagates ctx.Err()).

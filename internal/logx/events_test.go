@@ -7,19 +7,15 @@ import (
 )
 
 // Test_Logx_EventEnum pins the closed-enum taxonomy of event tokens
-// shared by the human-mode formatter and (future) FR-15 NDJSON mode,
-// per SPEC-0001 NFR-10 and DR-004.
-//
-// STORY-0003 establishes the initial set covering every error/warn/info
-// site that exists today plus every site the cobra tree adds. STORY-0008
-// will extend this enum with decoder.limit.* and query.timeout tokens;
-// this test intentionally does NOT pin the full surface — it pins the
-// tokens STORY-0003 must ship so accidental renames become a CI error.
+// shared by the human-mode formatter and NDJSON mode.
+// This test pins required error/warn/info tokens, including resource limits
+// and cancellation, so accidental renames become a CI error. It does not
+// enumerate every registered event.
 func Test_Logx_EventEnum(t *testing.T) {
 	required := []logx.Event{
 		// Decode / parse errors across formats.
 		logx.EventParseError,
-		// Encode errors (including cross-format incompatibility, FR-19).
+		// Encode errors (including cross-format incompatibility).
 		logx.EventEncodeError,
 		logx.EventFormatIncompatible,
 		// IO errors reading a source file.
@@ -30,21 +26,21 @@ func Test_Logx_EventEnum(t *testing.T) {
 		logx.EventQueryCompile,
 		logx.EventQueryRuntime,
 		logx.EventQueryResult,
-		// Flag-parse and flag-interaction rejections (FR-21, DR-001).
+		// Flag-parse and flag-interaction rejections.
 		logx.EventFlagConflict,
 		logx.EventFlagInvalid,
-		// --arg / --argjson parse failures (FR-7, FR-8).
+		// --arg / --argjson parse failures.
 		logx.EventArgDecode,
 		// -f / --from-file errors.
 		logx.EventFromFileRead,
 		// Unknown / unsupported format detection.
 		logx.EventFormatUnknown,
-		// STORY-0008 decoder hardening (M1/M2/M3 + M4 timeout).
+		// Decoder resource limits and query timeout.
 		logx.EventDecoderLimitInputSize,
 		logx.EventDecoderLimitDepth,
 		logx.EventDecoderLimitYAMLNodeCount,
 		logx.EventQueryTimeout,
-		// TASK-0018 S-2 — context cancellation distinct from timeout.
+		// Context cancellation distinct from timeout.
 		logx.EventQueryCancelled,
 	}
 
@@ -68,7 +64,7 @@ func Test_Logx_EventEnum(t *testing.T) {
 		}
 	}
 
-	// Token shape: [a-z][a-z0-9_.]* per NFR-10 regex.
+	// Token shape: [a-z][a-z0-9_.]*.
 	for _, e := range required {
 		if !isValidEventToken(string(e)) {
 			t.Errorf("event token %q does not match required shape [a-z][a-z0-9_.]*", e)
@@ -76,7 +72,7 @@ func Test_Logx_EventEnum(t *testing.T) {
 	}
 }
 
-// isValidEventToken mirrors the NFR-10 regex for an event token.
+// isValidEventToken mirrors the canonical regex for an event token.
 func isValidEventToken(s string) bool {
 	if s == "" {
 		return false

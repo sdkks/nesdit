@@ -3,18 +3,12 @@
 // (test/e2e/main_test.go) can call Run without the `package main` import
 // restriction.
 //
-// STORY-0003 scope: full cobra flag tree for the file→stdout dispatch
-// path. Flags wired here: --query, -f/--from-file, --format, --arg,
-// --argjson. $${VAR} escape is honoured in the query preprocessor
-// inside internal/query. Flag-conflict rejection runs at parse time
-// (PreRunE) so combinations like --query + -f error BEFORE any file
-// read, per DR-001 / FR-21. Every stderr emission flows through
-// internal/logx's canonical-shape formatter (DR-004 / NFR-10).
-//
-// STDIN mode, -i (in-place), --edit, --check, --dry-run, multi-file
-// globs, --backup, and --timeout all land in later stories. STORY-0008
-// will wire ctx-driven cancellation through the same RunOptions.Ctx
-// already plumbed here.
+// The Cobra flag tree dispatches file, stdin, editor, and native observation
+// modes. $${VAR} escape is honoured in the query preprocessor inside
+// internal/query. Flag-conflict rejection runs at parse time (PreRunE)
+// so combinations like --query + -f error BEFORE any file read. Diagnostics
+// flow through internal/logx's canonical-shape formatter. RunOptions.Ctx
+// carries cancellation into query execution.
 package run
 
 import (
@@ -81,7 +75,7 @@ func NewRootCmd() *cobra.Command {
 // Exit code matches Execute's contract:
 //   - 0 — success
 //   - 1 — any error
-//   - 2 — --check drift detected (DR-002: only this path returns 2)
+//   - 2 — --check drift detected (only this path returns 2)
 //   - 130 — native observation interrupted or cancelled
 func Run(args []string) int {
 	process := &natsProcess{exit: os.Exit}
@@ -121,7 +115,7 @@ func execute(opts RunOptions, process *natsProcess) int {
 	root := newRootCmdProcess(opts, process)
 	root.SetArgs(opts.Args)
 	// Suppress cobra's default usage print on error; we route all
-	// stderr through logx to keep the NFR-10 canonical shape.
+	// stderr through logx to keep the canonical shape.
 	root.SilenceUsage = true
 	root.SilenceErrors = true
 
@@ -136,7 +130,7 @@ func execute(opts RunOptions, process *natsProcess) int {
 	if errors.As(err, &cancelled) {
 		return 130
 	}
-	// DR-002: driftError is the sole source of exit 2. The --check path
+	// driftError is the sole source of exit 2. The --check path
 	// returns this sentinel when the query would change the input.
 	var drift *driftError
 	if errors.As(err, &drift) {
@@ -164,7 +158,7 @@ type emittedError struct{ cause error }
 func (e *emittedError) Error() string { return e.cause.Error() }
 func (e *emittedError) Unwrap() error { return e.cause }
 
-// newRootCmd wires every flag STORY-0003 ships plus the dispatch
+// newRootCmd wires the flags and dispatch
 // closure. All state captured via closure is per-invocation — no
 // package globals. That's important because tests run many Execute
 // calls in parallel.
@@ -202,7 +196,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 		maxYAMLNodes  int
 		maxQueryBytes int64
 	)
-	// STORY-0008 defaults come from the format package so the CLI and
+	// Resource-limit defaults come from the format package so the CLI and
 	// tests share one source of truth.
 	defaults := format.DefaultLimits()
 	maxBytes = defaults.MaxBytes
@@ -229,7 +223,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 			if cmd.Flags().Changed("nats") {
 				return nil
 			}
-			// --edit mode requires exactly one file argument (FR-4).
+			// --edit mode requires exactly one file argument.
 			if cmd.Flag("edit").Changed {
 				if len(args) != 1 {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, "--edit requires exactly one file argument")
@@ -239,7 +233,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 			}
 			// -i mode accepts one or more file arguments (multi-file / glob).
 			// Non-i mode requires exactly one file argument OR no arguments
-			// (STDIN mode, STORY-0005 FR-3).
+			// (STDIN mode).
 			if cmd.Flag("in-place").Changed {
 				if len(args) < 1 {
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, "nesdit -i requires at least one file argument")
@@ -247,7 +241,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				}
 				return nil
 			}
-			// Zero args → STDIN mode (FR-3). One arg of "-" → STDIN mode.
+			// Zero args → STDIN mode. One arg of "-" → STDIN mode.
 			// Two or more args without -i → error (multi-file requires -i).
 			if len(args) == 0 || (len(args) == 1 && args[0] == "-") {
 				return nil
@@ -258,20 +252,16 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 			}
 			return nil
 		},
-		// PreRunE runs after flag parsing, before RunE. FR-21 / DR-001
-		// mandates that flag-interaction rejection happens BEFORE any
-		// file read or stdin byte — this is where we enforce it.
-		//
-		// FR-15 / STORY-0011: --log-format validation also runs here so
-		// an unknown value exits 1 before any IO, matching the DR-001
-		// contract for flag-parse rejections. After validation, the
-		// Logger is re-constructed with the requested format (if the
-		// caller did not supply a Logger explicitly via RunOptions).
+		// PreRunE runs after flag parsing, before RunE. Flag-interaction
+		// rejection must happen BEFORE any file read or stdin byte.
+		// --log-format validation also runs here so an unknown value
+		// exits 1 before any IO. After validation, an explicitly supplied
+		// format reconstructs the Logger over Stderr.
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if cmd.Flags().Changed("nats") && process != nil {
 				process.start(opts.Ctx)
 			}
-			// FR-15: validate --log-format before any IO.
+			// Validate --log-format before any IO.
 			if cmd.Flag("log-format").Changed {
 				switch logx.Format(logFormatStr) {
 				case logx.FormatText, logx.FormatJSON:
@@ -297,7 +287,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 			if cmd.Flags().Changed("nats") {
 				return nil
 			}
-			// STORY-0015: validate --output-format before any IO.
+			// Validate --output-format before any IO.
 			if cmd.Flag("output-format").Changed {
 				switch outputFormat {
 				case "json", "yaml", "toml":
@@ -308,7 +298,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 					return &emittedError{cause: fmt.Errorf("%s", msg)}
 				}
 			}
-			// FR-18: validate --yaml-version before any IO.
+			// Validate --yaml-version before any IO.
 			if cmd.Flag("yaml-version").Changed {
 				if yamlVersion != "1.1" && yamlVersion != "1.2" {
 					msg := "--yaml-version must be 1.1 or 1.2"
@@ -333,7 +323,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				MaxYAMLNodes: maxYAMLNodes,
 			}
 
-			// --edit (FR-4, STORY-0007): interactive expression-builder mode.
+			// --edit: interactive expression-builder mode.
 			// --edit is mutually exclusive with every query flag (--query,
 			// --from-file, --arg, --argjson) and mode flag (-i, -n, --check).
 			// Flag conflicts are already validated by validateFlagInteraction.
@@ -356,17 +346,17 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// Apply FR-9 `$${VAR}` → `${VAR}` literal escape before
+			// Apply `$${VAR}` → `${VAR}` literal escape before
 			// handing the text to gojq.
 			qText = unescapeDollarBrace(qText)
 
-			// DR-001 precedence: -i + -n → -n wins with warning.
-			// DR-001 precedence: -i + --check → --check wins with warning.
+			// Precedence: -i + -n → -n wins with warning.
+			// Precedence: -i + --check → --check wins with warning.
 			// These are already validated by validateFlagInteraction (which
 			// emits the warn line); here we just override the effective mode.
 			effectiveInPlace := inPlace && !dryRun && !check
 
-			// SF-2 / STORY-0006: --dry-run and --check operate on exactly
+			// --dry-run and --check operate on exactly
 			// one file. Passing two or more files with either flag is an
 			// error (silently dropping files 2..N would be confusing).
 			if (dryRun || check) && len(args) > 1 {
@@ -374,7 +364,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				return &emittedError{cause: fmt.Errorf("--dry-run and --check support exactly one file argument")}
 			}
 
-			// --dry-run (-n, FR-11): emit unified diff; no file write.
+			// --dry-run (-n): emit unified diff; no file write.
 			if dryRun {
 				if len(args) == 0 || (len(args) == 1 && args[0] == "-") {
 					// STDIN + --dry-run is not yet supported; treat as error.
@@ -385,7 +375,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				return runDryRun(cmd.Context(), opts, args[0], qText, formatName, outputFormat, jqArgs, limits, timeout, createMissing, yamlVersion, pretty)
 			}
 
-			// --check (FR-12): compare encoded result to re-encoded original.
+			// --check: compare encoded result to re-encoded original.
 			if check {
 				if len(args) == 0 || (len(args) == 1 && args[0] == "-") {
 					// STDIN + --check is not yet supported; treat as error.
@@ -401,7 +391,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				return runFiles(cmd.Context(), opts, args, qText, wherePredicate, formatName, outputFormat, jqArgs, limits, timeout, keepGoing, backupSuffix, createMissing, yamlVersion, pretty)
 			}
 
-			// STDIN mode (FR-3, STORY-0005): no file args, or explicit "-".
+			// STDIN mode: no file args, or explicit "-".
 			if len(args) == 0 || (len(args) == 1 && args[0] == "-") {
 				fmtName, resolvedOpts, fmtErr := stdinFormatName(opts, formatName)
 				if fmtErr != nil {
@@ -411,7 +401,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				return runStdin(cmd.Context(), resolvedOpts, fmtName, outputFormat, qText, wherePredicate, jqArgs, limits, timeout, keepGoing, createMissing, yamlVersion, pretty)
 			}
 
-			// Default: single-file file→stdout path (STORY-0003).
+			// Default: single-file file→stdout path.
 			// --where is not meaningful in single-file mode (there's nothing to
 			// filter against a batch), so wherePredicate is intentionally not
 			// passed to runOnce.
@@ -419,18 +409,18 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 		},
 	}
 
-	// FR-15 / STORY-0011: --log-format selects the stderr rendering mode.
-	// "text" (default) emits NFR-10 canonical lines; "json" emits NDJSON.
+	// --log-format selects the stderr rendering mode.
+	// "text" (default) emits canonical lines; "json" emits NDJSON.
 	// Unknown values are rejected in PreRunE before any IO.
-	cmd.Flags().StringVar(&logFormatStr, "log-format", "text", "stderr rendering mode: text (default, NFR-10 canonical lines) or json (NDJSON per FR-15)")
+	cmd.Flags().StringVar(&logFormatStr, "log-format", "text", "stderr rendering mode: text (default, canonical lines) or json (NDJSON)")
 
 	cmd.Flags().StringVar(&queryExpr, "query", "", "jq-style query (default '.' identity when neither --query nor -f is given)")
 	cmd.Flags().StringVarP(&queryFile, "from-file", "f", "", "load query from file (mutually exclusive with --query)")
-	// STORY-0009 flag: --where (FR-10). Inner jq predicate; implementation
+	// --where is an inner jq predicate; implementation
 	// wraps it as select(<predicate>) at evaluation time.
 	cmd.Flags().StringVar(&wherePredicate, "where", "", "filter docs by jq predicate: only matching docs have --query applied (stream: others pass through; in-place batch mode (-i): non-matching files are skipped; not supported in single-file stdout mode)")
 	cmd.Flags().StringVar(&formatName, "format", "", "force input format (json|jsonl|yaml|toml); default is extension-based detection")
-	// STORY-0015: --output-format overrides the encode format independently of the input format.
+	// --output-format overrides the encode format independently of the input format.
 	// When absent, the effective output format equals the detected/overridden input format.
 	// When given, the output is encoded in the specified format regardless of input format.
 	// Incompatible with -i (in-place), because transcoding a file in-place silently changes
@@ -438,14 +428,14 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 	cmd.Flags().StringVar(&outputFormat, "output-format", "", "output format (json|yaml|toml); defaults to same as input format when not specified. jsonl is not a valid output format: JSONL output happens automatically when the input format is jsonl (one output line per input line). When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)")
 	cmd.Flags().StringArrayVar(&argPairs, "arg", nil, "bind $K=V in the query as a literal string (repeatable)")
 	cmd.Flags().StringArrayVar(&argJSONPairs, "argjson", nil, "bind $K=V in the query as a JSON-decoded value (repeatable)")
-	// -i / --in-place flag (STORY-0004 FR-1): edit files in-place atomically.
+	// -i / --in-place: edit files in-place atomically.
 	cmd.Flags().BoolVarP(&inPlace, "in-place", "i", false, "edit file(s) in-place using atomic temp+rename writes")
-	// STORY-0006 flags: --dry-run (-n, FR-11) and --check (FR-12).
+	// Preview flags: --dry-run (-n) and --check.
 	cmd.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "emit a unified diff of before/after to stdout; do not write any file")
 	cmd.Flags().BoolVar(&check, "check", false, "exit 2 if the query would change the input; exit 0 if identical; exit 1 on error")
-	// STORY-0007 flag: --edit (FR-4). Long-only per DR-003; -e is reserved.
+	// --edit is long-only; -e is reserved.
 	cmd.Flags().BoolVar(&editMode, "edit", false, "open $EDITOR on a temp copy of the file; diff before/after and emit suggested query")
-	// STORY-0013 flags: --keep-going (FR-17) and --strict (explicit default alias).
+	// --keep-going and --strict (explicit default alias).
 	// Default behaviour is --strict (halt on first error). --keep-going opts in to
 	// continue-on-error: errored documents are skipped, processing continues.
 	// Both flags are mutually exclusive; enforced by flagConflictRules.
@@ -454,30 +444,30 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 	// See the declaration comment in the var block above for rationale.
 	cmd.Flags().BoolVar(&keepGoing, "keep-going", false, "continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred")
 	cmd.Flags().BoolVar(&strict, "strict", false, "halt on the first document error (default behaviour; explicit alias for documentation)")
-	// STORY-0010 flag: --backup[=.bak] (FR-14). Optional-value string flag:
+	// --backup[=.bak] is an optional-value string flag:
 	//   --backup          → suffix defaults to ".bak" (NoOptDefVal)
 	//   --backup=.orig    → suffix is ".orig"
 	//   (absent)          → no backup written
 	// Requires -i; validated by flagConflictRules.
 	cmd.Flags().StringVar(&backupSuffix, "backup", "", "write a sibling backup before each in-place edit (default suffix .bak; custom: --backup=.orig); requires -i")
 	cmd.Flag("backup").NoOptDefVal = ".bak"
-	// STORY-0012 flag: --create-missing (FR-16). Without this flag, a query
+	// --create-missing: without this flag, a query
 	// that sets a path not present in the input document is rejected with a
 	// query.missing_path error. With the flag, absent intermediate nodes are
 	// created as empty objects (mirrors jq's native `=` assignment semantics).
 	cmd.Flags().BoolVar(&createMissing, "create-missing", false, "allow queries to create keys/paths that do not exist in the input document; by default, absent paths are rejected")
-	// FR-18: --yaml-version selects the YAML boolean vocabulary. Default is "1.2"
+	// --yaml-version selects the YAML boolean vocabulary. Default is "1.2"
 	// (only true/false recognised as booleans). "1.1" enables the extended vocabulary
 	// (yes/no/on/off and case variants). Silently ignored for non-YAML formats.
 	cmd.Flags().StringVar(&yamlVersion, "yaml-version", "1.2", "YAML dialect for boolean coercion: 1.1 (yes/no/on/off as bools) or 1.2 (true/false only; default)")
-	// STORY-0008 flags. Defaults come from format.DefaultLimits() so the
+	// Resource-limit defaults come from format.DefaultLimits() so the
 	// safe-by-default semantics live in one place.
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap")
 	cmd.Flags().Int64Var(&maxBytes, "max-bytes", defaults.MaxBytes, "reject inputs larger than this many bytes; 0 disables the cap")
 	cmd.Flags().IntVar(&maxDepth, "max-depth", defaults.MaxDepth, "reject documents nested deeper than this; 0 disables the cap")
 	cmd.Flags().IntVar(&maxYAMLNodes, "max-yaml-nodes", defaults.MaxYAMLNodes, "YAML node-materialisation cap (billion-laughs mitigation); 0 disables the cap")
 	cmd.Flags().Int64Var(&maxQueryBytes, "max-query-bytes", format.DefaultQueryMaxBytes, "reject query files (--from-file) larger than this many bytes; 0 disables the cap")
-	// STORY-0018: --pretty enables human-friendly TOML output. When set with
+	// --pretty enables human-friendly TOML output. When set with
 	// --output-format toml (or when the input format is toml), arrays with >1
 	// element are expanded to multi-line, inline tables with >1 key are expanded
 	// to block form, and blank lines are inserted between top-level entries.
@@ -534,7 +524,7 @@ validate redirected output. Exit 0 means normal count/ready-duration completion,
 1 means failure, and 130 means interruption. Earlier complete output is retained.
 See the NATS observation guide for component limits and trust assumptions.`
 
-// flagConflictRule is one row of the FR-21 / DR-001 flag-interaction
+// flagConflictRule is one row of the flag-interaction
 // matrix for ERROR cells. If every flag in IfSet is explicitly set, and
 // any flag in ThenNotSet is also explicitly set, the invocation is
 // rejected with Event/Msg in canonical stderr shape, BEFORE any file read
@@ -550,21 +540,19 @@ type flagConflictRule struct {
 	Msg        string
 }
 
-// flagPrecedenceRule is one row of the FR-21 / DR-001 flag-interaction
+// flagPrecedenceRule is one row of the flag-interaction
 // matrix for ALLOW-with-warning cells. If every flag in IfSet is
 // explicitly set, and any flag in AlsoSet is also explicitly set, the
 // invocation continues but a flag.precedence warn is emitted on stderr.
-// This covers the -i + -n and -i + --check cases (DR-001).
+// This covers the -i + -n and -i + --check cases.
 type flagPrecedenceRule struct {
 	IfSet   []string
 	AlsoSet []string
 	Msg     string
 }
 
-// flagConflictRules is the FR-21 ERROR matrix. Today there is one cell:
-// `--query` and `-f/--from-file` are mutually exclusive (FR-13).
-// STORY-0006 adds: `--dry-run` and `--check` are mutually exclusive.
-// STORY-0007 adds: `--edit` is mutually exclusive with -i, --dry-run, --check.
+// flagConflictRules lists mutually exclusive flag combinations, including
+// query sources, editing/preview modes, and format overrides.
 var flagConflictRules = []flagConflictRule{
 	{
 		IfSet:      []string{"query"},
@@ -573,35 +561,35 @@ var flagConflictRules = []flagConflictRule{
 		Msg:        "--query and --from-file are mutually exclusive: provide the query inline OR via a file, not both",
 	},
 	{
-		// FR-21: --dry-run and --check are mutually exclusive.
+		// --dry-run and --check are mutually exclusive.
 		IfSet:      []string{"dry-run"},
 		ThenNotSet: []string{"check"},
 		Event:      logx.EventFlagConflict,
 		Msg:        "--dry-run and --check are mutually exclusive: --dry-run prints a diff, --check only signals drift via exit code",
 	},
 	{
-		// FR-21: --edit and -i are mutually exclusive.
+		// --edit and -i are mutually exclusive.
 		IfSet:      []string{"edit"},
 		ThenNotSet: []string{"in-place"},
 		Event:      logx.EventFlagConflict,
 		Msg:        "--edit and -i are mutually exclusive: --edit always prints to stdout; use the emitted query with -i in a second invocation",
 	},
 	{
-		// FR-21: --edit and --dry-run are mutually exclusive.
+		// --edit and --dry-run are mutually exclusive.
 		IfSet:      []string{"edit"},
 		ThenNotSet: []string{"dry-run"},
 		Event:      logx.EventFlagConflict,
 		Msg:        "--edit is interactive and emits its own preview; --dry-run is not compatible",
 	},
 	{
-		// FR-21: --edit and --check are mutually exclusive.
+		// --edit and --check are mutually exclusive.
 		IfSet:      []string{"edit"},
 		ThenNotSet: []string{"check"},
 		Event:      logx.EventFlagConflict,
 		Msg:        "--edit is interactive; --check is for non-interactive drift detection",
 	},
 	{
-		// SF-1: --edit and --query are mutually exclusive.
+		// --edit and --query are mutually exclusive.
 		// --edit opens the file in an editor and derives the query from the diff;
 		// --query supplies the query directly. Combining them is undefined.
 		IfSet:      []string{"edit"},
@@ -610,14 +598,14 @@ var flagConflictRules = []flagConflictRule{
 		Msg:        "--edit derives the query from your edits; --query is not compatible (provide one or the other)",
 	},
 	{
-		// SF-1: --edit and --from-file are mutually exclusive.
+		// --edit and --from-file are mutually exclusive.
 		IfSet:      []string{"edit"},
 		ThenNotSet: []string{"from-file"},
 		Event:      logx.EventFlagConflict,
 		Msg:        "--edit derives the query from your edits; --from-file is not compatible (provide one or the other)",
 	},
 	{
-		// SF-1: --edit and --arg are mutually exclusive.
+		// --edit and --arg are mutually exclusive.
 		// --edit does not execute a query, so variable bindings have no effect.
 		IfSet:      []string{"edit"},
 		ThenNotSet: []string{"arg"},
@@ -625,14 +613,14 @@ var flagConflictRules = []flagConflictRule{
 		Msg:        "--edit does not execute a query; --arg bindings are not compatible",
 	},
 	{
-		// SF-1: --edit and --argjson are mutually exclusive.
+		// --edit and --argjson are mutually exclusive.
 		IfSet:      []string{"edit"},
 		ThenNotSet: []string{"argjson"},
 		Event:      logx.EventFlagConflict,
 		Msg:        "--edit does not execute a query; --argjson bindings are not compatible",
 	},
 	{
-		// FR-17 / STORY-0013: --keep-going and --strict are mutually exclusive.
+		// --keep-going and --strict are mutually exclusive.
 		// --strict is the explicit default; --keep-going opts in to continue-on-error.
 		// Both flags set simultaneously is a usage error.
 		IfSet:      []string{"keep-going"},
@@ -641,7 +629,7 @@ var flagConflictRules = []flagConflictRule{
 		Msg:        "--keep-going and --strict are mutually exclusive: --strict is the default behaviour (halt on first error); --keep-going overrides it",
 	},
 	{
-		// STORY-0015: --output-format and -i are mutually exclusive.
+		// --output-format and -i are mutually exclusive.
 		// In-place editing rewrites the file; changing the output format in-place
 		// would silently change the file's format, which is almost never the intent
 		// and is easy to do destructively.
@@ -651,7 +639,7 @@ var flagConflictRules = []flagConflictRule{
 		Msg:        "--output-format and -i are mutually exclusive: transcoding a file in-place would silently change its format; use --output-format without -i to transcode to stdout",
 	},
 	{
-		// FR-10 / STORY-0009: --where is a batch/stream filter; --dry-run operates
+		// --where is a batch/stream filter; --dry-run operates
 		// on exactly one file and has no notion of filtering. Combining them is
 		// undefined (the predicate would be silently ignored).
 		IfSet:      []string{"where"},
@@ -660,7 +648,7 @@ var flagConflictRules = []flagConflictRule{
 		Msg:        "--where is a batch/stream filter and is not supported with --dry-run (single-file mode)",
 	},
 	{
-		// FR-10 / STORY-0009: same rationale as --dry-run above.
+		// Same rationale as --dry-run above.
 		IfSet:      []string{"where"},
 		ThenNotSet: []string{"check"},
 		Event:      logx.EventFlagConflict,
@@ -668,25 +656,25 @@ var flagConflictRules = []flagConflictRule{
 	},
 }
 
-// flagPrecedenceRules is the FR-21 ALLOW-with-warning matrix (DR-001).
+// flagPrecedenceRules lists allowed combinations that emit a warning.
 // When -i is set alongside a dominanting flag, the dominating flag wins
 // and a flag.precedence warn is emitted. No error, no abort.
 var flagPrecedenceRules = []flagPrecedenceRule{
 	{
-		// DR-001: -i + -n → -n wins.
+		// -i + -n → -n wins.
 		IfSet:   []string{"in-place"},
 		AlsoSet: []string{"dry-run"},
 		Msg:     "-i ignored because --dry-run is set",
 	},
 	{
-		// DR-001: -i + --check → --check wins.
+		// -i + --check → --check wins.
 		IfSet:   []string{"in-place"},
 		AlsoSet: []string{"check"},
 		Msg:     "-i ignored because --check is set",
 	},
 }
 
-// validateFlagInteraction enforces the FR-21 / DR-001 matrix defined in
+// validateFlagInteraction enforces the flag-interaction rules defined in
 // flagConflictRules (ERROR cells) and flagPrecedenceRules (WARN cells).
 // Error rules return an emittedError and abort; precedence rules emit a
 // warn line and allow the run to continue with the dominating flag.
@@ -723,7 +711,7 @@ func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command, args []string
 			return &emittedError{cause: errors.New(rule.Msg)}
 		}
 	}
-	// FR-21 / DR-001: --backup requires -i. This is a "requires" constraint
+	// --backup requires -i. This is a "requires" constraint
 	// rather than a mutual-exclusion constraint, so it is checked separately
 	// from the flagConflictRules table (which expresses mutual-exclusion pairs).
 	if changed("backup") && !changed("in-place") {
@@ -738,7 +726,7 @@ func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command, args []string
 		}
 	}
 
-	// FR-21 / STORY-0009: --where without --query or -f is an error.
+	// --where without --query or -f is an error.
 	// The existing mutual-exclusion table handles "A and B cannot both be
 	// set"; this requires "A is set and neither B nor C is set" — a
 	// required-pairing check that doesn't fit flagConflictRule's shape.
@@ -748,7 +736,7 @@ func validateFlagInteraction(log *logx.Logger, cmd *cobra.Command, args []string
 		return &emittedError{cause: errors.New(msg)}
 	}
 
-	// TASK-0027 / FR-21: --where is a batch/stream filter. It is meaningful
+	// --where is a batch/stream filter. It is meaningful
 	// only in -i (multi-file) mode or STDIN stream mode. In plain single-file
 	// mode (exactly one positional arg that is not "-", no -i flag set), the
 	// predicate is silently ignored by runOnce — reject it before any IO so
@@ -846,7 +834,7 @@ func isJQName(s string) bool {
 // Mutual exclusion is enforced by validateFlagInteraction already;
 // this function trusts that invariant.
 //
-// STORY-0008 MUST-FIX: the --from-file read is capped by maxQueryBytes
+// The --from-file read is capped by maxQueryBytes
 // so a pathological 10 GB .jq file cannot OOM the CLI. The cap is
 // applied via format.ReadAllLimited streaming — the file is never fully
 // materialised before the cap runs. A LimitError surfaces as the
@@ -882,7 +870,7 @@ func resolveQueryText(log *logx.Logger, queryExpr, queryFile string, maxQueryByt
 	return ".", nil
 }
 
-// unescapeDollarBrace implements FR-9's `$${VAR}` → `${VAR}` literal
+// unescapeDollarBrace implements the `$${VAR}` → `${VAR}` literal
 // escape. The tool NEVER performs shell-env interpolation — only the
 // explicit escape is honoured. Single `${...}` stays literal in
 // whatever context jq parses it (jq treats `$var` as a variable
@@ -891,24 +879,24 @@ func unescapeDollarBrace(q string) string {
 	return strings.ReplaceAll(q, "$${", "${")
 }
 
-// runOnce is the STORY-0003 file→stdout slice: decode, query, encode.
+// runOnce is the file→stdout path: decode, query, encode.
 // Every error path emits in canonical shape via opts.Logger and
 // returns a sentinel so Execute can exit 1 without double-logging.
 //
-// STORY-0008: `limits` are applied at decode time so oversize /
+// `limits` are applied at decode time so oversize /
 // deeply-nested / alias-bombed inputs fail fast with canonical-shape
 // stderr. `timeout` (when > 0) wraps ctx with context.WithTimeout so a
 // pathological gojq query cancels on deadline and emits query.timeout.
 //
-// STORY-0012: when createMissing is false, the post-query output is
+// When createMissing is false, the post-query output is
 // checked for new keys/paths that did not exist in the input. If any are
 // found the run is rejected with a query.missing_path error.
 //
-// STORY-0015: outputFmtOverride, when non-empty, selects the encode
+// outputFmtOverride, when non-empty, selects the encode
 // format independently of the input format. When empty, the encode format
 // equals the detected/overridden input format (no behaviour change).
 //
-// STORY-0018: pretty enables human-friendly TOML output when the effective
+// pretty enables human-friendly TOML output when the effective
 // output format is "toml". Silently ignored for other output formats.
 func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideFormat, outputFmtOverride string, args []query.Arg, limits format.Limits, timeout time.Duration, createMissing bool, yamlVersion string, pretty bool) error {
 	fmtName := overrideFormat
@@ -920,7 +908,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 		opts.Logger.Error(logx.EventFormatUnknown, path, msg)
 		return &emittedError{cause: errors.New(msg)}
 	}
-	// STORY-0015: resolve effective output format. Defaults to the input format.
+	// Resolve effective output format. Defaults to the input format.
 	outFmtName := outputFmtOverride
 	if outFmtName == "" {
 		outFmtName = fmtName
@@ -945,7 +933,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 		return &emittedError{cause: err}
 	}
 
-	// Apply --timeout (STORY-0008 M4) to the query phase only. Decode
+	// Apply --timeout to the query phase only. Decode
 	// and encode are bounded by the decoder limits above; only the
 	// gojq runtime can diverge on a pathological query like
 	// `[range(1e12)]`. A zero duration means "no timeout".
@@ -962,7 +950,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 		return &emittedError{cause: err}
 	}
 
-	// FR-16 / STORY-0012: reject missing-path creation unless --create-missing.
+	// Reject missing-path creation unless --create-missing.
 	if !createMissing {
 		if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
 			opts.Logger.Error(logx.EventQueryMissingPath, path, mpErr.Error())
@@ -973,7 +961,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 	var buf bytes.Buffer
 	spans, err := encodeDisplayValue(outFmtName, &buf, outVal, pretty, display.Enabled(opts.Stdout))
 	if err != nil {
-		// Distinguish cross-format incompatibility (FR-19) from
+		// Distinguish cross-format incompatibility from
 		// generic encode failures for better user diagnostics.
 		var encErr *omap.EncodeError
 		if errors.As(err, &encErr) {
@@ -994,7 +982,7 @@ func runOnce(ctx context.Context, opts RunOptions, path, queryExpr, overrideForm
 // event token. Unknown shapes fall through to query.runtime as a safe
 // default.
 //
-// STORY-0008: when the query context finished with DeadlineExceeded,
+// When the query context finished with DeadlineExceeded,
 // classify as query.timeout so operators can filter timeouts distinctly
 // from generic runtime errors. ctx.Err() is authoritative because gojq
 // wraps the deadline-exceeded error in its own runtime-error shape
@@ -1012,7 +1000,7 @@ func classifyQueryErr(ctx context.Context, err error, _ time.Duration) logx.Even
 	if errors.Is(err, context.DeadlineExceeded) {
 		return logx.EventQueryTimeout
 	}
-	// TASK-0018 S-2: context.Canceled is checked after DeadlineExceeded so
+	// context.Canceled is checked after DeadlineExceeded so
 	// that a timeout (which also cancels the context) is classified as
 	// query.timeout rather than query.cancelled. Canceled covers a future
 	// SIGINT handler or any other explicit cancellation path.
@@ -1036,7 +1024,7 @@ func classifyQueryErr(ctx context.Context, err error, _ time.Duration) logx.Even
 }
 
 // classifyDecodeErr maps a decode-phase error to the right logx event.
-// STORY-0008 introduces format.LimitError, which must surface as a
+// format.LimitError must surface as a
 // distinct decoder.limit.* event rather than a generic parse.error.
 func classifyDecodeErr(err error) logx.Event {
 	var lim *format.LimitError
@@ -1069,16 +1057,16 @@ func detectFormatByExt(path string) string {
 }
 
 // decodeFormatValueWithLimitsAndVersion is the top-level-agnostic decoder
-// carrying STORY-0008 resource bounds and FR-18 yamlVersion dialect
-// selection. BUG-0001: JSON/YAML allow any top-level value; TOML still
+// carrying resource bounds and yamlVersion dialect selection.
+// JSON/YAML allow any top-level value; TOML still
 // requires a table (enforced by the TOML decoder itself).
 //
-// STORY-0008 MUST-FIX: takes an io.Reader (not []byte). The decoder
+// Takes an io.Reader (not []byte). The decoder
 // layer wraps the reader in ReadAllLimited internally, so a caller
 // feeding a *os.File will surface a LimitError after reading at most
 // MaxBytes+1 bytes rather than after buffering the full file.
 //
-// FR-18: yamlVersion ("1.1" | "1.2" | "") selects YAML boolean vocabulary.
+// yamlVersion ("1.1" | "1.2" | "") selects YAML boolean vocabulary.
 // The value is silently ignored for non-YAML formats.
 func decodeFormatValueWithLimitsAndVersion(fmtName string, r io.Reader, limits format.Limits, yamlVersion string) (omap.Value, error) {
 	switch fmtName {
@@ -1099,7 +1087,7 @@ func encodeFormatValue(fmtName string, w io.Writer, v omap.Value) error {
 	return encodeFormatValueWithPretty(fmtName, w, v, false)
 }
 
-// encodeFormatValueWithPretty is encodeFormatValue with STORY-0018 pretty
+// encodeFormatValueWithPretty is encodeFormatValue with pretty
 // support. When pretty is true and fmtName is "toml", pretty-printing is
 // enabled. For all other formats, pretty is silently ignored.
 func encodeFormatValueWithPretty(fmtName string, w io.Writer, v omap.Value, pretty bool) error {

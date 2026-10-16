@@ -25,8 +25,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # TASK-0020: SHA↔tag consistency guard — catches lying `# <tag>` comments
-  # on action pins before they can cause BUG-0002-class breakage.
+  # SHA↔tag consistency guard — catches incorrect `# <tag>` comments
+  # on action pins before mismatched revisions can break CI.
   # Runs as a fast, standalone check on ubuntu with gh CLI available; does
   # NOT need Go or the full matrix, so it completes before the matrix starts.
   check-action-pins:
@@ -52,7 +52,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Install golangci-lint
-        # TASK-0021: migrated to golangci-lint v2 + action v8.0.0.
+        # Migrated to golangci-lint v2 + action v8.0.0.
         # v8.0.0 is the first action major that requires golangci-lint v2.x.
         # SHA → tag mapping verified via `gh api
         # repos/golangci/golangci-lint-action/git/ref/tags/v8.0.0` on 2026-04-27
@@ -67,11 +67,11 @@ jobs:
       - name: make test-all
         run: make test-all
       - name: Binary size guardrail (< 16 MiB)
-        # SPEC-0001 / STORY-0003 guardrail: a release-shape nesdit binary
+        # Binary-size guardrail: a release-shape nesdit binary
         # MUST stay under 16 MiB so the single-binary distribution story
         # holds. `wc -c < file` is portable across macOS and linux
         # (avoids GNU-only `stat -c%s`).
-        # TASK-0010: -ldflags='-s -w' strips debug info; new baseline ~4.13 MiB
+        # -ldflags='-s -w' strips debug info; historical baseline ~4.13 MiB
         # (darwin/arm64, 2026-04-27). Previous debug baseline was ~5.83 MiB.
         run: |
           bytes=$(wc -c < bin/nesdit | tr -d ' ')
@@ -81,18 +81,3 @@ jobs:
             echo "::error::nesdit binary exceeded 16 MiB limit (${bytes} >= ${limit})"
             exit 1
           fi
-
-  # ticket-trailer:
-  #   if: github.event_name == 'pull_request'
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Require Ticket trailer in PR body
-  #       env:
-  #         PR_BODY: ${{ github.event.pull_request.body }}
-  #       run: |
-  #         if ! printf '%s\n' "$PR_BODY" | grep -Eq '^Ticket: (EPIC|STORY|TASK|BUG)-[0-9]+'; then
-  #           echo "PR body is missing the required Ticket trailer."
-  #           echo 'Expected a line matching: ^Ticket: (EPIC|STORY|TASK|BUG)-\d+'
-  #           echo "See .github/pull_request_template.md."
-  #           exit 1
-  #         fi

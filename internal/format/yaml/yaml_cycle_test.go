@@ -1,6 +1,6 @@
 package yaml
 
-// Test_YAMLWalker_CircularAlias_Detected exercises the TASK-0018 S-3
+// Test_YAMLWalker_CircularAlias_Detected exercises the
 // defense-in-depth cycle guard in yamlWalker. yaml.v3 currently refuses to
 // produce circular nodes from YAML text input, so this test constructs a
 // circular *yaml.Node graph programmatically and drives the walker directly.

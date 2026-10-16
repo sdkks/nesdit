@@ -1,4 +1,4 @@
-# identity_json.txtar — STORY-0002 NFR-2 identity invariant (JSON).
+# identity_json.txtar — identity invariant (JSON).
 #
 # The identity query "." decode→encode produces byte-identical output
 # to its input, and two consecutive runs produce byte-identical stdout.

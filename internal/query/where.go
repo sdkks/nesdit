@@ -1,4 +1,4 @@
-// Package query — where.go implements the --where predicate evaluator (FR-10).
+// Package query — where.go implements the --where predicate evaluator.
 //
 // The user supplies the inner predicate expression; this file wraps it as
 // `select(<expr>)` for gojq. The select() builtin returns its input unchanged

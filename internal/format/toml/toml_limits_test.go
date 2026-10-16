@@ -10,7 +10,7 @@ import (
 	tomlfmt "github.com/sdkks/nesdit/internal/format/toml"
 )
 
-// Test_TOMLDecoder_InputSizeCap covers STORY-0008 M2 for TOML.
+// Test_TOMLDecoder_InputSizeCap covers the input-size cap for TOML.
 func Test_TOMLDecoder_InputSizeCap(t *testing.T) {
 	t.Parallel()
 	src := []byte("a = 1\nb = 2\nc = 3\n")
@@ -33,7 +33,7 @@ func Test_TOMLDecoder_InputSizeCap(t *testing.T) {
 	}
 }
 
-// Test_TOMLDecoder_NestingDepthCap covers STORY-0008 M3 for TOML.
+// Test_TOMLDecoder_NestingDepthCap covers the nesting-depth cap for TOML.
 // Uses a dotted-key expression to drive depth — `a.b.c.d = 1` sits at
 // depth 4 regardless of table headers.
 func Test_TOMLDecoder_NestingDepthCap(t *testing.T) {

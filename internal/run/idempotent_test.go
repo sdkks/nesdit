@@ -28,7 +28,7 @@ func captureExecute(t *testing.T, args []string) ([]byte, int) {
 	return stdout.Bytes(), code
 }
 
-// Test_Execute_IdempotencyContract pins the two-consecutive-run NFR-2
+// Test_Execute_IdempotencyContract pins the two-consecutive-run idempotency
 // contract: running nesdit twice with identical argv produces byte-identical
 // stdout and identical exit codes.
 //

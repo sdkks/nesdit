@@ -1,10 +1,10 @@
 // Package omap provides an ordered-map document type (Doc) and tagged-union
 // value type (Value) used as the format-agnostic canonical representation of
 // documents decoded from JSON, YAML, and TOML. It preserves key insertion
-// order (NFR-3), integer precision via json.Number (NFR-4), and — where
+// order, integer precision via json.Number, and — where
 // relevant — YAML scalar tag information needed by the YAML encoder.
 //
-// Comments are not preserved across any format's round-trip (NFR-6). This is
+// Comments are not preserved across any format's round-trip. This is
 // an explicit non-goal for v1 of nesdit.
 package omap
 
@@ -23,7 +23,7 @@ const (
 	// KindBool is a boolean.
 	KindBool
 	// KindNum is a numeric value, stored as json.Number to preserve
-	// int64 precision (NFR-4) and arbitrary decimal precision.
+	// int64 precision and arbitrary decimal precision.
 	KindNum
 	// KindStr is a string.
 	KindStr
@@ -94,7 +94,7 @@ func MapValue(d *Doc) Value { return Value{Kind: KindMap, Map: d} }
 // Duplicate keys overwrite the previous value but retain the original
 // insertion position.
 //
-// Nil-receiver policy (TASK-0004 API hygiene):
+// Nil-receiver policy:
 //   - Read methods (Len, Get, Has, Keys, Values, TryAt, Entries) are
 //     safe to call on a nil *Doc and return the obvious zero result.
 //   - Mutating methods (Set) panic on a nil *Doc — a nil *Doc has no
@@ -184,7 +184,7 @@ func (d *Doc) Delete(k string) {
 
 // Keys returns a copy of the keys in insertion order. Returns nil when d
 // is nil or empty. Callers may mutate the returned slice — mutations do
-// not affect the Doc (TASK-0004: previously the internal slice leaked).
+// not affect the Doc (previously the internal slice leaked).
 //
 // Per-call allocation is O(n). Hot-path consumers that walk every entry
 // should prefer [Doc.Entries], which yields (key, value) pairs without
@@ -198,7 +198,7 @@ func (d *Doc) Keys() []string {
 
 // Values returns a copy of the values in the same order as [Doc.Keys].
 // Returns nil when d is nil or empty. Callers may mutate the returned
-// slice — mutations do not affect the Doc (TASK-0004: previously the
+// slice — mutations do not affect the Doc (previously the
 // internal slice leaked).
 //
 // Per-call allocation is O(n). Prefer [Doc.Entries] for paired iteration.
@@ -222,7 +222,7 @@ func (d *Doc) At(i int) (string, Value) {
 
 // TryAt returns the i-th (key, value) pair in insertion order, with
 // ok=false if i is out of range or d is nil. This is the non-panicking
-// companion to [Doc.At] (TASK-0004).
+// companion to [Doc.At].
 //
 // On ok=false, the returned Value is the zero Value and should not be
 // inspected — its Kind is KindNull by zero-initialization, which is

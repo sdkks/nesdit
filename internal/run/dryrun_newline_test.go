@@ -11,7 +11,7 @@ import (
 	"github.com/sdkks/nesdit/internal/run"
 )
 
-// Test_runDryRun_NewlineInPath verifies TASK-0025: a file path containing an
+// Test_runDryRun_NewlineInPath verifies that a file path containing an
 // embedded newline does NOT produce a multi-line "---" or "+++" header in the
 // unified diff output.
 //

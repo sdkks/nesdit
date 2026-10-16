@@ -2,29 +2,25 @@
 // error/warn/info line that reaches stderr in human mode MUST be
 // produced by a *Logger method — no subsystem may fmt.Fprintln directly.
 //
-// The text formatter enforces the SPEC-0001 NFR-10 canonical shape:
+// The text formatter enforces the canonical shape:
 //
 //	nesdit: <severity>: <file>:<index>: <event>: <message>
 //
 // with `<file>` and `<index>` omitted (along with their colons) when
-// absent, per DR-004's explicit omission rules. `<event>` is one of a
-// closed enum (Event type below) shared with the future FR-15 NDJSON
-// mode — one vocabulary, two renderings, one Go `const` block.
-//
-// STORY-0003 ships the text formatter + the initial event taxonomy.
-// STORY-0008 extends the enum with decoder.limit.* and query.timeout;
-// the shape and the IsKnownEvent registry are designed to grow without
-// churn to callers.
+// absent. `<event>` is one of a closed enum (Event type below) shared
+// with NDJSON mode — one vocabulary, two renderings, one Go `const` block.
+// The enum includes decoder.limit.* and query.timeout; the shape and
+// IsKnownEvent registry can grow without churn to callers.
 //
 // # Shape contract for <file>
 //
-// The NFR-10 canonical regex defines the `<file>` slot as one-or-more
+// The canonical regex defines the `<file>` slot as one-or-more
 // non-colon, non-C0-control bytes (optionally followed by `:<index>`).
 // This means:
 //
 //   - A filename that contains ':' is NOT representable in the canonical
 //     shape. nesdit's path-resolution layer rejects such paths before
-//     they reach the emitter (see STORY-0004's atomic writer).
+//     they reach the emitter (see internal/io's atomic writer).
 //   - Control bytes (\x00-\x1f, \x7f) in either the file or the message
 //     are stripped by stripControls before rendering, replaced with '?'
 //     to keep the line visible and preserve the record boundary. '?'
@@ -44,25 +40,24 @@ import (
 	"sync"
 )
 
-// Format selects the rendering mode for a Logger. FR-15 / STORY-0011.
+// Format selects the rendering mode for a Logger.
 type Format string
 
 const (
-	// FormatText renders each record as a human-readable NFR-10 canonical line (default).
+	// FormatText renders each record as a human-readable canonical line (default).
 	FormatText Format = "text"
-	// FormatJSON renders each record as a single NDJSON line per FR-15.
+	// FormatJSON renders each record as a single NDJSON line.
 	FormatJSON Format = "json"
 )
 
 // Event is a closed-enum token identifying the class of a log line.
-// See NFR-10 for the shape contract: lowercase, dot-delimited,
+// Tokens are lowercase, dot-delimited,
 // matching [a-z][a-z0-9_.]*.
 type Event string
 
-// Event tokens emitted by STORY-0003. STORY-0008 will append
-// decoder.limit.* and query.timeout. The registry is the single source
-// of truth; IsKnownEvent consults it so no ad-hoc token can reach
-// stderr.
+// Event tokens include decoder.limit.* and query.timeout. The registry
+// is the single source of truth; IsKnownEvent consults it so no ad-hoc
+// token can reach stderr.
 const (
 	// Native observation lifecycle; event data is written only to stdout.
 	EventNATSReady   Event = "nats.ready"
@@ -90,13 +85,13 @@ const (
 	EventQueryResult      Event = "query.result"
 	EventQueryUnsupported Event = "query.unsupported"
 
-	// --arg / --argjson parse failures (FR-7, FR-8).
+	// --arg / --argjson parse failures.
 	EventArgDecode Event = "arg.decode"
 
-	// -f/--from-file read errors (FR-13).
+	// -f/--from-file read errors.
 	EventFromFileRead Event = "from_file.read"
 
-	// FR-21 / DR-001 flag-parse rejections and precedence notices.
+	// Flag-parse rejections and precedence notices.
 	EventFlagConflict   Event = "flag.conflict"
 	EventFlagInvalid    Event = "flag.invalid"
 	EventFlagPrecedence Event = "flag.precedence"
@@ -104,7 +99,7 @@ const (
 	// End-of-run info notices.
 	EventBatchSummary Event = "batch.summary"
 
-	// STORY-0008 decoder hardening — resource-limit rejections. Fired
+	// Decoder hardening — resource-limit rejections. Fired
 	// from internal/format/{json,yaml,toml} when an input exceeds a
 	// configured Limits bound. Each token corresponds to a distinct
 	// bound so operators can alert/triage by failure class.
@@ -112,27 +107,26 @@ const (
 	EventDecoderLimitDepth         Event = "decoder.limit.depth_exceeded"
 	EventDecoderLimitYAMLNodeCount Event = "decoder.limit.yaml_node_count"
 
-	// STORY-0008 — fired when a query run is cancelled because the
+	// Fired when a query run is cancelled because the
 	// user-supplied `--timeout` deadline fired before gojq produced
 	// its first value. Distinct from query.runtime so timeouts are
 	// filterable in log aggregators.
 	EventQueryTimeout Event = "query.timeout"
 
-	// TASK-0018 (S-2) — fired when a query run is cancelled via
+	// Fired when a query run is cancelled via
 	// context.Canceled (e.g. a future SIGINT handler). Distinct from
 	// query.timeout (deadline exceeded) and query.runtime (execution error)
 	// so operators can filter clean cancellations separately.
 	EventQueryCancelled Event = "query.cancelled"
 
-	// STORY-0009 --where filter events.
+	// --where filter events.
 
 	// EventWhereSkipped is emitted when --where is set and a document (stream
 	// mode: passed through; file mode: skipped) does not satisfy the predicate.
-	// FR-10 / SPEC-0001 Solution §2 event list.
 	EventWhereSkipped Event = "where.skipped"
 
-	// STORY-0013 --keep-going per-doc processing outcome events.
-	// Required by STORY-0011 (--log-format=json). These are info-level tokens
+	// Per-document processing outcome events for --keep-going.
+	// For --log-format=json, these are info-level tokens
 	// emitted per document when --log-format=json is active; they are registered
 	// here so the closed-enum invariant is maintained.
 
@@ -148,40 +142,40 @@ const (
 	// by --where predicate mismatch or (future) filter modes.
 	EventDocSkipped Event = "doc.skipped"
 
-	// STORY-0010 --backup events.
+	// --backup events.
 
 	// EventFileWritten is emitted (info) after a successful in-place atomic
 	// write to a file. Distinct from io.write (which is an error event) —
-	// file.written is the success notice per SPEC-0001 Solution §2 event list.
+	// file.written is the success notice.
 	EventFileWritten Event = "file.written"
 
 	// EventFileBackupWritten is emitted (info) per backup file written when
-	// --backup is set. FR-14 / SPEC-0001 Solution §2 event list.
+	// --backup is set.
 	EventFileBackupWritten Event = "file.backup_written"
 
-	// STORY-0012 --create-missing (FR-16): fired when a query creates a path
+	// Fired when a query creates a path
 	// that did not exist in the input document and --create-missing is not set.
 	// Distinct from query.runtime so operators can filter missing-path rejections
 	// from generic runtime errors and surface clear remediation hints.
 	EventQueryMissingPath Event = "query.missing_path"
 
-	// STORY-0007 --edit mode events.
+	// --edit mode events.
 
 	// EventEditNoTTY is emitted when --edit is invoked but stdin (or the
 	// process TTY) is not a terminal. --edit is an interactive mode and
-	// requires a TTY to spawn the editor. M1.
+	// requires a TTY to spawn the editor.
 	EventEditNoTTY Event = "edit.no_tty"
 
 	// EventEditEditorFailed is emitted when the editor process exits with
-	// a non-zero exit code. FR-4 step 4.
+	// a non-zero exit code.
 	EventEditEditorFailed Event = "edit.editor_failed"
 
 	// EventEditEmptySave is emitted when the user saves an empty file in
-	// the editor. FR-4 step 6: no overwrite; exit 1.
+	// the editor: no overwrite; exit 1.
 	EventEditEmptySave Event = "edit.empty_save"
 
 	// EventEditNoChange is emitted (as info) when the editor exits with
-	// no change to the temp file. FR-4 step 5: exit 0. Informational.
+	// no change to the temp file: exit 0. Informational.
 	EventEditNoChange Event = "edit.no_change"
 
 	// EventEditTTYBypass is emitted (as info) when NESDIT_SKIP_TTY_CHECK=1
@@ -252,7 +246,7 @@ func IsKnownEvent(e Event) bool {
 }
 
 // Severity is a three-valued enum pinning the canonical `<severity>`
-// slot of the NFR-10 shape.
+// slot of the text format.
 type Severity string
 
 const (
@@ -265,19 +259,16 @@ const (
 )
 
 // Field is a structured key/value pair carried alongside a Record. The
-// text formatter ignores Fields today — they are reserved for the
-// FR-15 NDJSON emitter, which will use them for structured per-record
-// context without changing the caller API.
+// text formatter ignores Fields; the NDJSON emitter includes them as
+// structured per-record context without changing the caller API.
 type Field struct {
 	Key   string
 	Value any
 }
 
 // Record is the in-memory representation of one log line before
-// rendering. The text renderer drops Fields; callers MUST NOT populate
-// it until an NDJSON emitter is wired (FR-15). The field exists now so
-// that adding structured output later does not require touching every
-// Logger callsite.
+// rendering. The text renderer drops Fields; the NDJSON renderer includes
+// them under the "fields" key.
 type Record struct {
 	Sev    Severity
 	Event  Event
@@ -288,7 +279,7 @@ type Record struct {
 }
 
 // Logger is the structured emitter. It supports two rendering modes:
-// text (NFR-10 canonical shape, default) and JSON (FR-15 NDJSON).
+// text (canonical shape, default) and JSON (NDJSON).
 // The format is fixed at construction time and is goroutine-safe.
 type Logger struct {
 	mu  sync.Mutex
@@ -296,14 +287,14 @@ type Logger struct {
 	fmt Format
 }
 
-// New returns a Logger writing to w in text format (default, NFR-10 shape).
+// New returns a Logger writing to w in text format (default).
 func New(w io.Writer) *Logger {
 	return &Logger{w: w, fmt: FormatText}
 }
 
 // NewFormat returns a Logger writing to w in the given format.
-// Use FormatText for human-readable output (NFR-10) or FormatJSON for
-// FR-15 NDJSON output. If fmt is empty, FormatText is used.
+// Use FormatText for human-readable output or FormatJSON for
+// NDJSON output. If fmt is empty, FormatText is used.
 func NewFormat(w io.Writer, fmt Format) *Logger {
 	if fmt == "" {
 		fmt = FormatText
@@ -359,7 +350,7 @@ func (l *Logger) InfoGlobal(event Event, msg string) {
 
 // emit is the sole stderr-writing primitive. All public methods funnel
 // here so the rendering format is enforced in one place. In text mode
-// the NFR-10 canonical shape is produced; in JSON mode (FR-15) an NDJSON
+// the canonical shape is produced; in JSON mode an NDJSON
 // line is produced.
 func (l *Logger) emit(r Record) { _ = l.Emit(r) }
 
@@ -383,19 +374,19 @@ func (l *Logger) Emit(r Record) error {
 // FormatRecord is exposed for callers (e.g. cobra's SilenceErrors path)
 // that want to produce a canonical-shape string without routing through a
 // Logger. Rarely needed; prefer the Logger methods. Renamed from Format to
-// avoid conflict with the Format type introduced by FR-15 / STORY-0011.
+// avoid conflict with the Format type used to select text or JSON output.
 func FormatRecord(sev Severity, event Event, file string, index int, msg string) string {
 	return renderText(Record{Sev: sev, Event: event, File: file, Index: index, Msg: msg})
 }
 
-// renderText is the single source of truth for NFR-10 shape assembly.
+// renderText is the single source of truth for canonical text assembly.
 // It sanitises file and msg via stripControls, strips trailing newlines
 // and periods on msg, and assembles the colon-space-separated fields.
 // All public emitter methods funnel here so the shape is enforced once.
 func renderText(r Record) string {
 	file := stripControls(r.File)
 	msg := r.Msg
-	// NFR-10 forbids embedded newlines and trailing periods on the
+	// The text format forbids embedded newlines and trailing periods on the
 	// message. Strip trailing whitespace/newlines first, then collapse
 	// any remaining C0 controls to '?' so a stray \r or \x00 in the
 	// middle of the text cannot forge a second canonical line.
@@ -424,7 +415,7 @@ func renderText(r Record) string {
 }
 
 // ndjsonRecord is the JSON-serialisable representation of a log Record for
-// FR-15 NDJSON mode. Fields tagged with omitempty are omitted when empty
+// NDJSON mode. Fields tagged with omitempty are omitted when empty
 // so the schema stays compact for the common case (no file, no index, no
 // extra fields). The "fields" key is always present (as {} when empty) to
 // give consumers a stable schema surface.
@@ -469,7 +460,7 @@ func renderJSON(r Record) string {
 // byte becomes visible to a human reader; silent drop would let a
 // crafted filename like "foo\r\nnesdit: error: flag.invalid: pwned"
 // merge into the preceding line's visible text, which undermines the
-// mitigation. The '?' choice is documented as part of the NFR-10 shape
+// mitigation. The '?' choice is documented as part of the text shape
 // contract (see package doc).
 func stripControls(s string) string {
 	if s == "" {
@@ -501,7 +492,7 @@ func stripControls(s string) string {
 }
 
 // isC0Control reports whether c is a C0 control byte (\x00-\x1f) or
-// DEL (\x7f). TAB (\x09) is included — NFR-10 forbids embedded
+// DEL (\x7f). TAB (\x09) is included — the text format forbids embedded
 // whitespace runs that could shift column positions in downstream log
 // scrapers.
 func isC0Control(c byte) bool {

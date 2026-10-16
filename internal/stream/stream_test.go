@@ -20,7 +20,7 @@ func makeDoc(t *testing.T, key string, val int64) omap.Value {
 }
 
 // TestTOMLWriter_SingleDoc verifies that a single WriteDoc call produces no
-// `+++` separator in the output (SC-1).
+// `+++` separator in the output.
 func TestTOMLWriter_SingleDoc(t *testing.T) {
 	var buf bytes.Buffer
 	w := stream.NewTOMLWriter(&buf)
@@ -37,7 +37,7 @@ func TestTOMLWriter_SingleDoc(t *testing.T) {
 }
 
 // TestTOMLWriter_TwoDocs verifies that exactly one `+++\n` separator appears
-// between two documents — not before the first, not after the second (SC-2).
+// between two documents — not before the first, not after the second.
 func TestTOMLWriter_TwoDocs(t *testing.T) {
 	var buf bytes.Buffer
 	w := stream.NewTOMLWriter(&buf)
@@ -82,7 +82,7 @@ func TestTOMLWriter_TwoDocs(t *testing.T) {
 }
 
 // TestTOMLWriter_ThreeDocs verifies that exactly two `+++\n` separators appear
-// for three documents (SC-3).
+// for three documents.
 func TestTOMLWriter_ThreeDocs(t *testing.T) {
 	var buf bytes.Buffer
 	w := stream.NewTOMLWriter(&buf)
@@ -132,7 +132,7 @@ func (afw *alwaysFailWriter) Write(_ []byte) (int, error) { return 0, afw.err }
 
 // TestTOMLWriter_SeparatorWriteError verifies that if writing the separator
 // fails, WriteDoc returns the error wrapped with context and does not attempt
-// to encode the document (SC-5 / FR-TOML-7).
+// to encode the document.
 func TestTOMLWriter_SeparatorWriteError(t *testing.T) {
 	sentinelErr := errors.New("broken pipe")
 

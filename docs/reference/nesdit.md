@@ -71,7 +71,7 @@ nesdit [flags] <file> [<file>...]
   -h, --help                     help for nesdit
   -i, --in-place                 edit file(s) in-place using atomic temp+rename writes
       --keep-going               continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred
-      --log-format string        stderr rendering mode: text (default, NFR-10 canonical lines) or json (NDJSON per FR-15) (default "text")
+      --log-format string        stderr rendering mode: text (default, canonical lines) or json (NDJSON) (default "text")
       --max-bytes int            reject inputs larger than this many bytes; 0 disables the cap (default 10485760)
       --max-depth int            reject documents nested deeper than this; 0 disables the cap (default 1000)
       --max-query-bytes int      reject query files (--from-file) larger than this many bytes; 0 disables the cap (default 1048576)

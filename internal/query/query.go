@@ -2,13 +2,11 @@
 // crosses the order-preservation bridge at the boundary: decode into
 // *omap.Doc, convert to the `any`-shape go-jq accepts, run the compiled
 // query, and reconcile the result against the pre-query *omap.Doc
-// snapshot so untouched subtrees keep their original key order (NFR-3)
-// and numeric precision (NFR-4).
+// snapshot so untouched subtrees keep their original key order
+// and numeric precision.
 //
-// STORY-0002 scope: single-output queries only. Multi-output queries
-// (FR-2's `.items[]` streaming) land in a later story; Run returns the
-// first produced value and ignores subsequent ones. Compile and runtime
-// errors surface as *Error with an Op classifier so callers can
+// Queries must produce exactly one value; multiple outputs are rejected.
+// Compile and runtime errors surface as *Error with an Op classifier so callers can
 // distinguish compile vs. runtime failure.
 package query
 
@@ -58,14 +56,13 @@ func (e *Error) Unwrap() error { return e.Err }
 // Run applies query against doc and returns a new *omap.Doc with key
 // order reconciled against doc. Only the first output of the compiled
 // jq program is used; queries emitting 2+ values are rejected with
-// *Error{Op:"result"} (FR-2 multi-output is STORY-0003+ scope). A
+// *Error{Op:"result"}. A
 // non-object top-level output also produces *Error{Op:"result"}.
 //
 // The ctx argument is plumbed into gojq.RunWithContext so callers can
 // enforce execution deadlines or cancel long-running queries. A nil ctx
-// is treated as context.Background(). STORY-0003's `--timeout` flag
-// will cancel ctx; today every caller passes context.Background() and
-// behaviour is unchanged for non-pathological queries.
+// is treated as context.Background(). The CLI's `--timeout` flag
+// adds a deadline to query execution.
 func Run(ctx context.Context, doc *omap.Doc, query string) (*omap.Doc, error) {
 	return RunWithArgs(ctx, doc, query, nil)
 }
@@ -73,7 +70,7 @@ func Run(ctx context.Context, doc *omap.Doc, query string) (*omap.Doc, error) {
 // RunWithArgs is Run plus `--arg`/`--argjson` variable bindings. Each
 // Arg becomes a gojq variable at compile time; values are bound at
 // call time in the same order. JSON args are decoded with UseNumber
-// to preserve NFR-4 integer precision. String args are passed through
+// to preserve integer precision. String args are passed through
 // as-is.
 //
 // Passing a nil or empty args slice is equivalent to Run.
@@ -121,7 +118,7 @@ func RunWithArgs(ctx context.Context, doc *omap.Doc, query string, args []Arg) (
 		return nil, &Error{Op: "runtime", Err: runErr}
 	}
 	// Probe for a second value — multi-output queries are rejected in
-	// v1 (FR-2 streaming is STORY-0003+). Silently dropping the tail
+	// v1. Silently dropping the tail
 	// would be strictly worse than a clear error.
 	if _, more := iter.Next(); more {
 		return nil, &Error{Op: "result", Err: errors.New("multi-output queries are not supported in v1; query produced 2+ values (single-output only)")}
@@ -138,7 +135,7 @@ func RunWithArgs(ctx context.Context, doc *omap.Doc, query string, args []Arg) (
 // reconciled against the pre-query snapshot using ValueFromAny. Multi-output
 // queries still produce *Error{Op:"result"}; the top-level-object
 // restriction that Run enforces is deliberately relaxed here because RFC
-// 8259 and YAML 1.2 permit any top-level value (BUG-0001 fix).
+// 8259 and YAML 1.2 permit any top-level value.
 func RunValue(ctx context.Context, v omap.Value, query string) (omap.Value, error) {
 	return RunValueWithArgs(ctx, v, query, nil)
 }

@@ -1,16 +1,16 @@
 // Package format hosts cross-format decoder/encoder concerns.
 //
-// STORY-0008 introduces Limits: resource bounds applied uniformly at
+// Limits specifies resource bounds applied uniformly at
 // every decoder entry so a pathological input (oversized, deeply
 // nested, or alias-bombed YAML) cannot exhaust memory or recursion
 // before the value surfaces to the query engine. The three bounds:
 //
-//   - MaxBytes       — hard byte cap on the input stream (M2). Applied
+//   - MaxBytes       — hard byte cap on the input stream. Applied
 //     via io.LimitReader at the decode entry. Covers file input, glob
 //     input, and stdin input uniformly.
-//   - MaxDepth       — nesting depth cap (M3). Enforced during node-
+//   - MaxDepth       — nesting depth cap. Enforced during node-
 //     tree walks by JSON/YAML/TOML decoders.
-//   - MaxYAMLNodes   — YAML-only node materialisation cap (M1, billion-
+//   - MaxYAMLNodes   — YAML-only node materialisation cap (billion-
 //     laughs mitigation). Counts every node materialisation while
 //     walking a decoded yaml.Node tree — aliases that resolve to
 //     already-counted nodes expand multiplicatively, so a small input
@@ -21,7 +21,7 @@
 //
 // Zero values on Limits mean "no limit for this field". DefaultLimits
 // returns the safe defaults the CLI uses when no flag overrides are
-// supplied (see SPEC-0001 DR-008 and NFR-3).
+// supplied.
 package format
 
 import (
@@ -54,7 +54,7 @@ type Limits struct {
 	MaxYAMLNodes int
 }
 
-// Default cap values chosen for SPEC-0001 NFR-3. Rationale:
+// Default resource caps. Rationale:
 //
 //   - 10 MiB matches the widely-used nginx / envoy default for a
 //     "large config file" — generous for real configs, far below the
@@ -148,7 +148,7 @@ func newLimitedReader(r io.Reader, limit int64) *limitedReader {
 // byte it sets overrun=true and returns what it got. Subsequent reads return
 // EOF so the decoder's own parser halts at the end of the consumed buffer.
 //
-// TASK-0018 S-1: `p = p[:int(remaining)]` is safe here because we only
+// `p = p[:int(remaining)]` is safe here because we only
 // enter the truncation branch when remaining < int64(len(p)), so remaining
 // is strictly less than len(p) and is always representable as a valid int on
 // both 32-bit and 64-bit platforms. The explicit int() cast makes this

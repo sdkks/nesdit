@@ -21,8 +21,8 @@ type Case struct {
 // RoundTripCorpus returns the set of omap.Doc fixtures every format's
 // round-trip test exercises. The corpus covers:
 //   - nested maps (key-order preservation)
-//   - json.Number 9007199254740993 (NFR-4: int64 > 2^53)
-//   - YAML !!timestamp / !!str scalars (NFR-3 tag info)
+//   - json.Number 9007199254740993 (int64 > 2^53)
+//   - YAML !!timestamp / !!str scalars (tag info)
 //   - null / NaN / Inf (TOML cannot represent; YAML cannot represent NaN/Inf)
 func RoundTripCorpus() []Case {
 	return []Case{

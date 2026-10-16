@@ -18,10 +18,10 @@ func shouldUpdateGoldenTOML() bool { return os.Getenv("UPDATE_GOLDEN") != "" }
 // testdata/canonical.toml, re-encodes it, and byte-compares the output
 // against testdata/canonical.golden.toml.
 //
-// Normalization documented here (DR-006):
+// Normalization documented here:
 //   - The encoder always uses inline tables ({...}) for nested mappings,
 //     regardless of how they appeared in the input. This is by design — inline
-//     tables guarantee NFR-3 insertion-order preservation across round-trips,
+//     tables guarantee insertion-order preservation across round-trips,
 //     where [header]-style tables would require scalars to precede sections.
 //   - The encoder always uses inline arrays ([...]) for sequences.
 //   - The canonical input is written in idiomatic TOML (header sections, bare

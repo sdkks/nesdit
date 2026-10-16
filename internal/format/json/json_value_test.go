@@ -9,10 +9,10 @@ import (
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
-// BUG-0001 regression: JSON decoder previously rejected any top-level value
+// Regression: JSON decoder previously rejected any top-level value
 // that was not an object. RFC 8259 permits any value at the top level. These
 // tests exercise DecodeValue/EncodeValue — the top-level-agnostic API added
-// to fix BUG-0001 — and confirm that arrays, strings, numbers, booleans, and
+// to support non-object roots — and confirm that arrays, strings, numbers, booleans, and
 // nulls round-trip through the pipeline.
 
 func TestDecodeValue_EmptyInput(t *testing.T) {

@@ -2,4 +2,5 @@
 // rather than "io" to avoid shadowing the stdlib "io" package at import sites.
 package nesio
 
-// TODO(STORY-0003): atomic tempfile+rename, symlink resolution, --backup sibling write.
+// Atomic tempfile+rename writes, symlink resolution, and sibling backups
+// are implemented in atomic.go.

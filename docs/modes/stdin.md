@@ -64,7 +64,7 @@ name: gamma
 version: 2
 ```
 
-Key order is preserved per document (NFR-3): `name` appears before `version` in each output document because it appeared before `version` in each input document.
+Key order is preserved per document: `name` appears before `version` in each output document because it appeared before `version` in each input document.
 
 ## JSONL stream
 

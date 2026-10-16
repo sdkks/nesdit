@@ -1,16 +1,14 @@
-# smoke.txtar — minimal sanity for the testscript harness + STORY-0002 CLI.
+# smoke.txtar — minimal sanity for the testscript harness and CLI.
 #
-# Exercises both custom commands against the STORY-0002 minimal CLI:
+# Exercises the CLI and custom test commands:
 #   - `nesdit --query '.' <file>` runs, writes to stdout
 #   - `nesdit-idempotent --query '.' <file>` runs twice, asserts byte-identity
-#   - `fake-editor` rewrites a file from a scripted replacement (STORY-0007 prep)
+#   - `fake-editor` rewrites a file from a scripted replacement
 #
-# Real --edit / --in-place / multi-file fixtures land with STORY-0003+.
+# Separate fixtures cover --edit, --in-place, and multi-file behavior.
 
-# 1. Bare nesdit with empty stdin enters STDIN mode (STORY-0005 FR-3) but
+# 1. Bare nesdit with empty stdin enters STDIN mode but
 # fails format detection on empty input, emitting format.unknown.
-# (STORY-0003 previously required exactly one file argument; STORY-0005
-# relaxes the Args validator to allow zero args for STDIN mode.)
 ! nesdit
 stderr '^nesdit: error: format\.'
 

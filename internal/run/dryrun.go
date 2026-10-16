@@ -1,5 +1,5 @@
-// Package run — dryrun.go implements the --dry-run (-n, FR-11) and
-// --check (FR-12) flag logic.
+// Package run — dryrun.go implements the --dry-run (-n) and
+// --check flag logic.
 //
 // Separation of concerns:
 //   - runDryRun: decode → query → encode, then emit a unified diff of
@@ -7,11 +7,11 @@
 //   - runCheck: decode → query → encode, then compare the encoded result
 //     to the re-encoded original (normalised form). Exit ExitDrift (2) if
 //     they differ; ExitOK (0) if byte-identical; ExitError (1) on any
-//     error. This is the ONLY source of ExitDrift in the codebase (DR-002).
+//     error. This is the ONLY source of ExitDrift in the codebase.
 //
 // Both functions are single-file only — they accept one resolved path.
 // The -i / multi-file paths delegate here when either flag is set,
-// after DR-001 precedence resolution strips the -i intent.
+// after flag precedence resolution strips the -i intent.
 package run
 
 import (
@@ -31,7 +31,7 @@ import (
 	"github.com/sdkks/nesdit/internal/query"
 )
 
-// runDryRun implements FR-11 for a single file. It decodes the file,
+// runDryRun previews changes for a single file. It decodes the file,
 // applies the query, encodes the result, and emits a unified diff of
 // "before" (re-encoded original) vs "after" (encoded result) to stdout.
 // No file writes occur regardless of whether the diff is empty or not.
@@ -42,12 +42,12 @@ import (
 // whitespace or trailing-newline differences that the encoder would
 // normalise away.
 //
-// STORY-0015: outputFmtOverride, when non-empty, selects the encode format
+// outputFmtOverride, when non-empty, selects the encode format
 // for the "after" half of the diff independently of the input format. The
 // "before" baseline is always encoded in the input format so the diff shows
 // the full cross-format transformation.
 //
-// STORY-0018: pretty enables human-friendly TOML output for the "after"
+// pretty enables human-friendly TOML output for the "after"
 // half of the diff. Silently ignored for non-TOML output formats.
 func runDryRun(
 	ctx context.Context,
@@ -69,7 +69,7 @@ func runDryRun(
 		opts.Logger.Error(logx.EventFormatUnknown, path, msg)
 		return &emittedError{cause: fmt.Errorf("%s", msg)}
 	}
-	// STORY-0015: resolve effective output format.
+	// Resolve effective output format.
 	outFmtName := outputFmtOverride
 	if outFmtName == "" {
 		outFmtName = fmtName
@@ -118,7 +118,7 @@ func runDryRun(
 		return &emittedError{cause: qErr}
 	}
 
-	// FR-16 / STORY-0012: reject missing-path creation unless --create-missing.
+	// Reject missing-path creation unless --create-missing.
 	if !createMissing {
 		if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
 			opts.Logger.Error(logx.EventQueryMissingPath, path, mpErr.Error())
@@ -127,7 +127,7 @@ func runDryRun(
 	}
 
 	// Encode the query result for the diff "after" using the effective output format.
-	// STORY-0018: apply pretty when set and output format is toml.
+	// Apply pretty when set and output format is toml.
 	var afterBuf bytes.Buffer
 	if encErr := encodeFormatValueWithPretty(outFmtName, &afterBuf, outVal, pretty); encErr != nil {
 		var encodeErr *omap.EncodeError
@@ -143,7 +143,7 @@ func runDryRun(
 	// diff (no change) is fine and still exits 0.
 	//
 	// Sanitise embedded newlines in the path before placing it in the
-	// diff header fields (FR-11 / TASK-0025): a literal '\n' in a
+	// diff header fields: a literal '\n' in a
 	// filename would split the "--- path" header line, producing a
 	// malformed diff.
 	safeHeader := strings.ReplaceAll(path, "\n", `\n`)
@@ -166,24 +166,24 @@ func runDryRun(
 	return nil
 }
 
-// runCheck implements FR-12 for a single file. It decodes, applies the
+// runCheck detects drift for a single file. It decodes, applies the
 // query, and re-encodes both the original and the result. It then compares
 // the two encoded forms:
 //   - byte-identical → return ExitOK (0)
 //   - different      → return a driftError (caller returns ExitDrift = 2)
 //   - any other err  → return emittedError (caller returns ExitError = 1)
 //
-// DR-002: this function is the ONLY place in the codebase that may produce
+// This function is the ONLY place in the codebase that may produce
 // a driftError, which is the only route to ExitDrift. All other error paths
 // return emittedError (exit 1) or nil (exit 0).
 //
-// STORY-0015: when outputFmtOverride is non-empty, the "after" is encoded in
+// When outputFmtOverride is non-empty, the "after" is encoded in
 // the specified format. The "before" baseline is always encoded in the input
 // format; a cross-format --check with identity query will therefore always
 // report drift (the two representations differ), which is the correct
 // behaviour — the file would be changed if written.
 //
-// STORY-0018: pretty enables human-friendly TOML output. Silently ignored
+// pretty enables human-friendly TOML output. Silently ignored
 // for non-TOML output formats.
 func runCheck(
 	ctx context.Context,
@@ -205,7 +205,7 @@ func runCheck(
 		opts.Logger.Error(logx.EventFormatUnknown, path, msg)
 		return &emittedError{cause: fmt.Errorf("%s", msg)}
 	}
-	// STORY-0015: resolve effective output format.
+	// Resolve effective output format.
 	outFmtName := outputFmtOverride
 	if outFmtName == "" {
 		outFmtName = fmtName
@@ -230,7 +230,7 @@ func runCheck(
 	}
 
 	// Re-encode original for the baseline (normalised form, in input format).
-	// STORY-0018: apply pretty here so the baseline matches the "after" encoding
+	// Apply pretty here so the baseline matches the "after" encoding
 	// when --pretty is set — without this, --check --pretty on an already-
 	// prettified TOML file would always report drift (compact != pretty output).
 	// We deliberately keep fmtName (input format, not outFmtName) so that
@@ -256,7 +256,7 @@ func runCheck(
 		return &emittedError{cause: qErr}
 	}
 
-	// FR-16 / STORY-0012: reject missing-path creation unless --create-missing.
+	// Reject missing-path creation unless --create-missing.
 	if !createMissing {
 		if mpErr := query.CheckNoMissingPaths(val, outVal); mpErr != nil {
 			opts.Logger.Error(logx.EventQueryMissingPath, path, mpErr.Error())
@@ -265,7 +265,7 @@ func runCheck(
 	}
 
 	// Encode the query result using the effective output format.
-	// STORY-0018: apply pretty when set and output format is toml.
+	// Apply pretty when set and output format is toml.
 	var afterBuf bytes.Buffer
 	if encErr := encodeFormatValueWithPretty(outFmtName, &afterBuf, outVal, pretty); encErr != nil {
 		var encodeErr *omap.EncodeError

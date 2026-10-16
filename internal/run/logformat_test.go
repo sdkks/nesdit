@@ -1,9 +1,9 @@
 package run_test
 
-// logformat_test.go — FR-15 / STORY-0011: unit tests for --log-format flag
+// logformat_test.go — unit tests for --log-format flag
 // wiring in the run package. These tests assert that:
 //   - --log-format=json causes the Logger to emit NDJSON on stderr.
-//   - --log-format=text (default) continues to emit NFR-10 text lines.
+//   - --log-format=text (default) continues to emit canonical text lines.
 //   - --log-format=<unknown> exits 1 before any IO.
 
 import (
@@ -67,7 +67,7 @@ func TestLogFormatJSON_BatchSummary(t *testing.T) {
 }
 
 // TestLogFormatText_DefaultBatchSummary verifies that without --log-format,
-// the batch.summary event is emitted in text mode (NFR-10 shape).
+// the batch.summary event is emitted in text mode (canonical shape).
 // Uses two files because single-file runs omit the batch.summary (by design).
 func TestLogFormatText_DefaultBatchSummary(t *testing.T) {
 	dir := t.TempDir()

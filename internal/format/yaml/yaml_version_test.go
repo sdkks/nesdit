@@ -1,6 +1,6 @@
 package yaml_test
 
-// Tests for FR-18: --yaml-version YAML dialect selection.
+// Tests for --yaml-version YAML dialect selection.
 //
 // go-yaml v3 does not have a formal version switch. These tests cover the
 // best-effort implementation: in 1.1 mode the extended boolean vocabulary

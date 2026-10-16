@@ -1,5 +1,5 @@
 // Package stream provides per-format multi-document streaming for nesdit's
-// STDIN pipeline (FR-3, NFR-8).
+// STDIN pipeline.
 //
 // # Format support
 //
@@ -15,13 +15,13 @@
 //     emits `+++\n` between documents (Hugo-style convention; not part of
 //     the TOML spec).
 //
-// # NFR-8 contract
+// # Single-pass streaming contract
 //
 // All readers perform single-pass streaming: each document is decoded
 // individually as the reader advances. No buffering of the entire input
 // stream occurs before the first document is returned. Documents
 // successfully written to stdout before a later decode failure MAY remain
-// there — this is documented NFR-8 behavior.
+// there — this is the single-pass partial-output trade-off.
 package stream
 
 import (
@@ -42,7 +42,7 @@ import (
 
 // ErrTOMLMultiDoc is returned by a TOML stream reader when the input
 // contains a `---` separator indicating an attempt at multi-document TOML.
-// TOML is single-document only (FR-3).
+// TOML is single-document only.
 var ErrTOMLMultiDoc = errors.New("toml: multi-doc input is not supported; TOML is single-document only")
 
 // DocReader is a streaming reader that yields one omap.Value per document.
@@ -91,7 +91,7 @@ func NewYAMLReader(r io.Reader, limits format.Limits) DocReader {
 }
 
 // NewYAMLReaderWithOpts returns a DocReader that reads `---`-separated YAML
-// documents from r, applying limits and decode opts (e.g. FR-18 YAMLVersion).
+// documents from r, applying limits and decode opts (e.g. YAMLVersion).
 func NewYAMLReaderWithOpts(r io.Reader, limits format.Limits, opts yamlfmt.DecodeOpts) DocReader {
 	scanner := bufio.NewScanner(r)
 	// Allow lines up to 1 MiB (generous for config files).
@@ -376,7 +376,7 @@ func NewReader(fmtName string, r io.Reader, limits format.Limits) (DocReader, er
 	return NewReaderWithOpts(fmtName, r, limits, yamlfmt.DecodeOpts{})
 }
 
-// NewReaderWithOpts extends NewReader with FR-18 decode opts. The opts are
+// NewReaderWithOpts extends NewReader with decode opts. The opts are
 // passed to the YAML reader; they are silently ignored for JSONL and TOML.
 func NewReaderWithOpts(fmtName string, r io.Reader, limits format.Limits, opts yamlfmt.DecodeOpts) (DocReader, error) {
 	switch fmtName {

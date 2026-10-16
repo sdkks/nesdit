@@ -271,7 +271,7 @@ pods:
 Key order within each map entry is preserved.
 
 !!! note
-    **Positional reconciliation:** When a jq expression reshapes an array (e.g., `sort_by`, `reverse`), each output element inherits key order from the element at the same positional index in the input. This is deterministic but may produce surprising key orderings if the array is reordered. This is a documented v1 behaviour (DR-007).
+    **Positional reconciliation:** When a jq expression reshapes an array (e.g., `sort_by`, `reverse`), each output element inherits key order from the element at the same positional index in the input. This is deterministic but may produce surprising key orderings if the array is reordered. This is the current reconciliation behaviour.
 
 ---
 
@@ -348,9 +348,6 @@ nesdit --yaml-version 1.1 flags.yaml --query '.switch_on'
 
 !!! note
     The encoder always writes YAML 1.2 output regardless of `--yaml-version`. Setting `--yaml-version 1.1` only affects how the input is decoded.
-
-!!! note "Available in v1"
-    The `--yaml-version` flag was included in v1 scope despite appearing in the RFC's deferral list. It is fully supported.
 
 ---
 

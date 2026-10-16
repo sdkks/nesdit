@@ -111,7 +111,7 @@ type erroringReader struct{ err error }
 
 func (e *erroringReader) Read(_ []byte) (int, error) { return 0, e.err }
 
-// TestReadAllLimited_SliceCastSafety covers TASK-0018 S-1: the truncation
+// TestReadAllLimited_SliceCastSafety covers the truncation
 // branch in limitedReader.Read performs p[:int(remaining)] — safe because
 // remaining < len(p) at that point. This test verifies the Read path still
 // correctly truncates and returns a LimitError when the cap is smaller than

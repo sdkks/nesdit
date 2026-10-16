@@ -14,8 +14,8 @@ import (
 	"github.com/sdkks/nesdit/internal/query"
 )
 
-// TestBridgeGoNoGo is the DR-005 Plan A go/no-go gate, extended with the
-// DR-007 array-reshape lock-in suite.
+// TestBridgeGoNoGo checks bridge idempotency and positional array-reshape
+// reconciliation.
 //
 // Two sub-harnesses run over the corpus:
 //
@@ -23,21 +23,20 @@ import (
 //     - decodes the source bytes → *omap.Doc (Doc_0).
 //     - runs the query once → Doc_1; encodes Doc_1 → bytes_1.
 //     - decodes bytes_1 → Doc_1'; runs the same query → Doc_2; encodes → bytes_2.
-//     - asserts bytes_2 == bytes_1 (idempotency, NFR-2).
+//     - asserts bytes_2 == bytes_1 (idempotency).
 //     - for the identity query ".", asserts bytes_1 == source bytes.
 //
-//  2. Reshape (Reshape field, DR-007): for every reshapeCase:
+//  2. Reshape (Reshape field): for every reshapeCase:
 //     - decodes the source → *omap.Doc.
 //     - runs the case query once → Doc_1; encodes → bytes_1.
 //     - asserts bytes_1 == case.Expect.
-//     This pins the positional array-reconciliation contract from DR-007
+//     This pins the positional array-reconciliation contract
 //     so any silent switch to identity matching (or a key-set heuristic)
 //     breaks CI loudly. Queries here are NOT required to be self-stable
 //     under a second application (reverse, grow, shrink explicitly are
 //     not) — idempotency is asserted by the Queries field only.
 //
-// Any idempotency failure authorises the Plan B switch (DR-005) in this
-// same story.
+// Any idempotency failure indicates a bridge regression.
 func TestBridgeGoNoGo(t *testing.T) {
 	t.Parallel()
 
@@ -137,7 +136,7 @@ func runBridgeCase(t *testing.T, c bridgeCase, q string) {
 	}
 }
 
-// runReshapeCase is the DR-007 lock-in: run the reshape query exactly
+// runReshapeCase pins positional reconciliation: run the reshape query exactly
 // once against the source and assert the bytes equal the expected fixed
 // output. This is not an idempotency check — reshape queries like
 // reverse/grow/shrink are not required to be self-stable — it is a pin
@@ -244,7 +243,7 @@ type bridgeCase struct {
 	Format  string // "json" | "yaml" | "toml"
 	Source  []byte
 	Queries []string
-	// Reshape carries DR-007 lock-in queries whose post-run bytes are
+	// Reshape carries array-reshape queries whose post-run bytes are
 	// pinned explicitly (not asserted idempotent). These exist to pin
 	// the positional array-of-maps reconciliation contract against a
 	// future drift toward identity matching.
@@ -260,13 +259,12 @@ type reshapeCase struct {
 	Expect []byte
 }
 
-// bridgeCorpus returns the DR-005 test corpus: ~20 (doc, queries) pairs
-// covering the risk classes enumerated in SPEC-0001 §7 Risk 1 and Risk 7.
+// bridgeCorpus returns (doc, queries) pairs covering key order, array
+// reshaping, scalar precision, and tag preservation across supported formats.
 //
 // Query suite defaults to {".", ".a.b=1", "del(.a.b)", ".items[0].x=2"} —
 // any pair whose preconditions do not hold (e.g. no .a.b path) uses a
-// narrower subset. All four queries are assignment-style, so they also
-// exercise the Plan B AST surface if we land there.
+// narrower subset. The suite covers identity, assignment, and deletion.
 func bridgeCorpus() []bridgeCase {
 	// Default suite for docs that have both .a.b and .items[0].x paths.
 	full := []string{".", ".a.b = 1", "del(.a.b)", ".items[0].x = 2"}
@@ -319,13 +317,13 @@ func bridgeCorpus() []bridgeCase {
 			Queries: ab,
 		},
 
-		// --- DR-007 array-reshape lock-in ---
+		// --- Array-reshape byte invariants ---
 		// Positional reconciliation means result[i] inherits map-order
 		// from prev[i], regardless of what jq did to the array. Each
 		// case below pins a single query's expected bytes so a future
 		// silent switch to key-set / identity matching fails CI.
 		{
-			Name:    "json_dr007_reshape",
+			Name:    "json_positional_array_reshape",
 			Format:  "json",
 			Source:  []byte(`{"items":[{"name":"a","n":1},{"name":"b","n":2}]}`),
 			Queries: id,
@@ -374,8 +372,8 @@ func bridgeCorpus() []bridgeCase {
 				},
 			},
 		},
-		// Tech #4 — DR-007 heterogeneous-key sort_by: the "surprising
-		// but deterministic" case DR-007 calls out by name. The source
+		// Heterogeneous-key sort_by demonstrates surprising but deterministic
+		// positional reconciliation. The source
 		// array has elements with DIFFERENT key sets ({name,x} and
 		// {name,y}); sort_by(.name) reverses the two elements. Under
 		// positional reconciliation, result[0] inherits prev[0]'s
@@ -392,7 +390,7 @@ func bridgeCorpus() []bridgeCase {
 		// Pinning these exact bytes guards against any silent drift
 		// from positional to identity matching or a key-set heuristic.
 		{
-			Name:    "json_dr007_reshape_heterogeneous",
+			Name:    "json_positional_array_reshape_heterogeneous",
 			Format:  "json",
 			Source:  []byte(`{"items":[{"name":"z","x":1},{"name":"a","y":2}]}`),
 			Queries: id,
@@ -432,7 +430,7 @@ func bridgeCorpus() []bridgeCase {
 			//   - ".when |= .": no-op through gojq — the bridge must
 			//     still carry prev.Tag forward because the scalar bytes
 			//     match prev.
-			// DR-005 explicitly called out !!timestamp as an input class;
+			// This explicitly covers !!timestamp as an input class;
 			// prior to this entry the bridge's tag path had no e2e cover.
 			Name:    "yaml_tagged_timestamp_unquoted",
 			Format:  "yaml",
@@ -466,7 +464,7 @@ func bridgeCorpus() []bridgeCase {
 
 		// --- TOML ---
 		// nesdit's TOML encoder emits every nested table as an inline
-		// table (DR-006), so the corpus sources here use the same flat
+		// table by default, so the corpus sources here use the same flat
 		// inline-table shape the encoder produces.
 		{
 			Name:    "toml_basic_nested",

@@ -1,4 +1,4 @@
-# identity_yaml.txtar — STORY-0002 NFR-2 identity invariant (YAML).
+# identity_yaml.txtar — identity invariant (YAML).
 #
 # Two consecutive runs of the identity query on the same input produce
 # byte-identical stdout. The source is hand-shaped to match nesdit's

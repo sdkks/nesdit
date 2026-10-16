@@ -1,6 +1,6 @@
 package query_test
 
-// Tests for FR-16 / STORY-0012: CheckNoMissingPaths strict-by-default
+// Tests for CheckNoMissingPaths strict-by-default
 // path-creation semantics.
 //
 // The probe showed that gojq transparently creates absent paths when using

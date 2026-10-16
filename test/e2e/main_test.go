@@ -9,13 +9,13 @@
 // Three commands extend the script vocabulary:
 //
 //   - nesdit-idempotent <args...>
-//     NFR-2 enforcement. Runs nesdit(args) twice with identical argv via the
+//     Idempotency enforcement. Runs nesdit(args) twice with identical argv via the
 //     same in-process Run entrypoint, capturing stdout each time, and asserts
 //     byte-for-byte identical output across the two runs. Any drift fails the
 //     script with the two stdout buffers.
 //
 //   - fake-editor <target-file>
-//     Scriptable $EDITOR stub for --edit mode fixtures (STORY-0007). When env
+//     Scriptable $EDITOR stub for --edit mode fixtures. When env
 //     var FAKE_EDITOR_REPLACE names a file in the script working directory,
 //     that file's contents are written over <target-file> verbatim (simulating
 //     "user edited the buffer and saved"). Without the env var, fake-editor
@@ -25,7 +25,7 @@
 //
 //   - fail-editor
 //     A $EDITOR stub (registered via RunMain) that always exits 1. Used to
-//     test the FR-4 acceptance: when the editor exits non-zero, nesdit must
+//     test editor failure handling: when the editor exits non-zero, nesdit must
 //     emit an error on stderr and exit 1.
 package e2e_test
 
@@ -45,7 +45,7 @@ func TestMain(m *testing.M) {
 		"fake-editor": fakeEditorMain,
 		"fail-editor": func() int { return 1 },
 		// "vi" is registered as a no-op editor stub so that the vi-fallback
-		// fixture (fr04_edit_editor_vi_fallback) can prove the $EDITOR →
+		// fixture can prove the $EDITOR →
 		// $VISUAL → "vi" resolution chain reaches "vi" without requiring a
 		// real vi installation in the test environment.
 		"vi": fakeEditorMain,
@@ -63,7 +63,7 @@ func TestScripts(t *testing.T) {
 }
 
 // nesditIdempotent runs nesdit(args) twice via the in-process Run entrypoint
-// and asserts byte-identical stdout. This is the NFR-2 invariant harness.
+// and asserts byte-identical stdout. This is the idempotency invariant harness.
 // Fixture authors invoke it anywhere an operation should be a no-op on the
 // second run.
 func nesditIdempotent(ts *testscript.TestScript, neg bool, args []string) {

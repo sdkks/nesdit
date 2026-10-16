@@ -13,7 +13,7 @@ import (
 	"github.com/sdkks/nesdit/internal/run"
 )
 
-// Test_Run_TimeoutFlag covers STORY-0008 M4: `--timeout <dur>` wraps the
+// Test_Run_TimeoutFlag covers query deadlines: `--timeout <dur>` wraps the
 // query ctx with context.WithTimeout and a pathological gojq query is
 // cancelled before wall-clock exceeds the deadline by a wide margin.
 // Emitted event must be query.timeout, distinct from query.runtime.
@@ -52,7 +52,7 @@ func Test_Run_TimeoutFlag(t *testing.T) {
 }
 
 // Test_Run_TimeoutDisabledByDefault: omitting --timeout preserves the
-// STORY-0002 behaviour — a fast query completes successfully with exit 0.
+// default behaviour — a fast query completes successfully with exit 0.
 func Test_Run_TimeoutDisabledByDefault(t *testing.T) {
 	t.Parallel()
 
@@ -82,7 +82,7 @@ func Test_Run_TimeoutDisabledByDefault(t *testing.T) {
 	}
 }
 
-// Test_Run_ContextCancelled_EmitsQueryCancelled covers TASK-0018 S-2: when
+// Test_Run_ContextCancelled_EmitsQueryCancelled covers cancellation: when
 // the caller cancels the context before (or during) query execution, the
 // emitted event must be query.cancelled — not query.runtime or query.timeout.
 // This distinguishes a clean SIGINT-style cancellation from an execution error.
@@ -124,7 +124,7 @@ func Test_Run_ContextCancelled_EmitsQueryCancelled(t *testing.T) {
 
 // Test_Run_ParentDeadline_EmitsQueryTimeout verifies that a deadline on
 // the caller's context (without --timeout) also routes to query.timeout.
-// This guards the TASK-0019 removal of the `timeout > 0 &&` guard in
+// This guards the removal of the `timeout > 0 &&` guard in
 // classifyQueryErr: a parent-supplied DeadlineExceeded must classify as
 // query.timeout, not query.runtime.
 func Test_Run_ParentDeadline_EmitsQueryTimeout(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Path is a JSON-path-like location used in encode errors (FR-19, NFR-5).
+// Path is a JSON-path-like location used in encode errors.
 // The root is represented as "$". Map segments are ".key" when the key
 // matches ^[A-Za-z_][A-Za-z0-9_]*$, otherwise ["key"] with quoted key.
 // Array indices are "[N]".
@@ -76,25 +76,24 @@ func isBareKey(k string) bool {
 // null), the three non-finite numeric tokens EncodeKindNaN,
 // EncodeKindPosInf, EncodeKindNegInf, and EncodeKindNonTableRoot (TOML
 // rejects non-map document roots). The enum is the single source of
-// truth for these tokens and is designed to absorb the NFR-10 stderr
-// event taxonomy (heterogeneous array, cross-format incompat, etc.) as
-// later stories extend the set.
+// truth for representability-failure tokens; stderr event classification
+// is handled separately by callers.
 //
 // This is a defined string type (not an alias): any value typed as
 // plain `string` (e.g., a variable returned from a helper or read from
 // a map) cannot be assigned to [EncodeError.Kind] without an explicit
 // conversion. New kinds MUST be added as exported Encode* constants
 // below — the compiler rejects struct literals like
-// `EncodeError{Kind: s}` when `s string` (TASK-0004 rework). Untyped
+// `EncodeError{Kind: s}` when `s string`. Untyped
 // string constants still convert silently per the Go spec, but the
 // realistic drift path (helper functions returning `string`) is
 // blocked.
 type EncodeErrorKind string
 
 // Exported EncodeErrorKind constants for the kinds currently emitted by
-// the JSON, YAML, and TOML encoders (TASK-0004). Values match the
-// historical free-form strings so the error rendering and FR-19/NFR-5
-// acceptance tests are unchanged.
+// the JSON, YAML, and TOML encoders. Values match the
+// historical free-form strings so error rendering and path-aware
+// encoding tests are unchanged.
 const (
 	// EncodeKindNull marks a KindNull encountered by a format that cannot
 	// represent null (TOML).
@@ -112,19 +111,19 @@ const (
 	// value passed to a format that requires a table/object at the root.
 	// Today only TOML uses this: the TOML spec mandates a top-level table,
 	// so a reshape query that produces an array or scalar cannot be
-	// re-encoded as TOML. The error classifies as format.incompatible (FR-19).
+	// re-encoded as TOML. The error classifies as format.incompatible.
 	EncodeKindNonTableRoot EncodeErrorKind = "non-table-root"
 )
 
 // EncodeError is the canonical path-aware encode error used by the JSON,
 // YAML, and TOML encoders when a value cannot be represented in the target
-// format (FR-19, NFR-5).
+// format.
 //
 // Error renders as "<path>: <kind> is not representable in <format>" where
-// <path> is a JSON-path (FR-19 convention) like "$.users[2].score".
+// <path> is a JSON-path like "$.users[2].score".
 type EncodeError struct {
 	Path Path
-	// Kind is the typed representability-failure kind (TASK-0004).
+	// Kind is the typed representability-failure kind.
 	// Must be one of the Encode* constants — raw string literals no
 	// longer compile because [EncodeErrorKind] is a defined string
 	// type, not an alias.
@@ -134,7 +133,7 @@ type EncodeError struct {
 }
 
 // Compile-time assertion that the exported constants keep the declared
-// type (TASK-0004). Removing `EncodeErrorKind` from any constant's
+// type. Removing `EncodeErrorKind` from any constant's
 // declaration would demote it to an untyped constant and break the
 // strongly-typed contract for `EncodeError.Kind` — this guard catches
 // that regression at `go build` time.

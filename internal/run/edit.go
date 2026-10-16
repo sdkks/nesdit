@@ -1,10 +1,9 @@
 // Package run — edit.go implements the --edit expression-builder mode
-// (FR-4, DR-003, STORY-0007).
 //
 // Flow:
-//  1. TTY pre-check (M1): reject non-TTY invocations with an actionable
+//  1. TTY pre-check: reject non-TTY invocations with an actionable
 //     error before any temp file is created or editor is spawned.
-//  2. Editor resolution (M2): $EDITOR → $VISUAL → "vi".
+//  2. Editor resolution: $EDITOR → $VISUAL → "vi".
 //  3. Read the input file into a format.Value (omap.Value).
 //  4. Re-encode to a temp file in the file's native format.
 //  5. Open the temp file in the resolved editor, connecting stdin/stdout/stderr
@@ -16,7 +15,7 @@
 //     c. Temp file empty → error on stderr ("saved file is empty — no change
 //     applied"), exit 1 (no overwrite).
 //     d. Otherwise → decode the edited temp file, diff against original,
-//     emit diff-engine output (H2 order) to stdout.
+//     emit diff-engine output (invocation, query, preview) to stdout.
 //
 // Testing bypass:
 //
@@ -41,7 +40,7 @@ import (
 )
 
 // resolveEditor returns the editor binary to invoke.
-// Resolution chain per M2: $EDITOR → $VISUAL → "vi".
+// Resolution chain: $EDITOR → $VISUAL → "vi".
 func resolveEditor() string {
 	if e := os.Getenv("EDITOR"); e != "" {
 		return e
@@ -54,13 +53,13 @@ func resolveEditor() string {
 
 // runEdit implements the --edit expression-builder mode.
 // path is the input file; fmtName may be empty (auto-detect from extension).
-// yamlVersion is passed through to the YAML decoder (FR-18); it is silently
+// yamlVersion is passed through to the YAML decoder; it is silently
 // ignored for non-YAML formats.
 func runEdit(opts RunOptions, path, fmtName string, limits format.Limits, yamlVersion string) error {
-	// 1. TTY pre-check (M1).
+	// 1. TTY pre-check.
 	skipTTY := os.Getenv("NESDIT_SKIP_TTY_CHECK") == "1"
 	if skipTTY {
-		// Security M1: make the test-harness bypass visible in output so it
+		// Make the test-harness bypass visible in output so it
 		// cannot silently affect production runs.
 		opts.Logger.InfoGlobal(logx.EventEditTTYBypass,
 			"NESDIT_SKIP_TTY_CHECK=1 detected: TTY pre-check bypassed (test harness only)")

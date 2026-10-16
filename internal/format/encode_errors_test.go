@@ -14,7 +14,7 @@ import (
 	yamlfmt "github.com/sdkks/nesdit/internal/format/yaml"
 )
 
-// TestEncode_PathAwareErrors asserts FR-19 / NFR-5 — encoding a value the
+// TestEncode_PathAwareErrors checks that encoding a value the
 // target format cannot represent MUST fail with a non-zero exit code and an
 // error message naming the offending JSON path. Shared expectations:
 //

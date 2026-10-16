@@ -1,0 +1,19 @@
+# Mutually-exclusive flag combinations are rejected at flag-parse time,
+# BEFORE any file read, with exit 1 and canonical-shape stderr.
+# This fixture covers `--query` + `-f` → flag.conflict.
+# Separate fixtures cover editor conflicts, backup requirements, and
+# the dry-run/check conflict.
+
+# --query + -f: only one query source is allowed.
+#
+# CRITICAL: this rejection MUST happen before any file read. We set the
+# file to a nonexistent path and assert the error is the flag.conflict,
+# NOT an IO error. That proves the check fires at flag-parse time.
+! nesdit does-not-exist.json --query '.' -f q.jq
+stderr '^nesdit: error: flag\.conflict: '
+! stderr 'does-not-exist'
+! stderr 'io\.read'
+! stdout .
+
+-- q.jq --
+.z = 99

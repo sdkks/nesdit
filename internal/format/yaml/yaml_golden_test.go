@@ -77,7 +77,7 @@ func TestGolden_YAML(t *testing.T) {
 	}
 
 	// Second-round stability: encode→decode→encode must be byte-identical to
-	// the first encode (idempotency per NFR-2).
+	// the first encode (idempotency).
 	doc2, err := yamlfmt.Decode(bytes.NewReader(got))
 	if err != nil {
 		t.Fatalf("re-decode golden: %v", err)

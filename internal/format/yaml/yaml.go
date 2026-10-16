@@ -1,18 +1,18 @@
 // Package yaml decodes and encodes YAML 1.2 documents into omap.Doc via
 // gopkg.in/yaml.v3's *yaml.Node. Decoding preserves mapping key insertion
-// order (NFR-3) and records each scalar's resolved short YAML tag (!!str,
+// order and records each scalar's resolved short YAML tag (!!str,
 // !!timestamp, !!binary, ...) on omap.Value.Tag so that a round-trip
 // through omap does not re-infer a different tag for an ambiguous value
 // such as a string that looks like a timestamp.
 //
-// Comments are NOT preserved across the round-trip (NFR-6 — explicit
+// Comments are NOT preserved across the round-trip (an explicit
 // non-goal for v1 of nesdit). Anchors/aliases are resolved on decode and
 // not re-emitted.
 //
 // NaN and +/-Inf in numeric values are rejected at encode time with a
-// path-aware omap.EncodeError (FR-19).
+// path-aware omap.EncodeError.
 //
-// FR-18 YAML dialect selection (--yaml-version):
+// YAML dialect selection (--yaml-version):
 //
 // gopkg.in/yaml.v3 (v3.0.1) implements YAML 1.2 resolution. It does NOT
 // tag `yes`, `no`, `on`, `off` as !!bool — those arrive as plain !!str
@@ -24,7 +24,7 @@
 // converted to an omap.BoolValue before the pipeline sees it. Quoted values
 // (single or double) bypass this conversion — a `"yes"` is always a string.
 //
-// Spec deviation note (FR-18): go-yaml v3 has no first-class version
+// Dialect limitation: go-yaml v3 has no first-class version
 // switch. Octal literal handling (0777 vs 0o777) and anchor-alias
 // semantics differences between YAML 1.1 and 1.2 are NOT implemented.
 // Only the boolean vocabulary is affected.
@@ -58,7 +58,7 @@ type DecodeOpts struct {
 	// This is needed for legacy Kubernetes/Helm files that rely on that
 	// coercion.
 	//
-	// Spec deviation: go-yaml v3 has no formal version switch; octal
+	// Dialect limitation: go-yaml v3 has no formal version switch; octal
 	// literal and anchor-alias behavioural differences between 1.1 and 1.2
 	// are NOT implemented. Only the boolean vocabulary is affected.
 	YAMLVersion string
@@ -83,7 +83,7 @@ func Decode(r io.Reader) (*omap.Doc, error) {
 
 // DecodeValue reads a single YAML document from r and returns its top-level
 // node as an omap.Value. YAML 1.2 permits any node (mapping, sequence, or
-// scalar) at the root. This is the BUG-0001 fix entry point the CLI uses.
+// scalar) at the root. This is the value-based entry point the CLI uses.
 //
 // DecodeValue applies no resource bounds. CLI callers MUST use
 // DecodeValueWithLimits; this unlimited form exists for tests and in-
@@ -92,13 +92,13 @@ func DecodeValue(r io.Reader) (omap.Value, error) {
 	return DecodeValueWithLimits(r, format.Limits{})
 }
 
-// DecodeValueWithLimits is DecodeValue with STORY-0008 resource bounds.
+// DecodeValueWithLimits is DecodeValue with resource bounds.
 // Applies all three bounds:
 //
 //   - limits.MaxBytes via format.ReadAllLimited before parsing.
 //   - limits.MaxDepth while walking the node tree.
 //   - limits.MaxYAMLNodes while materialising nodes (billion-laughs
-//     mitigation, M1). Every node materialisation — alias-driven or
+//     mitigation). Every node materialisation — alias-driven or
 //     not — counts, so a small input that references a deeply nested
 //     anchor 10000 times is rejected with
 //     &format.LimitError{Kind: LimitYAMLNodeCount}.
@@ -108,7 +108,7 @@ func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error
 	return DecodeValueWithLimitsAndOpts(r, limits, DecodeOpts{})
 }
 
-// DecodeValueWithLimitsAndOpts extends DecodeValueWithLimits with FR-18
+// DecodeValueWithLimitsAndOpts extends DecodeValueWithLimits with
 // dialect control. The opts.YAMLVersion field selects "1.1" or "1.2"
 // boolean vocabulary; all other behaviour is unchanged.
 func DecodeValueWithLimitsAndOpts(r io.Reader, limits format.Limits, opts DecodeOpts) (omap.Value, error) {
@@ -127,9 +127,9 @@ func DecodeValueWithLimitsAndOpts(r io.Reader, limits format.Limits, opts Decode
 	if err := dec.Decode(&root); err != nil {
 		return omap.Value{}, fmt.Errorf("yaml: %w", err)
 	}
-	// TASK-0017: reject trailing documents so single-doc callers get a clear
+	// Reject trailing documents so single-doc callers get a clear
 	// error rather than silently discarding content. Mirrors the equivalent
-	// check in json.DecodeValueWithLimits (BUG-0001 symmetry).
+	// check in json.DecodeValueWithLimits.
 	var trailing yaml.Node
 	if err := dec.Decode(&trailing); err != io.EOF {
 		if err == nil {
@@ -161,8 +161,8 @@ func Encode(w io.Writer, d *omap.Doc) error {
 }
 
 // EncodeValue writes any omap.Value as a single YAML document. Unlike Encode
-// (which wraps a *Doc), EncodeValue accepts sequence and scalar roots — the
-// BUG-0001 fix entry point for the CLI.
+// (which wraps a *Doc), EncodeValue accepts sequence and scalar roots.
+// This is the value-based entry point for the CLI.
 func EncodeValue(w io.Writer, v omap.Value) error {
 	// Walk the value for NaN/Inf first so the caller gets a path-aware error
 	// before any partial bytes hit the writer.
@@ -185,7 +185,7 @@ func EncodeValue(w io.Writer, v omap.Value) error {
 
 // ----------------------------- decode -----------------------------
 
-// yamlWalker applies STORY-0008 M1 + M3 bounds while turning a decoded
+// yamlWalker applies node-count and depth bounds while turning a decoded
 // yaml.Node tree into an omap.Value. Each materialisation of a node
 // increments the counter; aliases are resolved by recursing into their
 // Alias target, so a billion-laughs input naturally explodes the count
@@ -193,7 +193,7 @@ func EncodeValue(w io.Writer, v omap.Value) error {
 // node materialisations, not only alias-driven ones, so the cap acts
 // as a total work-budget on the yaml walk.
 //
-// TASK-0018 S-3: visiting is a per-walk visited set used exclusively for
+// visiting is a per-walk visited set used exclusively for
 // cycle detection during alias resolution. yaml.v3 does not permit circular
 // aliases in its current implementation, but this set provides defense-in-
 // depth if the library is ever swapped: a circular alias chain would recurse
@@ -224,7 +224,7 @@ func (w *yamlWalker) node(n *yaml.Node, d int) (omap.Value, error) {
 		}
 	}
 	if n.Kind == yaml.AliasNode && n.Alias != nil {
-		// TASK-0018 S-3: guard against circular alias chains. yaml.v3
+		// Guard against circular alias chains. yaml.v3
 		// currently rejects them at parse time, but this visited-set
 		// check is defense-in-depth against a future library swap.
 		if w.visiting == nil {
@@ -410,7 +410,7 @@ func jsonNumber(s string) stdjson.Number { return stdjson.Number(s) }
 // ----------------------------- encode -----------------------------
 
 // checkYAMLRepresentable walks v and returns an *omap.EncodeError for any
-// numeric NaN or +/-Inf (FR-19: YAML encode must reject these with path
+// numeric NaN or +/-Inf (YAML encode must reject these with path
 // context). The tree walk is delegated to omap.WalkValue; this function only
 // supplies the per-leaf predicate.
 func checkYAMLRepresentable(v omap.Value) *omap.EncodeError {

@@ -11,7 +11,7 @@ import (
 	jsonfmt "github.com/sdkks/nesdit/internal/format/json"
 )
 
-// Test_JSONDecoder_InputSizeCap covers the STORY-0008 M2 boundary:
+// Test_JSONDecoder_InputSizeCap covers the input-size boundary:
 //   - sub-cap input decodes cleanly (positive test — protects against
 //     an over-tight cap regressing real inputs).
 //   - at-cap input decodes cleanly (len == cap is accepted).
@@ -41,7 +41,7 @@ func Test_JSONDecoder_InputSizeCap(t *testing.T) {
 	}
 }
 
-// Test_JSONDecoder_NestingDepthCap covers STORY-0008 M3.
+// Test_JSONDecoder_NestingDepthCap covers the nesting-depth cap.
 // Builds nested arrays with varying depth, then asserts:
 //   - sub-cap: accepted
 //   - at-cap: accepted (depth == max is fine)
@@ -78,7 +78,7 @@ func Test_JSONDecoder_NestingDepthCap(t *testing.T) {
 // tokeniser reliably tokenises a moderately deep input when the nesdit
 // cap is disabled — ensuring our MaxDepth cap is the effective bound,
 // not some hidden stdlib ceiling. Documents the boundary required by
-// SPEC-0001 STORY-0008 acceptance.
+// resource-limit behavior.
 func Test_JSONDecoder_NestingDepthBehavior(t *testing.T) {
 	t.Parallel()
 	// 500-deep is well within any sane stdlib ceiling and below the

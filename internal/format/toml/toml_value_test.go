@@ -10,7 +10,7 @@ import (
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
-// BUG-0001 regression: TOML's top-level-table constraint MUST be preserved.
+// Regression: TOML's top-level-table constraint MUST be preserved.
 // Unlike JSON and YAML, TOML's spec mandates that the root be a table — so
 // DecodeValue/EncodeValue on TOML should either accept a map or reject with
 // a clear error referencing the format's constraint.
@@ -45,7 +45,7 @@ func TestTOMLEncodeValue_RejectsTopLevelArray(t *testing.T) {
 		t.Fatalf("expected error for TOML top-level array, got nil (output=%q)", buf.String())
 	}
 	// Error must be a typed *omap.EncodeError so errors.As routing in run.go
-	// classifies this as format.incompatible (FR-19, TASK-0015).
+	// classifies this as format.incompatible.
 	var ee *omap.EncodeError
 	if !errors.As(err, &ee) {
 		t.Fatalf("want *omap.EncodeError, got %T: %v", err, err)
@@ -85,7 +85,7 @@ func TestTOMLEncodeValue_RejectsTopLevelScalar(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected error for TOML top-level %s, got nil", c.name)
 			}
-			// Error must be a typed *omap.EncodeError (TASK-0015).
+			// Error must be a typed *omap.EncodeError.
 			var ee *omap.EncodeError
 			if !errors.As(err, &ee) {
 				t.Fatalf("want *omap.EncodeError, got %T: %v", err, err)

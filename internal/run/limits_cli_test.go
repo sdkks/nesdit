@@ -13,8 +13,8 @@ import (
 	"github.com/sdkks/nesdit/internal/run"
 )
 
-// Test_Run_InputSizeCap_StreamedNotMaterialised verifies MUST-FIX #1 from
-// STORY-0008's review cycle: the CLI must surface the input-size cap after
+// Test_Run_InputSizeCap_StreamedNotMaterialised verifies decoder hardening:
+// the CLI must surface the input-size cap after
 // reading at most `limit + epsilon` bytes from disk — not after materialising
 // the full file via os.ReadFile, which would OOM on a 10 GB YAML long before
 // the decoder ever got a chance to apply the cap.
@@ -95,14 +95,14 @@ func Test_Run_InputSizeCap_StreamedNotMaterialised(t *testing.T) {
 	}
 	// Defence-in-depth: explicitly assert the pre-fix shape is absent.
 	if strings.Contains(stderr.String(), "observed 10485760") {
-		t.Errorf("os.ReadFile materialised full file before cap — MUST-FIX #1 regressed.\nstderr=%q", stderr.String())
+		t.Errorf("os.ReadFile materialised full file before cap — streaming size limit regressed.\nstderr=%q", stderr.String())
 	}
 }
 
-// Test_Run_QueryFileSizeCap verifies MUST-FIX #2: --from-file uses an
-// os.ReadFile with no cap today. A pathological 10 GB .jq file would OOM the
-// CLI before any query is parsed. The fix routes the read through
-// format.ReadAllLimited with a tight dedicated cap (1 MiB).
+// Test_Run_QueryFileSizeCap verifies that --from-file caps reads through
+// format.ReadAllLimited with a tight dedicated cap (1 MiB). An unbounded
+// os.ReadFile on a pathological 10 GB .jq file could OOM the CLI before
+// any query is parsed.
 //
 // Assertion: a query file larger than DefaultQueryMaxBytes is rejected with
 // a canonical decoder.limit.input_size (Format=query) stderr line and exit 1.

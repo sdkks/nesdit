@@ -9,7 +9,7 @@ import (
 	"github.com/sdkks/nesdit/internal/logx"
 )
 
-// canonicalLineRe is the regex from SPEC-0001 NFR-10 that every stderr
+// canonicalLineRe is the canonical regex that every stderr
 // line produced by nesdit in human mode must match. Fields:
 //
 //	nesdit: <severity>: [<file>[:<index>]: ]<event>: <message>
@@ -29,7 +29,7 @@ var canonicalLineRe = regexp.MustCompile(
 )
 
 // TestCanonicalErrorShape asserts that every line emitted by the logx
-// text formatter conforms to the NFR-10 canonical shape. This pins the
+// text formatter conforms to the canonical shape. This pins the
 // single source of truth for human-mode stderr emission so no subsystem
 // may drift into ad-hoc strings.
 func TestCanonicalErrorShape(t *testing.T) {
@@ -93,9 +93,9 @@ func TestCanonicalErrorShape(t *testing.T) {
 			),
 		},
 		{
-			// S3: EventFlagPrecedence is declared but would otherwise
+			// EventFlagPrecedence is declared but would otherwise
 			// have no emitter-level test pinning its token. This case
-			// catches accidental rename in STORY-0004/STORY-0008.
+			// catches accidental event renames.
 			name: "warn flag.precedence notice",
 			run: func(l *logx.Logger) {
 				l.Warn(logx.EventFlagPrecedence, "", "`--dry-run` overrides `-i`")
@@ -117,18 +117,18 @@ func TestCanonicalErrorShape(t *testing.T) {
 				t.Fatalf("line did not match expected regex\n want regex: %s\n got: %q",
 					tc.expect, got)
 			}
-			// Also assert the canonical regex from NFR-10.
+			// Also assert the canonical regex.
 			for i, line := range splitLines(got) {
 				if line == "" {
 					continue
 				}
 				if !canonicalLineRe.MatchString(line) {
-					t.Errorf("line %d failed NFR-10 canonical regex\n regex: %s\n line: %q",
+					t.Errorf("line %d failed canonical regex\n regex: %s\n line: %q",
 						i, canonicalLineRe, line)
 				}
-				// NFR-10: no trailing period.
+				// No trailing period.
 				if strings.HasSuffix(line, ".") {
-					t.Errorf("line %d has trailing period (NFR-10 forbids): %q", i, line)
+					t.Errorf("line %d has forbidden trailing period: %q", i, line)
 				}
 			}
 		})
@@ -214,9 +214,9 @@ func TestCanonicalShape_ControlSanitization(t *testing.T) {
 				}
 			}
 
-			// (c) The emitted line still matches the NFR-10 regex.
+			// (c) The emitted line still matches the canonical regex.
 			if !canonicalLineRe.MatchString(body) {
-				t.Fatalf("sanitised line failed NFR-10 regex\n regex: %s\n line: %q",
+				t.Fatalf("sanitised line failed canonical regex\n regex: %s\n line: %q",
 					canonicalLineRe, body)
 			}
 		})

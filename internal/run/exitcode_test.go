@@ -10,7 +10,7 @@ import (
 	"github.com/sdkks/nesdit/internal/run"
 )
 
-// Test_ExitCode_2_Only_From_Check_Path enforces DR-002: exit code 2 MUST
+// Test_ExitCode_2_Only_From_Check_Path enforces that exit code 2 MUST
 // only be produced by the --check path. All other error/success paths
 // produce exit 0 or exit 1.
 //

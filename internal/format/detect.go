@@ -6,7 +6,7 @@ import (
 )
 
 // detectPeekSize is the maximum number of bytes read to determine the format
-// of a stream. Resolves SPEC-0001 Open Question 6.
+// of a stream.
 const detectPeekSize = 512
 
 // Detect peeks at the first detectPeekSize bytes of r and returns the most

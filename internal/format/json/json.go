@@ -1,10 +1,10 @@
 // Package json decodes and encodes a JSON document into omap.Doc while
-// preserving key insertion order (NFR-3) and integer precision via
-// json.Number (NFR-4). It uses the standard library's encoding/json
+// preserving key insertion order and integer precision via
+// json.Number. It uses the standard library's encoding/json
 // Tokenizer API to walk the input in source order; map iteration is
 // driven by omap.Doc.Keys on encode.
 //
-// Comments are not a JSON grammar feature and are not preserved (NFR-6).
+// Comments are not a JSON grammar feature and are not preserved.
 package json
 
 import (
@@ -41,7 +41,7 @@ func Decode(r io.Reader) (*omap.Doc, error) {
 
 // DecodeValue reads a single JSON document from r and returns its top-level
 // value. Per RFC 8259 any value is permitted at the root — object, array,
-// string, number, boolean, or null. This is the BUG-0001 fix entry point;
+// string, number, boolean, or null. This is the value-based entry point;
 // the CLI pipeline uses DecodeValue so top-level arrays and scalars round-
 // trip without an artificial object-only constraint.
 //
@@ -52,7 +52,7 @@ func DecodeValue(r io.Reader) (omap.Value, error) {
 	return DecodeValueWithLimits(r, format.Limits{})
 }
 
-// DecodeValueWithLimits is DecodeValue with STORY-0008 resource bounds.
+// DecodeValueWithLimits is DecodeValue with resource bounds.
 // Applies limits.MaxBytes via format.ReadAllLimited before parsing, then
 // enforces limits.MaxDepth while walking the token stream. The YAML node
 // count cap (MaxYAMLNodes) is YAML-specific and is ignored here.
@@ -82,7 +82,7 @@ func DecodeValueWithLimits(r io.Reader, limits format.Limits) (omap.Value, error
 //
 // Before any bytes are written, Encode walks the document and rejects any
 // numeric value JSON cannot represent per RFC 8259 §6 (NaN, +Inf, -Inf) with
-// a path-aware *omap.EncodeError (NFR-5, FR-19 parity with YAML/TOML).
+// a path-aware *omap.EncodeError, matching YAML/TOML.
 func Encode(w io.Writer, d *omap.Doc) error {
 	if err := checkJSONRepresentable(omap.MapValue(d)); err != nil {
 		return err
@@ -92,7 +92,7 @@ func Encode(w io.Writer, d *omap.Doc) error {
 
 // EncodeValue writes any omap.Value as a JSON document to w. Unlike Encode
 // (which requires a *Doc / map root), EncodeValue accepts any top-level
-// value — matching RFC 8259. BUG-0001: this is the map-agnostic entry point
+// value — matching RFC 8259. This is the map-agnostic entry point
 // used by the CLI pipeline.
 //
 // Representability checks (NaN/Inf rejection) run before any bytes are

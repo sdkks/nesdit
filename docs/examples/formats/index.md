@@ -136,7 +136,7 @@ name = "project"
 ```
 
 !!! note
-    `nesdit` always emits TOML using inline-table syntax for nested structures. This preserves your key order exactly. Your idiomatic `[section]` TOML input is read correctly; the output looks like `{key = value}` for nested tables. This is a deliberate trade-off for round-trip fidelity (see DR-006 in the spec).
+    `nesdit` always emits TOML using inline-table syntax for nested structures. This preserves your key order exactly. Your idiomatic `[section]` TOML input is read correctly; the output looks like `{key = value}` for nested tables. This is a deliberate trade-off for round-trip fidelity.
 
 ---
 

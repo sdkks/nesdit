@@ -9,7 +9,7 @@ import (
 	"github.com/sdkks/nesdit/internal/query"
 )
 
-// BUG-0001: RunValue/RunValueWithArgs accept any top-level omap.Value, not
+// RunValue/RunValueWithArgs accept any top-level omap.Value, not
 // only a map-rooted *omap.Doc. This lets the CLI operate on documents whose
 // root is a JSON array or scalar.
 

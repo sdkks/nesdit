@@ -14,7 +14,7 @@ nesdit: <severity>: [<file>[:<index>]: ]<event>: <message>
 
 ---
 
-## Mixed-format invocation (FR-5)
+## Mixed-format invocation
 
 Passing files of different formats in one invocation is rejected before any IO:
 
@@ -30,7 +30,7 @@ Exit code: `1`. Neither file is modified. No stdout.
 
 ---
 
-## Cross-format incompatibility (FR-19)
+## Cross-format incompatibility
 
 ### null → TOML
 
@@ -120,12 +120,9 @@ nesdit --yaml-version 1.1 bad.yaml --query '.'
 nesdit: warn: bad.yaml: parse.warn: duplicate key "key"; using last value
 ```
 
-!!! note "Available in v1"
-    The `--yaml-version` flag was included in v1 scope despite appearing in the RFC's deferral list. It is fully supported.
-
 ---
 
-## Flag conflict errors (DR-001 matrix)
+## Flag conflict errors
 
 Every ERROR cell in the flag interaction matrix produces a `flag.conflict` or `flag.invalid` error before any file is read.
 

@@ -7,7 +7,7 @@ import (
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
-// BUG-0001: ValueToAny/ValueFromAny support any top-level value, not only
+// ValueToAny/ValueFromAny support any top-level value, not only
 // maps — required so the CLI pipeline can carry top-level arrays and scalars
 // from decode through query to encode.
 

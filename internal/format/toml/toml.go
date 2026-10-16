@@ -2,13 +2,13 @@
 //
 // Decoding uses go-toml/v2's unstable AST parser (github.com/pelletier/
 // go-toml/v2/unstable) so the source key order is preserved into the
-// omap.Doc (NFR-3). Encoding is performed by a bespoke writer that emits
+// omap.Doc. Encoding is performed by a bespoke writer that emits
 // TOML in the omap's insertion order — go-toml/v2's stable Marshal sorts
 // map keys alphabetically, which would reshape Doc output.
 //
 // Before any bytes are written, Encode walks the document and rejects any
 // value TOML cannot represent — null, NaN, +/-Inf — with a path-aware
-// *omap.EncodeError (FR-19). Comments are not preserved (NFR-6).
+// *omap.EncodeError. Comments are not preserved.
 package toml
 
 import (
@@ -39,7 +39,7 @@ func Decode(r io.Reader) (*omap.Doc, error) {
 
 // DecodeValue reads a single TOML document and returns the result as an
 // omap.Value. Per the TOML spec the root MUST be a table — unlike JSON and
-// YAML, TOML does not permit sequence/scalar tops (BUG-0001 preserves this
+// YAML, TOML does not permit sequence/scalar tops (preserving this
 // constraint). DecodeValue therefore always returns a KindMap value when
 // successful; non-table tops are rejected by the underlying parser.
 //
@@ -50,7 +50,7 @@ func DecodeValue(r io.Reader) (omap.Value, error) {
 	return DecodeValueWithLimits(r, format.Limits{})
 }
 
-// DecodeValueWithLimits is DecodeValue with STORY-0008 resource bounds.
+// DecodeValueWithLimits is DecodeValue with resource bounds.
 // Applies limits.MaxBytes via format.ReadAllLimited before parsing, then
 // enforces limits.MaxDepth while walking the AST. The YAML node count cap
 // (MaxYAMLNodes) is YAML-specific and ignored here.
@@ -107,7 +107,7 @@ func encodeObserved(w io.Writer, d *omap.Doc, opts EncodeOptions, observe func(d
 // requires a top-level table, non-map roots (sequences, scalars, null) are
 // rejected with an *omap.EncodeError (Kind: EncodeKindNonTableRoot) so
 // errors.Is/As routing in run.go classifies the failure as
-// format.incompatible (FR-19 cross-format incompatibility, NFR-7).
+// format.incompatible for cross-format incompatibility.
 func EncodeValue(w io.Writer, v omap.Value) error {
 	return EncodeValueWithOptions(w, v, EncodeOptions{})
 }
@@ -164,7 +164,7 @@ func kindName(k omap.Kind) string {
 // ----------------------------- decode -----------------------------
 
 // decodeBytes parses data into an *omap.Doc, tracking the cursor depth so
-// the STORY-0008 M3 depth cap can reject pathological nesting. A maxDepth
+// the depth cap can reject pathological nesting. A maxDepth
 // value <= 0 disables the cap; otherwise a [a.b.c]-style table header
 // counts as depth 3, a [[a.b]] array-of-tables counts as depth 3 on its
 // element table (header depth 2 + 1 for the table inside the array), and
@@ -457,7 +457,7 @@ func (tw *tomlWriter) writeDoc(d *omap.Doc) error {
 // tables ([{...}, {...}]). This avoids TOML's ordering constraint for
 // [header] sections (where scalars must precede nested sections) so the
 // encoded form preserves omap.Doc insertion order byte-for-byte across
-// round-trips (NFR-3, NFR-2 idempotency). The trade-off is a less
+// round-trips and idempotency. The trade-off is a less
 // "TOML-idiomatic" output for deeply nested documents; in exchange we
 // guarantee that decode→encode→decode is a stable fixed point.
 //

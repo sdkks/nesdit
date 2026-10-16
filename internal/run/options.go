@@ -8,11 +8,9 @@ import (
 )
 
 // RunOptions is the single struct through which all dependencies enter
-// the run.Execute orchestrator. Replaces STORY-0002's WithIO(args,
-// stdout, stderr) signature — the three-arg form was incompatible with
-// the ctx / stdin / logger plumbing STORY-0003 and STORY-0008 need, and
-// the flat struct keeps call sites unambiguous: "everything the run
-// needs is in exactly one place."
+// the run.Execute orchestrator. Replaces the old WithIO(args, stdout,
+// stderr) signature: the flat struct accommodates context, stdin, and
+// logging while keeping dependencies together and call sites unambiguous.
 //
 // All fields are optional in the sense that Execute fills sensible
 // defaults (Background ctx, empty stdin, a fresh Logger over Stderr)
@@ -20,25 +18,23 @@ import (
 // capture (tests, embedders) SHOULD set Stdout/Stderr explicitly.
 //
 // The `RunOptions` spelling (rather than `Options`) is the contract
-// pinned by STORY-0003 / Test_RunOptions_StructContract — tests
+// pinned by Test_RunOptions_StructContract — tests
 // elsewhere in the tree reference it by that exact name. The
-// revive:disable:exported directive below documents the deliberate
+// nolint directive below documents the deliberate
 // stutter.
 //
-//nolint:revive // STORY-0003 pins the name run.RunOptions
+//nolint:revive // Preserve the public name run.RunOptions.
 type RunOptions struct {
 	// Args is the argv tail (os.Args[1:] for the real CLI). Required
 	// for any non-trivial invocation.
 	Args []string
 
-	// Ctx is the context driving the run. STORY-0003 plumbs it through
-	// to query.Run so STORY-0008's --timeout flag can cancel on
-	// deadline without touching call sites.
+	// Ctx is the context driving the run. Query execution inherits it
+	// so cancellation and --timeout deadlines reach the evaluator.
 	Ctx context.Context
 
-	// Stdin is the input stream. STORY-0003 does not yet consume it
-	// (no STDIN mode), but the field exists so STORY-0005 can wire
-	// `nesdit --query '...'` on the same struct.
+	// Stdin is the input stream for invocations without a file argument
+	// or with an explicit "-" argument.
 	Stdin io.Reader
 
 	// Stdout and Stderr are the output streams. Stderr is also the
@@ -54,6 +50,6 @@ type RunOptions struct {
 
 	// LogFormat selects the rendering mode ("text" or "json"). When
 	// Logger is nil, Execute constructs a Logger with this format.
-	// Defaults to "text" when empty. FR-15 / STORY-0011.
+	// Defaults to "text" when empty.
 	LogFormat logx.Format
 }

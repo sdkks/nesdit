@@ -1,8 +1,8 @@
 package logx_test
 
-// json_test.go — unit tests for the FR-15 NDJSON render path in logx.
+// json_test.go — unit tests for the NDJSON render path in logx.
 //
-// STORY-0011: --log-format=json emits one NDJSON line per event. These
+// --log-format=json emits one NDJSON line per event. These
 // tests assert the exact JSON shape, field presence/absence rules, and
 // the goroutine-safe multi-record output.
 
@@ -27,7 +27,7 @@ type ndjsonLine struct {
 }
 
 // TestRenderJSON_ErrorRecord asserts the NDJSON shape for an error record
-// without a file context (global flag-parse error). FR-15 / NFR-10 contract:
+// without a file context (global flag-parse error).
 // path and index are omitted when empty/zero; fields is always "{}".
 func TestRenderJSON_ErrorRecord(t *testing.T) {
 	var buf bytes.Buffer
@@ -81,7 +81,7 @@ func TestRenderJSON_ErrorRecord(t *testing.T) {
 }
 
 // TestRenderJSON_InfoRecord asserts the NDJSON shape for an info record
-// with a file context. FR-15: path is present when file is set.
+// with a file context. Path is present when file is set.
 func TestRenderJSON_InfoRecord(t *testing.T) {
 	var buf bytes.Buffer
 	l := logx.NewFormat(&buf, logx.FormatJSON)
@@ -151,14 +151,8 @@ func TestRenderJSON_IndexedRecord(t *testing.T) {
 // TestRenderJSON_WithFields asserts that Record.Fields are serialised into
 // the "fields" JSON object when present.
 func TestRenderJSON_WithFields(t *testing.T) {
-	// Fields are set on the Record directly; the Logger public API doesn't
-	// expose them yet (FR-15 scaffolding). Test the emit path via a
-	// NewFormat Logger by constructing a case where the text emitter would
-	// ignore them. We use the existing public methods and verify the {} case.
-	// For the non-empty fields case, we need direct Record access.
-	// Since Record is exported, we can call emit via the Logger — but
-	// emit is unexported. Instead, verify that the fields key is always
-	// present as a JSON object (at minimum {}) on a normal Info call.
+	// Verify that the fields key is always present as a JSON object
+	// (at minimum {}) on a normal Info call, even without supplied Fields.
 	var buf bytes.Buffer
 	l := logx.NewFormat(&buf, logx.FormatJSON)
 	l.InfoGlobal(logx.EventBatchSummary, "3 changed, 0 unchanged, 0 errored")
@@ -202,7 +196,7 @@ func TestRenderJSON_MultipleRecords(t *testing.T) {
 }
 
 // TestNewFormat_TextDefault asserts that NewFormat with empty format
-// falls back to text mode (NFR-10 shape, not JSON).
+// falls back to text mode (canonical text, not JSON).
 func TestNewFormat_TextDefault(t *testing.T) {
 	var buf bytes.Buffer
 	l := logx.NewFormat(&buf, "")
@@ -212,6 +206,6 @@ func TestNewFormat_TextDefault(t *testing.T) {
 		t.Errorf("expected text output, got JSON-like output: %q", got)
 	}
 	if !strings.HasPrefix(got, "nesdit: error:") {
-		t.Errorf("expected NFR-10 text shape, got: %q", got)
+		t.Errorf("expected canonical text shape, got: %q", got)
 	}
 }

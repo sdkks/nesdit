@@ -15,7 +15,7 @@ import (
 // (here `.items[]`, which emits N values from an array) is rejected with
 // an explicit *Error{Op:"result"} rather than silently dropping the tail.
 //
-// FR-2 multi-output is STORY-0003+ scope; until then, silent-drop is
+// Multi-output is unsupported; silently dropping extra results is
 // strictly worse than an actionable error.
 func Test_Run_RejectsMultiOutput(t *testing.T) {
 	t.Parallel()

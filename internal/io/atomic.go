@@ -2,7 +2,7 @@
 //
 // The atomic writer uses the classic temp-file + rename pattern so a crash
 // or power loss between step 4 and step 5 of the two-pass orchestrator
-// (NFR-7) leaves either the original bytes or the complete new bytes on
+// leaves either the original bytes or the complete new bytes on
 // disk — never a mixed/partial file.
 //
 // Symlink resolution: when the caller supplies a symlink path, WriteAtomic
@@ -95,7 +95,7 @@ func writeAtomicResolved(target string, data []byte) error {
 // when backupSuffix is non-empty, first copies the original file to
 // dest+backupSuffix. The backup is a plain (non-atomic) copy written before
 // the rename so a crash during the atomic step leaves the original bytes
-// intact in the backup, satisfying FR-14's safety-copy contract.
+// intact in the backup.
 //
 // If dest does not exist yet, no backup is written (there is nothing to back up).
 // If writing the backup fails, the function returns an error without touching

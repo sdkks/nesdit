@@ -1,6 +1,6 @@
 package run_test
 
-// Tests for the NFR-8 partial-write path in runStdin when a pass-through doc
+// Tests for the partial-write path in runStdin when a pass-through doc
 // (--where non-matching doc) fails to write under --keep-going.
 //
 // A real *omap.EncodeError on a pass-through doc is not achievable in
@@ -8,7 +8,7 @@ package run_test
 // re-encode in the same format without error. The failure mode that IS
 // reachable is an underlying io.Writer error (e.g. broken pipe). This
 // test exercises that path using a writer that returns an error on its
-// first write call, confirming the NFR-8 design intent documented in
+// first write call, confirming the single-pass design intent documented in
 // stdin.go: --keep-going sets hadError and continues; stdout may be
 // incomplete; exit code is 1.
 
@@ -43,7 +43,7 @@ func (f *failAfterWriter) Write(p []byte) (int, error) {
 	return f.buf.Write(p)
 }
 
-// Test_KeepGoing_PassThrough_WriteFail exercises the NFR-8 partial-write
+// Test_KeepGoing_PassThrough_WriteFail exercises the partial-write
 // path documented in internal/run/stdin.go.
 //
 // GIVEN a 3-doc JSONL stream:

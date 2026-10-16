@@ -7,7 +7,7 @@
 // opening /dev/tty: /dev/tty succeeds whenever the process has a controlling
 // terminal — including when nesdit is invoked as `make test-e2e` or inside a
 // testscript harness where stdin is a pipe but the parent shell is a terminal.
-// The --edit UX contract (M1) is that the *user* is at a keyboard — which
+// The --edit UX contract is that the *user* is at a keyboard — which
 // requires stdin to be a TTY, not merely the existence of a controlling
 // terminal somewhere up the process tree.
 package run

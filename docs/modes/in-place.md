@@ -122,7 +122,7 @@ When the target is a symlink, `nesdit` follows it and edits the real file. The s
 | `-i` + `--edit` | Error: `"--edit and -i are mutually exclusive"`. |
 | `-i` + `--output-format` | Error: `"--output-format and -i are mutually exclusive"`. |
 
-See the [DR-001 flag matrix](../reference/nesdit.md) and [modes/check](check.md) for full details.
+See the [command reference](../reference/nesdit.md) and [modes/check](check.md) for full details.
 
 ## Related flags
 

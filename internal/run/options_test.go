@@ -134,7 +134,7 @@ func returnTypes(rt reflect.Type) []string {
 
 // assertNoStaleWithIO walks ../../ (module root relative to internal/run)
 // and fails if any .go file defines a function named WithIO with three
-// parameters — the old STORY-0002 signature. We tolerate WithIO as a
+// parameters — the old signature. We tolerate WithIO as a
 // method or variable; only the free function signature is forbidden.
 func assertNoStaleWithIO(t *testing.T) {
 	t.Helper()
@@ -189,7 +189,7 @@ func assertNoStaleWithIO(t *testing.T) {
 				}
 			}
 			if n == 3 {
-				t.Errorf("stale WithIO(args, stdout, stderr) signature found at %s — STORY-0003 refactor requires RunOptions", p)
+				t.Errorf("stale WithIO(args, stdout, stderr) signature found at %s — use RunOptions", p)
 			}
 		}
 		return nil

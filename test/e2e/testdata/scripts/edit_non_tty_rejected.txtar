@@ -1,0 +1,15 @@
+# TTY requirement: when stdin is
+# not a TTY (as in CI / piped invocations), --edit MUST reject before
+# spawning any editor, emit an actionable error on stderr, and exit 1.
+#
+# No NESDIT_SKIP_TTY_CHECK set → TTY check runs → testscript stdin is not
+# a real TTY → nesdit rejects.
+
+env EDITOR=fake-editor
+
+! nesdit --edit input.yaml
+stderr 'edit'
+stderr 'tty'
+
+-- input.yaml --
+replicas: 3

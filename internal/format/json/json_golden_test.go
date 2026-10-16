@@ -23,7 +23,7 @@ func shouldUpdateGoldenJSON() bool { return os.Getenv("UPDATE_GOLDEN") != "" }
 //   - JSON encoder emits compact form (no spaces after : or ,).
 //   - No trailing newline (RFC 8259 places no such requirement; the encoder
 //     omits it for JSONL compatibility).
-//   - Keys are in insertion order (NFR-3).
+//   - Keys are in insertion order.
 //   - The canonical input file may have a trailing newline which the decoder
 //     ignores; the golden captures only the encoder output.
 func TestGolden_JSON(t *testing.T) {

@@ -1,6 +1,6 @@
 package run_test
 
-// Tests for the --format json stdin single-document decode path (TASK-0039).
+// Tests for the --format json stdin single-document decode path.
 //
 // The bug: passing --format json with a multi-line JSON object on stdin used to
 // normalize "json" to "jsonl" in stdinFormatName, then feed the input to the
@@ -35,7 +35,7 @@ func captureStdin(t *testing.T, stdin string, args []string) (string, int) {
 }
 
 // Test_FormatJSON_MultilineStdin verifies that --format json with a multi-line
-// JSON object succeeds. This is the primary regression test for TASK-0039.
+// JSON object succeeds. This is the primary multiline-JSON regression test.
 func Test_FormatJSON_MultilineStdin(t *testing.T) {
 	t.Parallel()
 
@@ -118,8 +118,8 @@ func Test_FormatJSONL_StreamStdin(t *testing.T) {
 }
 
 // Test_FormatJSON_KeepGoing_InvalidJSON verifies that --format json --keep-going
-// with invalid JSON on stdin exits 0 (not 1). This is the regression test for
-// must-fix 1 in TASK-0039 rework: runStdinJSON did not accept keepGoing.
+// with invalid JSON on stdin exits 0 (not 1). This guards a regression:
+// runStdinJSON did not accept keepGoing.
 func Test_FormatJSON_KeepGoing_InvalidJSON(t *testing.T) {
 	t.Parallel()
 
@@ -135,8 +135,8 @@ func Test_FormatJSON_KeepGoing_InvalidJSON(t *testing.T) {
 
 // Test_AutoDetect_MultilineJSON verifies that a multi-line JSON object piped
 // to stdin WITHOUT --format is auto-detected as "json" and routes through
-// runStdinJSON (single-document buffered decode). This is the regression test
-// for must-fix 2 in TASK-0039 rework: auto-detect used to normalise "json" to
+// runStdinJSON (single-document buffered decode). This guards a regression:
+// auto-detect used to normalise "json" to
 // "jsonl", causing the first line of a multi-line object to be decoded as a
 // complete document and failing with a parse error.
 func Test_AutoDetect_MultilineJSON(t *testing.T) {

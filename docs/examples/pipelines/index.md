@@ -38,7 +38,7 @@ nesdit: error: bad.json: query.error: string required but got number
 nesdit: info: batch.summary: 2 changed, 0 unchanged, 1 errored
 ```
 
-Under `--strict` (default), NFR-7 applies: if any file fails during the encode pass, **no files** are written:
+Under `--strict` (default), the two-pass validation rule applies: if any file fails during the encode pass, **no files** are written:
 
 ```sh
 nesdit -i ok1.json bad.json ok3.json --query '.value |= ascii_upcase'

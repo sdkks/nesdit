@@ -93,7 +93,7 @@ func TestYAML_StrTagPreserved(t *testing.T) {
 	}
 }
 
-// TestYAML_DateOnlyStrTagPreserved covers a Code Reviewer finding: a bare
+// TestYAML_DateOnlyStrTagPreserved covers a regression where a bare
 // !!str-tagged date-only string like "2026-04-26" (no 'T', no ':') was being
 // emitted plain because needsQuoting required both a dash and a colon/'T'.
 // yaml.v3's resolver then re-inferred it as !!timestamp on decode, losing
@@ -170,8 +170,7 @@ func TestYAML_IntPrecisionPreserved(t *testing.T) {
 
 // TestDecodeValue_TrailingDocumentRejected verifies that DecodeValue returns an
 // error when the input contains more than one YAML document. This mirrors the
-// equivalent check in json.DecodeValueWithLimits (TASK-0017 / BUG-0001
-// symmetry).
+// equivalent check in json.DecodeValueWithLimits.
 func TestDecodeValue_TrailingDocumentRejected(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

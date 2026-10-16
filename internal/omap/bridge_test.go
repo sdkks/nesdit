@@ -9,7 +9,7 @@ import (
 )
 
 // Test_FromAny_NewKeysLexicographicAppend verifies the load-bearing
-// reconciliation rule (SPEC-0001 §2, Open Question 7): when a jq result
+// reconciliation rule: when a jq result
 // contains keys not present in the pre-query snapshot, existing keys emit
 // first in snapshot order and new keys append at the end in lexicographic
 // order (deterministic even when Go map iteration is not).
@@ -148,7 +148,7 @@ func Test_FromAny_ArrayOfMapsPositional(t *testing.T) {
 	}
 }
 
-// Test_JSONNumber_SurvivesBridge — the NFR-4 invariant: json.Number above
+// Test_JSONNumber_SurvivesBridge checks the precision invariant: json.Number above
 // 2^53 must round-trip through ToAny → FromAny unchanged.
 func Test_JSONNumber_SurvivesBridge(t *testing.T) {
 	t.Parallel()

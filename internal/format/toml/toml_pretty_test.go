@@ -32,7 +32,7 @@ func encodeCompact(d *omap.Doc) (string, error) {
 
 // TestPretty_FlatDoc verifies that compact and pretty output differ for a
 // flat doc with >1 key, and that pretty inserts blank lines between top-level
-// keys (T1).
+// keys.
 func TestPretty_FlatDoc(t *testing.T) {
 	t.Parallel()
 	d := omap.New()
@@ -66,7 +66,7 @@ func TestPretty_FlatDoc(t *testing.T) {
 	}
 }
 
-// TestPretty_ArrayExpansionThreshold verifies the >1 element rule (T2).
+// TestPretty_ArrayExpansionThreshold verifies the >1 element rule.
 func TestPretty_ArrayExpansionThreshold(t *testing.T) {
 	t.Parallel()
 
@@ -140,7 +140,7 @@ func TestPretty_ArrayExpansionThreshold(t *testing.T) {
 
 // TestPretty_InlineTableStaysInline verifies that inline tables remain on a
 // single line in pretty mode (TOML 1.0 does not support multi-line inline
-// tables; only TOML 1.1 does). The round-trip must succeed (T3).
+// tables; only TOML 1.1 does). The round-trip must succeed.
 func TestPretty_InlineTableStaysInline(t *testing.T) {
 	t.Parallel()
 
@@ -207,7 +207,7 @@ func TestPretty_InlineTableStaysInline(t *testing.T) {
 }
 
 // TestPretty_NestedDepth verifies that a top-level array containing arrays
-// uses depth-aware indentation (T4). Maps stay inline (TOML 1.0 constraint);
+// uses depth-aware indentation. Maps stay inline (TOML 1.0 constraint);
 // the depth parameter is still threaded so nested arrays inside maps expand
 // correctly at the right indentation level within the inline-table syntax.
 func TestPretty_NestedDepth(t *testing.T) {
@@ -240,8 +240,7 @@ func TestPretty_NestedDepth(t *testing.T) {
 }
 
 // TestPretty_RoundTrip verifies that pretty output round-trips correctly
-// through the TOML decoder and that a second pretty-encode is byte-identical
-// (FR-P8 / T5).
+// through the TOML decoder and that a second pretty-encode is byte-identical.
 func TestPretty_RoundTrip(t *testing.T) {
 	t.Parallel()
 	for _, c := range omaptest.RoundTripCorpus() {
@@ -280,7 +279,7 @@ func TestPretty_RoundTrip(t *testing.T) {
 	}
 }
 
-// TestPretty_KeyOrder verifies that pretty mode preserves insertion order (T6).
+// TestPretty_KeyOrder verifies that pretty mode preserves insertion order.
 func TestPretty_KeyOrder(t *testing.T) {
 	t.Parallel()
 	d := omap.New()
@@ -300,7 +299,7 @@ func TestPretty_KeyOrder(t *testing.T) {
 }
 
 // TestPretty_CompactUnchanged verifies that compact mode output is byte-for-byte
-// identical before and after this story's changes (regression guard, T7).
+// identical to the compact golden fixture (regression guard).
 func TestPretty_CompactUnchanged(t *testing.T) {
 	t.Parallel()
 	// Re-run the golden compact test as an explicit assertion.
@@ -393,8 +392,8 @@ func TestGolden_TOML_Pretty(t *testing.T) {
 
 // TestPretty_InlineTableRoundTrip verifies that inline tables (which stay on a
 // single line in pretty mode for TOML 1.0 compatibility) round-trip correctly
-// through the TOML decoder. This guards against the architect's must-fix: the
-// output must be parseable by go-toml/v2 at runtime.
+// through the TOML decoder. The output must be parseable by go-toml/v2
+// at runtime.
 func TestPretty_InlineTableRoundTrip(t *testing.T) {
 	t.Parallel()
 	inner := omap.New()

@@ -1,5 +1,4 @@
-// Package diff implements the --edit expression builder's diff engine
-// (STORY-0007, FR-4, Solution §2 "Diff engine").
+// Package diff implements the --edit expression builder's diff engine.
 //
 // Given a before and after omap.Value (decoded from the original and
 // edited temp file), the engine:
@@ -7,7 +6,7 @@
 //  1. Walks both trees in lockstep to collect a list of Change records.
 //  2. Synthesises a jq-style query from the change list
 //     (e.g. `.replicas = 5 | .image = "nginx"`).
-//  3. Emits the formatted output in the H2-mandated order:
+//  3. Emits the formatted output in this order:
 //     (a) invocation example  — `nesdit <file> --query '<query>'`
 //     (b) suggested query     — one assignment per changed field
 //     (c) source-format preview — the edited content with a `# <fmt>` hint
@@ -374,21 +373,21 @@ type Result struct {
 	// Query is the synthesized jq query, e.g. `.replicas = 5`.
 	Query string
 	// InvocationExample is the suggested `nesdit <file> --query '<query>'`
-	// string (the H2 first section).
+	// string (the first section).
 	InvocationExample string
-	// SuggestedQuery is the `.key = value` per-assignment form (H2 second
+	// SuggestedQuery is the `.key = value` per-assignment form (second
 	// section). Equal to Query for single-assignment changes; pipe-chained
 	// for multi-assignment.
 	SuggestedQuery string
 	// ArgExamples holds any --arg / --argjson parameterised invocations.
 	ArgExamples []string
-	// Preview is the source-format-encoded after document (H2 third section).
+	// Preview is the source-format-encoded after document (third section).
 	Preview string
 	// FormatHint is the language comment prefix, e.g. "# yaml".
 	FormatHint string
 }
 
-// Format renders a Result to the writer in the H2 output order:
+// Format renders a Result to the writer in this output order:
 //  1. Invocation example
 //  2. Suggested query (one per changed field)
 //  3. --arg/--argjson examples (if any)

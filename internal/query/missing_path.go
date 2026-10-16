@@ -1,7 +1,7 @@
-// Package query — missing_path.go implements FR-16 strict-by-default
+// Package query — missing_path.go implements strict-by-default
 // path-creation semantics for nesdit.
 //
-// STORY-0012 / FR-16: gojq transparently creates absent paths when a `=`
+// gojq transparently creates absent paths when a `=`
 // assignment targets a key or nested key that does not exist in the input
 // (e.g. `.b.c = 2` on `{"a":1}` produces `{"a":1,"b":{"c":2}}`). This is
 // jq-compatible and convenient for intentional scaffolding, but silent path

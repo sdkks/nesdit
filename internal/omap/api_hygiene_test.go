@@ -7,14 +7,14 @@ import (
 	"github.com/sdkks/nesdit/internal/omap"
 )
 
-// TASK-0004: omap API hygiene + typed EncodeError.Kind enum.
+// omap API hygiene and typed EncodeError.Kind enum.
 //
-// These tests pin down the contracts added in TASK-0004:
+// These tests pin down the API contracts:
 //   1. Doc.Keys()/Values() return copies — caller mutation does not corrupt Doc.
 //   2. Doc.TryAt(i) is a nil-safe, bounds-safe (Value, bool) form of At.
 //   3. Nil-receiver reads on *Doc are uniformly safe (Len/Get/Has/Keys/Values/TryAt).
 //   4. EncodeError.Kind values are the exported typed constants covering the
-//      current kinds (null, NaN, +Inf, -Inf), leaving room for the NFR-10
+//      current kinds (null, NaN, +Inf, -Inf), leaving room for the stderr
 //      event taxonomy.
 //   5. Doc.Entries yields (key, value) pairs in insertion order via the Go 1.23
 //      range-over-func shape so format encoders can iterate without allocating
@@ -119,8 +119,8 @@ func TestEncodeErrorKind_HasTypedConstantsForCurrentKinds(t *testing.T) {
 	t.Parallel()
 	// Assert the enum surface exists and values match the strings the
 	// encoders emit today (null, NaN, +Inf, -Inf). The constants are the
-	// single source of truth going forward; the logx NFR-10 event
-	// taxonomy (STORY-0003+) extends this set.
+	// single source of truth going forward; the logx event
+	// taxonomy extends this set.
 	cases := []struct {
 		name string
 		got  omap.EncodeErrorKind
@@ -145,7 +145,7 @@ func TestEncodeError_UsesTypedConstant(t *testing.T) {
 	// is a defined string type (not an alias), a raw string literal such
 	// as `Kind: "NaN"` on this struct literal would fail to compile —
 	// that compile-time invariant is what makes the enum the single
-	// source of truth (TASK-0004 rework).
+	// source of truth.
 	e := &omap.EncodeError{
 		Path:   omap.RootPath().MapStep("a"),
 		Kind:   omap.EncodeKindNaN,
