@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sort"
 
@@ -13,6 +14,7 @@ import (
 	jsonfmt "github.com/sdkks/nesdit/internal/format/json"
 	"github.com/sdkks/nesdit/internal/natsinspect"
 	"github.com/sdkks/nesdit/internal/omap"
+	"github.com/sdkks/nesdit/internal/query"
 )
 
 const natsEventLimit = 16 << 20
@@ -42,6 +44,10 @@ func (b *eventBuffer) WriteString(s string) (int, error) {
 }
 
 func natsEvent(ctx context.Context, record natsinspect.Record, pretty, color bool) ([]byte, []display.Span, error) {
+	return natsQueriedEvent(ctx, record, pretty, color, nil, nil)
+}
+
+func natsQueriedEvent(ctx context.Context, record natsinspect.Record, pretty, color bool, filter, project *query.Inspection) ([]byte, []display.Span, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
@@ -61,6 +67,21 @@ func natsEvent(ctx context.Context, record natsinspect.Record, pretty, color boo
 	}
 	if err != nil {
 		return nil, nil, errors.New("decode: invalid JSON value or nesting limit exceeded")
+	}
+	if filter != nil {
+		match, err := filter.Predicate(ctx, payload)
+		if err != nil {
+			return nil, nil, fmt.Errorf("filter: %w", err)
+		}
+		if !match {
+			return nil, nil, nil
+		}
+	}
+	if project != nil {
+		payload, err = project.Project(ctx, payload)
+		if err != nil {
+			return nil, nil, fmt.Errorf("project: %w", err)
+		}
 	}
 	headers := omap.New()
 	keys := make([]string, 0, len(record.Headers))

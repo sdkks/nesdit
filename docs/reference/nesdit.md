@@ -25,10 +25,15 @@ Supported modes:
     resource caps for decode-phase hardening.
 
 Live Core NATS JSON observation (reads neither files nor stdin):
-  nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
+  nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \
+    --filter '.show == true' --project '{id: .id}'
 Server and positive total duration are required; count is optional and counts
-messages admitted for processing, not all publications. Observation is live and
-at-most-once; readiness does not guarantee complete delivery. No reconnect.
+messages admitted before filtering, not matches or all publications. Queries see
+the body root: use .id, not the displayed .payload.id. --filter requires exactly
+one boolean (false suppresses without projection); --project exactly one JSON
+value. Use comparisons, not select(); zero/multiple results are errors.
+Observation is live and at-most-once; readiness does not guarantee complete
+delivery. No reconnect.
 --nats-output auto uses pretty JSON on a terminal, JSONL when redirected;
 explicit pretty is a sequence of multiline JSON documents, not JSONL.
 One interrupt stops observation on Linux/macOS. A one-second forced-stop fallback
@@ -48,11 +53,12 @@ nesdit [flags] <file> [<file>...]
       --argjson stringArray      bind $K=V in the query as a JSON-decoded value (repeatable)
       --backup string[=".bak"]   write a sibling backup before each in-place edit (default suffix .bak; custom: --backup=.orig); requires -i
       --check                    exit 2 if the query would change the input; exit 0 if identical; exit 1 on error
-      --count uint               NATS: stop after N messages admitted for processing; may show fewer events
+      --count uint               NATS: stop after N messages admitted for processing, before filtering; may show fewer events
       --create-missing           allow queries to create keys/paths that do not exist in the input document; by default, absent paths are rejected
   -n, --dry-run                  emit a unified diff of before/after to stdout; do not write any file
       --duration duration        NATS: required total observation limit including connection setup; not an idle timeout
       --edit                     open $EDITOR on a temp copy of the file; diff before/after and emit suggested query
+      --filter string            NATS: payload-root predicate returning exactly one boolean; false suppresses
       --format string            force input format (json|jsonl|yaml|toml); default is extension-based detection
   -f, --from-file string         load query from file (mutually exclusive with --query)
   -h, --help                     help for nesdit
@@ -67,6 +73,7 @@ nesdit [flags] <file> [<file>...]
       --nats-output string       NATS: auto (terminal pretty, redirected JSONL), jsonl, or pretty (multiline documents) (default "auto")
       --output-format string     output format (json|yaml|toml); defaults to same as input format when not specified. jsonl is not a valid output format: JSONL output happens automatically when the input format is jsonl (one output line per input line). When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)
       --pretty                   emit human-friendly TOML output: multi-line arrays, expanded tables, blank lines between entries (currently only affects TOML output)
+      --project string           NATS: payload-root projection returning exactly one JSON value
       --query string             jq-style query (default '.' identity when neither --query nor -f is given)
       --server string            NATS: required explicit nats://host:port or tls://host:port
       --strict                   halt on the first document error (default behaviour; explicit alias for documentation)

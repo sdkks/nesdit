@@ -511,10 +511,15 @@ Supported modes:
     resource caps for decode-phase hardening.
 
 Live Core NATS JSON observation (reads neither files nor stdin):
-  nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
+  nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \
+    --filter '.show == true' --project '{id: .id}'
 Server and positive total duration are required; count is optional and counts
-messages admitted for processing, not all publications. Observation is live and
-at-most-once; readiness does not guarantee complete delivery. No reconnect.
+messages admitted before filtering, not matches or all publications. Queries see
+the body root: use .id, not the displayed .payload.id. --filter requires exactly
+one boolean (false suppresses without projection); --project exactly one JSON
+value. Use comparisons, not select(); zero/multiple results are errors.
+Observation is live and at-most-once; readiness does not guarantee complete
+delivery. No reconnect.
 --nats-output auto uses pretty JSON on a terminal, JSONL when redirected;
 explicit pretty is a sequence of multiline JSON documents, not JSONL.
 One interrupt stops observation on Linux/macOS. A one-second forced-stop fallback

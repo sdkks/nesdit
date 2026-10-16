@@ -188,9 +188,27 @@ Show help and exit.
 Observe live Core NATS JSON without reading files or stdin. Server and positive
 finite total duration are required; duration includes connection setup, not just
 idle time. The optional positive count limits messages admitted for processing,
-not every publication or the number successfully displayed. A malformed message
-consumes a slot before failure. No reconnect, queue group, history, publishing,
-filtering or projection is performed. File editing/query flags are rejected.
+not every publication or the number successfully displayed. Admission happens
+before decoding/filtering; a malformed message or false predicate consumes a slot.
+No reconnect, queue group, history or publishing is performed.
+File editing/query flags are rejected; use --filter and --project instead.
+.PP
+.B --filter '.show == true' --project '{id: .id}'
+selects and projects at the payload root: use .id, not the displayed .payload.id.
+The filter must return exactly one boolean; false suppresses without warnings or
+projection. Use boolean comparisons, not select(). Missing/nonboolean or
+zero/multiple filter results fail. Projection must return exactly one JSON value:
+objects with new/renamed keys, arrays, strings, finite numbers, booleans and null
+are supported. No fan-out or zero-result suppression is provided. Transport
+subject and repeated headers remain unchanged and cannot be queried.
+.PP
+Without filtering every decoded message matches; without projection the original
+decoded payload bypasses gojq. Queries use floating-point decimal/exponent numbers
+and machine/big integers, not universal numeric precision. Expressions compile
+once before connection; blank, invalid or oversized expressions fail locally.
+Malformed JSON fails before filtering. Query/encoding failures emit none of that
+event and retain earlier output. Three false predicates with count three stop at
+admitted=3, emitted=0, unfinished_event=false; emitted counts fully written events.
 .PP
 Each message must contain one complete JSON value. Multiline bodies and scalars
 work; empty, malformed and concatenated values fail. The JSON envelope contains
@@ -219,10 +237,17 @@ or output errors fail immediately and retain earlier complete output.
 .PP
 Fixed limits: 10 MiB payload, 1000 container depth, eight pending messages and
 64 MiB pending payload-only bytes, 64 KiB admitted wire headers, 4 KiB each subject
-and reply, and 16 MiB serialized output including whitespace and final newline.
+and reply, 1 MiB per inline expression, and 16 MiB serialized output including
+whitespace and final newline. Raw projection results are checked before recursive
+conversion: depth 1000, 1,000,000 container/scalar value nodes and 16 MiB aggregate
+key/string bytes. Query compilation precedes the session timer; evaluation and
+result checks share the session deadline and cancellation.
 At-limit values are allowed. Client frame/header allocations precede application
 checks; these are component limits, not a whole-process memory bound. Use a trusted,
-correctly configured broker. Output contains application data and is not sanitized.
+correctly configured broker. Expressions are trusted code for resource purposes:
+gojq may allocate before yielding, so result/output caps are not a strict query
+heap limit or evaluator sandbox. Cancellation is not uniformly preemptible inside
+builtins or reconciliation. Output contains application data and is not sanitized.
 .PP
 One interrupt requests cancellation on Linux/macOS. The first stop request starts
 a one-second cleanup allowance; a CLI-only forced-exit fallback can truncate the

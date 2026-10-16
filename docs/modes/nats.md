@@ -57,11 +57,50 @@ but is not displayed. No timestamp or sequence/completeness claim is added.
 
 This is a decoded view, **not byte-exact capture**: whitespace, escape spelling,
 header wire formatting and duplicate JSON keys are not retained as original bytes.
-Payload key order and existing supported value types are preserved. The full
-payload bypasses the query engine; this is not an arbitrary-precision promise and
-numbers must be representable by the existing JSON encoder. File/pipe queries
-retain their existing numeric limitations. Filtering/projection are not provided
-by this command yet; existing `--query` and `--where` are rejected, not ignored.
+Payload key order and existing supported value types are preserved. Without
+projection the full decoded payload bypasses the query engine, even when a filter
+is supplied. This is not an arbitrary-precision promise: numbers must remain
+representable by the existing JSON encoder. Queries normalize decimal/exponent
+numbers to floating point and integers to machine or big integers; arithmetic and
+reconciliation do not promise universal precision. Array key-order reconciliation
+is positional, and new object keys sort lexicographically.
+
+## Filter and project the payload
+
+```sh
+nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 \
+  --duration 30s --count 3 --filter '.show == true' --project '{id: .id}'
+```
+
+Queries see the message body directly, not the displayed envelope: use `.id`,
+not `.payload.id`, for a body field named `id`. Transport subject and headers
+cannot be queried and are preserved unchanged by projection, including repeated
+headers and collisions with payload fields named `subject` or `headers`.
+
+- No filter means every valid decoded message matches. A supplied filter must
+  yield **exactly one boolean**. False suppresses normally without warnings or
+  projection. Missing/nonboolean, zero/multiple results and runtime errors fail.
+  Prefer `.show == true`; bare `.show` fails if the field is absent. `select(...)`
+  is not a boolean predicate and cannot be used to implement this contract.
+- No projection preserves the decoded payload. A supplied projection must yield
+  **exactly one JSON-representable value**: objects (including new/renamed fields),
+  arrays, strings, finite numbers, booleans and null are valid. `.items[]` is not
+  fan-out: zero/multiple values fail. Use `[.items[]]` to produce one array.
+- Expressions compile once before connection. Blank, oversized or invalid
+  expressions fail locally. There are no query-file or argument-binding flags.
+  Existing file/pipe `--query` and `--where` are rejected in this mode; their
+  conditional passthrough and missing-path safeguards remain unchanged.
+- JSON is validated before filtering. A false predicate cannot hide a malformed
+  body. A failing filter, projection or encoder emits none of that event; earlier
+  complete events remain. Diagnostics identify the stage without echoing query
+  text, payloads, headers or evaluator error values.
+
+For three publications `{"id":1,"show":false}`, `{"id":2,"show":true}` and
+`{"id":3,"show":true}`, the example emits only ids 2 and 3 with their metadata.
+Three false predicates still stop on count with admitted=3, emitted=0 and
+unfinished_event=false; count does not wait for matches.
+
+## Output layout
 
 - `--nats-output auto` (default): two-space pretty JSON on Unix stdout terminals,
   compact JSONL with exactly one LF per event when redirected.
@@ -76,15 +115,16 @@ color flag. Status/diagnostics, help and file serializers remain plain.
 
 ## Stopping and exit status
 
-The total duration starts just before connection setup, after local validation,
-and includes connect, readiness, receive, decode, encoding and output. It is not
+The total duration starts just before connection setup, after local validation and query compilation,
+and includes connect, readiness, receive, decode, filtering, projection, encoding
+and output. It is not
 an idle timeout and never restarts with traffic. Connect and readiness each have
 at most five seconds, further capped by the remaining duration.
 
 Optional `--count N` counts **admitted messages**: messages taken into processing,
-not everything the broker publishes or the client buffers. A malformed message
-consumes a slot before failing. **Emitted** means a fully written event, not one
-merely decoded. After the last admitted event completes, queued successors are
+not everything the broker publishes or the client buffers. Admission happens
+before decoding/filtering; a false predicate or malformed message consumes a slot.
+**Emitted** means a fully written event, not one merely selected. After the last admitted event completes, queued successors are
 not drained. A competing stop can prevent the final event from completing.
 
 Stderr completion includes the reason, admitted/emitted counts, and
@@ -94,7 +134,7 @@ as the human-readable message; stdout contains events only.
 | Exit | Meaning |
 | --- | --- |
 | 0 | Count completed, or a ready session reached its duration cooperatively. A quiet session succeeds with no stdout. |
-| 1 | Configuration/startup, payload, resource, delivery, output or forced-stop failure, even after useful output. |
+| 1 | Configuration/startup, payload, query, resource, delivery, output or forced-stop failure, even after useful output. |
 | 130 | Cancellation/first interrupt in native observation on Linux/macOS. |
 | 2 | Remains exclusive to file-mode `--check` drift. |
 
@@ -122,12 +162,24 @@ context, and receives cooperative cancellation only.
 | Client pending queue | 8 messages and 64 MiB **payload-only** bytes |
 | Admitted wire header block | 64 KiB (65,536 bytes) |
 | Subject / reply routing strings | 4 KiB (4096 bytes) each |
+| Inline filter / projection | 1 MiB (1,048,576 bytes) each, before compilation |
+| Raw projection result | Depth 1000, 1,000,000 value nodes, 16 MiB aggregate key/string bytes |
 | Serialized event | 16 MiB (16,777,216 bytes), including layout and final LF |
 
 At-limit values are allowed; one over fails without truncation. Pretty indentation
 can exceed the event limit where compact output fits. The event is fully validated
-and serialized before emission; decode/encode/limit errors emit none of that
-event. Other file-mode resource flags cannot override these limits.
+and serialized before emission; decode/query/encode/limit errors emit none of that
+event. Raw projection results are checked iteratively before recursive conversion:
+containers and scalar values each count as one node; object keys count toward the
+aggregate key/string byte limit, not the node count. Root scalar depth is zero.
+Other file-mode resource flags cannot override these limits.
+
+Expressions are **trusted code for resource purposes**. gojq can allocate heavily
+before returning a result; result/output budgets are not a strict query-heap cap.
+Context cancellation is checked between VM instructions and during raw-result
+preflight, but normalization, builtins and reconciliation are not uniformly
+preemptible. The CLI watchdog bounds stopping, not memory allocation or OOM.
+There is no AST whitelist, evaluator sandbox or universal allocation quota.
 
 These are **not a whole-process heap ceiling or a hostile-broker sandbox**. The
 native client allocates/parses an incoming frame and headers before application

@@ -66,15 +66,26 @@ nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $repli
 ## Live NATS observation
 
 ```sh
-nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
+nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \
+  --filter '.show == true' --project '{id: .id}'
 ```
 
 This explicit mode reads neither files nor stdin. It displays each complete JSON
 message with its delivered subject and repeated headers, using pretty JSON on a
 Unix terminal and JSONL when redirected. Server and total duration are required;
-count is an optional cap on messages admitted for processing, not all publications.
-Readiness and completion diagnostics go to stderr. There is no reconnect, history,
-application publishing, filtering or projection in this observation command.
+count is an optional cap on messages admitted **before filtering**, not matches or
+all publications. Readiness and completion diagnostics go to stderr. There is no
+reconnect, history or application publishing.
+
+Queries see the body root: use `.id`, not the displayed `.payload.id`. A filter
+must return exactly one boolean; false suppresses without running projection.
+Use comparisons, not `select()`. Projection must return exactly one JSON value
+(object, array, scalar or null); zero/multiple results are errors. Transport
+subject and repeated headers are unchanged and cannot be queried. Three false
+predicates with count three stop with admitted=3 and emitted=0, not three matches.
+Without projection the original decoded payload bypasses the query engine.
+Queried decimal/exponent numbers use floating-point arithmetic; this is not a
+lossless numeric view. Expressions are trusted code, not heap-sandboxed.
 
 Observation is live and at-most-once, not a complete or byte-exact capture.
 Interrupt/output failure can leave a partial final record; check exit status.

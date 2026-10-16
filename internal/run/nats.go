@@ -17,10 +17,13 @@ import (
 	"github.com/sdkks/nesdit/internal/display"
 	"github.com/sdkks/nesdit/internal/logx"
 	"github.com/sdkks/nesdit/internal/natsinspect"
+	"github.com/sdkks/nesdit/internal/query"
 )
 
 type natsOptions struct {
 	subject, server, output string
+	filter, project         string
+	filterSet, projectSet   bool
 	duration                time.Duration
 	count                   uint64
 }
@@ -29,20 +32,29 @@ func (n *natsOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&n.subject, "nats", "", "NATS: observe one live JSON subject expression; reads neither files nor stdin")
 	cmd.Flags().StringVar(&n.server, "server", "", "NATS: required explicit nats://host:port or tls://host:port")
 	cmd.Flags().DurationVar(&n.duration, "duration", 0, "NATS: required total observation limit including connection setup; not an idle timeout")
-	cmd.Flags().Uint64Var(&n.count, "count", 0, "NATS: stop after N messages admitted for processing; may show fewer events")
+	cmd.Flags().Uint64Var(&n.count, "count", 0, "NATS: stop after N messages admitted for processing, before filtering; may show fewer events")
+	cmd.Flags().StringVar(&n.filter, "filter", "", "NATS: payload-root predicate returning exactly one boolean; false suppresses")
+	cmd.Flags().StringVar(&n.project, "project", "", "NATS: payload-root projection returning exactly one JSON value")
 	cmd.Flags().StringVar(&n.output, "nats-output", "auto", "NATS: auto (terminal pretty, redirected JSONL), jsonl, or pretty (multiline documents)")
 }
 
-func (n natsOptions) validate(cmd *cobra.Command, args []string) error {
+func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
+	n.filterSet, n.projectSet = cmd.Flags().Changed("filter"), cmd.Flags().Changed("project")
 	selected := cmd.Flags().Changed("nats")
 	var conflict error
 	cmd.Flags().Visit(func(f *pflag.Flag) {
-		isNATS := f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output"
+		isNATS := f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output" || f.Name == "filter" || f.Name == "project"
 		if !selected && isNATS {
 			conflict = errors.New("NATS flags require --nats")
 		}
 		if selected && !isNATS && f.Name != "log-format" {
 			hint := ""
+			if f.Name == "where" {
+				hint = "; use --filter to suppress nonmatching messages"
+			}
+			if f.Name == "query" {
+				hint = "; use --project"
+			}
 			if f.Name == "timeout" {
 				hint = "; use --duration"
 			}
@@ -99,8 +111,35 @@ type natsOpen func(context.Context, string, string, func(error)) (natsinspect.Se
 
 type natsRender func(context.Context, natsinspect.Record, bool, bool) ([]byte, []display.Span, error)
 
-func runNATS(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen) error {
-	return runNATSWithRenderer(opts, n, stop, open, natsEvent)
+func runNATS(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen) (result error) {
+	ctx := opts.Ctx
+	if stop != nil {
+		ctx = stop.ctx
+	}
+	// Preparation is outside the session timer, but still interruptible.
+	defer func() {
+		if result != nil && (errors.Is(result, context.Canceled) || errors.Is(result, context.DeadlineExceeded)) {
+			opts.Logger.ErrorGlobal(logx.EventNATSFailed, "cancel: observation cancelled during query preparation; observation incomplete")
+			result = &natsCancelled{}
+		}
+	}()
+	var filter, project *query.Inspection
+	var err error
+	if n.filterSet || n.filter != "" {
+		filter, err = query.CompileInspection(ctx, n.filter)
+		if err != nil {
+			return fmt.Errorf("filter: %w", err)
+		}
+	}
+	if n.projectSet || n.project != "" {
+		project, err = query.CompileInspection(ctx, n.project)
+		if err != nil {
+			return fmt.Errorf("project: %w", err)
+		}
+	}
+	return runNATSWithRenderer(opts, n, stop, open, func(ctx context.Context, r natsinspect.Record, pretty, color bool) ([]byte, []display.Span, error) {
+		return natsQueriedEvent(ctx, r, pretty, color, filter, project)
+	})
 }
 
 func runNATSWithRenderer(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen, render natsRender) error {
@@ -169,15 +208,18 @@ func runNATSWithRenderer(opts RunOptions, n natsOptions, stop *natsStop, open na
 			if ctx.Err() != nil {
 				break
 			}
-			writer := &natsWriter{ctx: ctx, w: opts.Stdout}
-			err = display.Write(writer, data, spans)
-			if err != nil {
-				if writer.started || ctx.Err() == nil {
-					stop.incomplete("write: output failed; final record may be incomplete")
+			// A nil event is a completed nonmatch, not an emitted record.
+			if data != nil {
+				writer := &natsWriter{ctx: ctx, w: opts.Stdout}
+				err = display.Write(writer, data, spans)
+				if err != nil {
+					if writer.started || ctx.Err() == nil {
+						stop.incomplete("write: output failed; final record may be incomplete")
+					}
+					break
 				}
-				break
+				emitted++
 			}
-			emitted++
 			unfinished = false
 			if n.count > 0 && admitted >= n.count {
 				stop.request("count", "", 0)
