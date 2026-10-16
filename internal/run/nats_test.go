@@ -164,7 +164,9 @@ func (f *natsFake) Close() {
 }
 
 func fakeNATSRun(ctx context.Context, f *natsFake, n natsOptions, w io.Writer, logs *bytes.Buffer) error {
-	return runNATS(RunOptions{Ctx: ctx, Stdout: w, Logger: logx.New(logs)}, n, nil, func(context.Context, string, string, func(error)) (natsinspect.Session, error) { return f, nil })
+	return runNATS(RunOptions{Ctx: ctx, Stdout: w, Logger: logx.New(logs)}, n, nil, func(context.Context, string, string, natsinspect.Security, func(error)) (natsinspect.Session, error) {
+		return f, nil
+	})
 }
 
 func TestNATSSessionOutcomes(t *testing.T) {
@@ -264,7 +266,9 @@ func TestNATSExpiryBeforeEmission(t *testing.T) {
 	f := &natsFake{records: []natsinspect.Record{{Data: []byte(`null`)}}}
 	var logs, out bytes.Buffer
 	err := runNATSWithRenderer(RunOptions{Ctx: context.Background(), Stdout: &out, Logger: logx.New(&logs)}, natsOptions{duration: 20 * time.Millisecond}, nil,
-		func(context.Context, string, string, func(error)) (natsinspect.Session, error) { return f, nil },
+		func(context.Context, string, string, natsinspect.Security, func(error)) (natsinspect.Session, error) {
+			return f, nil
+		},
 		func(ctx context.Context, _ natsinspect.Record, _, _ bool) ([]byte, []display.Span, error) {
 			<-ctx.Done()
 			return nil, nil, ctx.Err()
@@ -281,7 +285,9 @@ func TestNATSExpiryDuringEmission(t *testing.T) {
 	defer stop.finish()
 	w := &expiryNATSWriter{stop: stop}
 	err := runNATS(RunOptions{Ctx: context.Background(), Stdout: w, Logger: logx.New(&logs)}, natsOptions{duration: time.Second}, stop,
-		func(context.Context, string, string, func(error)) (natsinspect.Session, error) { return f, nil })
+		func(context.Context, string, string, natsinspect.Security, func(error)) (natsinspect.Session, error) {
+			return f, nil
+		})
 	if err == nil || !strings.Contains(logs.String(), "write:") || !strings.Contains(logs.String(), "admitted=1 emitted=0 unfinished_event=true") {
 		t.Fatal(err, logs.String())
 	}

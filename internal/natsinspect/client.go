@@ -99,7 +99,29 @@ func open(ctx context.Context, server, subject string, onFailure func(error), tr
 	return openWithDial(ctx, server, subject, onFailure, trust, nil)
 }
 
+// Security contains only locally prepared bytes and verified TLS configuration.
+// Callers must not mutate these values during a session.
+type Security struct {
+	Credentials []byte
+	TLS         *tls.Config
+}
+
+// OpenSecure applies preloaded security inputs without handshake file reads.
+func OpenSecure(ctx context.Context, server, subject string, security Security, onFailure func(error)) (Session, error) {
+	return openConfigured(ctx, server, subject, onFailure, security, nil)
+}
+
 func openWithDial(ctx context.Context, server, subject string, onFailure func(error), trust *tls.Config, dial func(context.Context, string, string) (net.Conn, error)) (Session, error) {
+	return openConfigured(ctx, server, subject, onFailure, Security{TLS: trust}, dial)
+}
+
+func openConfigured(ctx context.Context, server, subject string, onFailure func(error), security Security, dial func(context.Context, string, string) (net.Conn, error)) (Session, error) {
+	opts := nats.GetDefaultOptions()
+	if len(security.Credentials) > 0 {
+		if err := nats.UserCredentialBytes(security.Credentials)(&opts); err != nil {
+			return nil, errors.New("auth: invalid --creds input")
+		}
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	connect, stopConnect := context.WithTimeout(ctx, 5*time.Second)
 	defer stopConnect()
@@ -108,7 +130,6 @@ func openWithDial(ctx context.Context, server, subject string, onFailure func(er
 	// The client starts its handshake timeout after dialing. Keep one aggregate
 	// allowance and close raw IO without waiting for the client's handshake lock.
 	stopConnectClose := context.AfterFunc(connect, c.socket.close)
-	opts := nats.GetDefaultOptions()
 	opts.Url = server
 	opts.AllowReconnect = false
 	opts.RetryOnFailedConnect = false
@@ -122,7 +143,7 @@ func openWithDial(ctx context.Context, server, subject string, onFailure func(er
 		opts.Timeout = time.Until(deadline)
 	}
 	opts.CustomDialer = c.socket
-	opts.TLSConfig = trust
+	opts.TLSConfig = security.TLS
 	opts.AsyncErrorCB = func(_ *nats.Conn, _ *nats.Subscription, err error) { c.fail(deliveryError(err), false) }
 	opts.DisconnectedErrCB = func(_ *nats.Conn, _ error) {
 		c.fail(errors.New("delivery: connection disconnected; observation cannot resume"), true)
@@ -173,8 +194,9 @@ func openWithDial(ctx context.Context, server, subject string, onFailure func(er
 func startupError(err error, stage string) error {
 	var verification *tls.CertificateVerificationError
 	var unknown x509.UnknownAuthorityError
-	if errors.As(err, &verification) || errors.As(err, &unknown) || errors.Is(err, nats.ErrSecureConnRequired) || errors.Is(err, nats.ErrSecureConnWanted) {
-		return errors.New("TLS: subscription was not ready; check endpoint and certificate trust")
+	var remote *net.OpError
+	if (errors.As(err, &remote) && remote.Op == "remote error") || errors.Is(err, nats.ErrTLS) || errors.As(err, &verification) || errors.As(err, &unknown) || errors.Is(err, nats.ErrSecureConnRequired) || errors.Is(err, nats.ErrSecureConnWanted) {
+		return errors.New("TLS: subscription was not ready; check endpoint, certificate trust and client certificate requirements")
 	}
 	if errors.Is(err, nats.ErrAuthorization) || errors.Is(err, nats.ErrAuthExpired) || errors.Is(err, nats.ErrAuthRevoked) {
 		return errors.New("auth: subscription was not ready; check broker authentication requirements")

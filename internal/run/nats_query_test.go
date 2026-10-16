@@ -122,7 +122,7 @@ func TestNATSQueryPreconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	err := runNATS(RunOptions{Ctx: ctx, Logger: logx.New(io.Discard)}, natsOptions{filter: "true"}, nil,
-		func(context.Context, string, string, func(error)) (natsinspect.Session, error) {
+		func(context.Context, string, string, natsinspect.Security, func(error)) (natsinspect.Session, error) {
 			t.Fatal("connected after cancellation")
 			return nil, nil
 		})
@@ -133,7 +133,7 @@ func TestNATSQueryPreconnect(t *testing.T) {
 		{filterSet: true}, {projectSet: true}, {filter: " \t"}, {project: "["}, {filter: strings.Repeat("x", (1<<20)+1)}, {project: "unknown_function"},
 	} {
 		opened := false
-		err := runNATS(RunOptions{Ctx: context.Background(), Stdout: io.Discard, Logger: logx.New(io.Discard)}, n, nil, func(context.Context, string, string, func(error)) (natsinspect.Session, error) {
+		err := runNATS(RunOptions{Ctx: context.Background(), Stdout: io.Discard, Logger: logx.New(io.Discard)}, n, nil, func(context.Context, string, string, natsinspect.Security, func(error)) (natsinspect.Session, error) {
 			opened = true
 			return &natsFake{}, nil
 		})

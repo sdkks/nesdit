@@ -26,10 +26,16 @@ type natsOptions struct {
 	filterSet, projectSet   bool
 	duration                time.Duration
 	count                   uint64
+	creds, ca, cert, key    string
+	security                natsinspect.Security
 }
 
 func (n *natsOptions) flags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&n.subject, "nats", "", "NATS: observe one live JSON subject expression; reads neither files nor stdin")
+	cmd.Flags().StringVar(&n.creds, "creds", "", "NATS: JWT/NKey credentials file (regular, at most 1 MiB); requires tls://")
+	cmd.Flags().StringVar(&n.ca, "tls-ca", "", "NATS: PEM CA file (regular, at most 1 MiB); requires tls://; omitted uses system trust")
+	cmd.Flags().StringVar(&n.cert, "tls-cert", "", "NATS: PEM client certificate file (regular, at most 1 MiB); requires --tls-key and tls://")
+	cmd.Flags().StringVar(&n.key, "tls-key", "", "NATS: PEM client private key file (regular, at most 1 MiB); requires --tls-cert and tls://")
+	cmd.Flags().StringVar(&n.subject, "nats", "", "NATS: observe one live JSON subject expression; reads neither input documents nor stdin")
 	cmd.Flags().StringVar(&n.server, "server", "", "NATS: required explicit nats://host:port or tls://host:port")
 	cmd.Flags().DurationVar(&n.duration, "duration", 0, "NATS: required total observation limit including connection setup; not an idle timeout")
 	cmd.Flags().Uint64Var(&n.count, "count", 0, "NATS: stop after N messages admitted for processing, before filtering; may show fewer events")
@@ -43,7 +49,7 @@ func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 	selected := cmd.Flags().Changed("nats")
 	var conflict error
 	cmd.Flags().Visit(func(f *pflag.Flag) {
-		isNATS := f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output" || f.Name == "filter" || f.Name == "project"
+		isNATS := f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output" || f.Name == "filter" || f.Name == "project" || f.Name == "creds" || f.Name == "tls-ca" || f.Name == "tls-cert" || f.Name == "tls-key"
 		if !selected && isNATS {
 			conflict = errors.New("NATS flags require --nats")
 		}
@@ -100,6 +106,20 @@ func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 	if err != nil || host == "" || portErr != nil || p == 0 {
 		return errors.New("--server requires a host and port from 1 to 65535")
 	}
+	for _, flag := range []string{"creds", "tls-ca", "tls-cert", "tls-key"} {
+		if cmd.Flags().Changed(flag) {
+			value, _ := cmd.Flags().GetString(flag)
+			if strings.TrimSpace(value) == "" {
+				return fmt.Errorf("--%s requires a nonempty file path", flag)
+			}
+			if u.Scheme != "tls" {
+				return errors.New("security files require an explicit tls:// --server")
+			}
+		}
+	}
+	if (n.cert == "") != (n.key == "") {
+		return errors.New("--tls-cert and --tls-key must be supplied together")
+	}
 	return nil
 }
 
@@ -107,7 +127,7 @@ type natsCancelled struct{}
 
 func (*natsCancelled) Error() string { return "observation cancelled" }
 
-type natsOpen func(context.Context, string, string, func(error)) (natsinspect.Session, error)
+type natsOpen func(context.Context, string, string, natsinspect.Security, func(error)) (natsinspect.Session, error)
 
 type natsRender func(context.Context, natsinspect.Record, bool, bool) ([]byte, []display.Span, error)
 
@@ -119,7 +139,7 @@ func runNATS(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen) (res
 	// Preparation is outside the session timer, but still interruptible.
 	defer func() {
 		if result != nil && (errors.Is(result, context.Canceled) || errors.Is(result, context.DeadlineExceeded)) {
-			opts.Logger.ErrorGlobal(logx.EventNATSFailed, "cancel: observation cancelled during query preparation; observation incomplete")
+			opts.Logger.ErrorGlobal(logx.EventNATSFailed, "cancel: observation cancelled during local preparation; observation incomplete")
 			result = &natsCancelled{}
 		}
 	}()
@@ -136,6 +156,10 @@ func runNATS(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen) (res
 		if err != nil {
 			return fmt.Errorf("project: %w", err)
 		}
+	}
+	n.security, err = prepareNATSSecurity(ctx, n)
+	if err != nil {
+		return err
 	}
 	return runNATSWithRenderer(opts, n, stop, open, func(ctx context.Context, r natsinspect.Record, pretty, color bool) ([]byte, []display.Span, error) {
 		return natsQueriedEvent(ctx, r, pretty, color, filter, project)
@@ -155,7 +179,7 @@ func runNATSWithRenderer(opts RunOptions, n natsOptions, stop *natsStop, open na
 	defer deadline.Stop()
 	var admitted, emitted uint64
 	var ready, unfinished bool
-	session, err := open(ctx, n.server, n.subject, func(err error) { stop.incomplete(err.Error()) })
+	session, err := open(ctx, n.server, n.subject, n.security, func(err error) { stop.incomplete(err.Error()) })
 	if err != nil {
 		stop.failure(err.Error())
 		// Startup needs its own actionable stage, not an empty-observation footer.

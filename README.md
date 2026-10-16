@@ -70,7 +70,7 @@ nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
   --filter '.show == true' --project '{id: .id}'
 ```
 
-This explicit mode reads neither files nor stdin. It displays each complete JSON
+This explicit mode reads neither input documents nor stdin. It displays each complete JSON
 message with its delivered subject and repeated headers, using pretty JSON on a
 Unix terminal and JSONL when redirected. Server and total duration are required;
 count is an optional cap on messages admitted **before filtering**, not matches or
@@ -86,6 +86,15 @@ predicates with count three stop with admitted=3 and emitted=0, not three matche
 Without projection the original decoded payload bypasses the query engine.
 Queried decimal/exponent numbers use floating-point arithmetic; this is not a
 lossless numeric view. Expressions are trusted code, not heap-sandboxed.
+
+For secure clusters, use `tls://` with optional `--creds path/to/operator.creds`,
+`--tls-ca path/to/ca.pem`, and paired `--tls-cert path/to/client.pem` /
+`--tls-key path/to/client.key`. All four files are regular and at most 1 MiB each,
+validated and preloaded before the duration starts. Certificate and hostname
+verification stay enabled; omitting `--tls-ca` uses system trust. Never put
+credentials in URLs. Token/user-password-only, TLS-first-only, proxy and WebSocket
+connections are outside this supported subset; actual-cluster compatibility still
+needs an authorized smoke test.
 
 Observation is live and at-most-once, not a complete or byte-exact capture.
 Interrupt/output failure can leave a partial final record; check exit status.

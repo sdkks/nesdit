@@ -8,7 +8,7 @@ nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
 ```
 
 Use an endpoint and subject you are authorized to observe. This command is a
-plain, temporary Core NATS subscription. It reads neither stdin nor files; a file
+plain, temporary Core NATS subscription. It reads neither stdin nor input documents; a file
 named `nats` still works as a positional file. Quote wildcard expressions:
 `orders.*` matches one token after `orders`, while `orders.>` matches one or more,
 not the bare `orders` subject. Empty tokens, embedded wildcards, whitespace and
@@ -19,11 +19,47 @@ control characters are rejected locally.
 `--server` and a positive `--duration` are required, including with `--count`.
 Supply one explicit `nats://host:port` or `tls://host:port`; there is no default
 server or discovered-server failover. URLs containing credentials, query strings,
-fragments, server lists or non-root paths are rejected. TLS uses certificate and
-hostname verification against system trust. There is no insecure mode. JWT
-credentials, custom CA and client-certificate CLI flags are not available in this
-observation increment; do not put credentials in URLs or weaken your broker's
-security to accommodate it.
+fragments, server lists or non-root paths are rejected. TLS always verifies the
+server certificate and hostname. There is no insecure mode and no credentials in
+URLs. Never weaken your broker's security to accommodate the inspector.
+
+### Credentials and TLS files
+
+| Configuration | Supported inputs |
+| --- | --- |
+| TLS with system trust | `--server tls://host:port`; omit `--tls-ca` |
+| Custom trust | `--tls-ca path/to/ca.pem` replaces system roots for this connection |
+| JWT/NKey authentication | `--creds path/to/operator.creds` |
+| Mutual TLS | Paired `--tls-cert path/to/client.pem --tls-key path/to/client.key` |
+| JWT plus mutual TLS | Combine the credentials and certificate/key flags |
+
+Every security file requires an explicit `tls://` endpoint, even if a `nats://`
+server would offer TLS. Each file must be readable, regular, and at most **1 MiB**;
+empty paths, missing pairs, malformed credentials, empty/invalid CA bundles and
+invalid/mismatched certificate/key pairs fail before connecting. Directories and
+FIFOs are rejected. Use PEM certificates/keys and a standard combined user JWT/NKey
+`.creds` file. Protect private keys and credentials with restrictive permissions.
+The client checks credential-container and user-key syntax locally; the broker
+remains the authority for signatures, issuer trust, expiry and subject permissions.
+
+```sh
+nesdit --nats 'orders.>' --server tls://broker.example.com:4222 --duration 30s \
+  --creds path/to/operator.creds --tls-ca path/to/ca.pem \
+  --tls-cert path/to/client.pem --tls-key path/to/client.key
+```
+
+Supply only the files required by your deployment. Omit the certificate/key pair
+when mutual TLS is not required; omit the CA flag when system roots suffice.
+Files are bounded and loaded once during local preparation, before the duration
+clock starts. Authentication/TLS callbacks use memory, not later file reads;
+changing a file does not rotate an active session. First-interrupt handling covers
+preparation as well as connection and observation. Diagnostics name the flag or
+failure stage, not paths, file contents, keys, JWTs or raw TLS errors.
+
+Token/user-password-only authentication, TLS-first-only servers, proxies,
+WebSockets and NATS context registries are not supported. Local supported-mode
+tests do not establish compatibility with your actual cluster; confirm its
+mechanism and permissions before an authorized bounded smoke test.
 
 `nats.ready` on stderr means the server processed the subscription and a PING/PONG
 barrier, and the client has no detected startup failure. It does not mean that an
@@ -115,7 +151,8 @@ color flag. Status/diagnostics, help and file serializers remain plain.
 
 ## Stopping and exit status
 
-The total duration starts just before connection setup, after local validation and query compilation,
+The total duration starts just before connection setup, after local validation,
+security-file preparation and query compilation,
 and includes connect, readiness, receive, decode, filtering, projection, encoding
 and output. It is not
 an idle timeout and never restarts with traffic. Connect and readiness each have
@@ -162,6 +199,7 @@ context, and receives cooperative cancellation only.
 | Client pending queue | 8 messages and 64 MiB **payload-only** bytes |
 | Admitted wire header block | 64 KiB (65,536 bytes) |
 | Subject / reply routing strings | 4 KiB (4096 bytes) each |
+| Credential / CA / certificate / private-key file | 1 MiB (1,048,576 bytes) each, before connection |
 | Inline filter / projection | 1 MiB (1,048,576 bytes) each, before compilation |
 | Raw projection result | Depth 1000, 1,000,000 value nodes, 16 MiB aggregate key/string bytes |
 | Serialized event | 16 MiB (16,777,216 bytes), including layout and final LF |
@@ -201,8 +239,14 @@ NATS_SERVER_BIN=/path/to/nats-server go test -race -count=1 -v ./internal/natsin
 ```
 
 Tests start disposable loopback servers, synchronize publication to readiness,
-generate temporary synthetic TLS keys/trust at runtime, and terminate owned
-processes. No production endpoint or committed PEM/private key is needed. Missing
+generate temporary synthetic CA/server/client keys and signed operator/account/user
+JWT credentials at runtime, and terminate owned processes. Credential generation
+uses the existing NKeys and standard-library packages, with the fixture format
+verified against official `nats-io/jwt` v2.8.2 sources; no server or JWT module is
+linked into the product. Tests exercise real custom-CA, JWT, mTLS and combined
+connections, rejected trust/hostname/issuer/signatures/permissions, file bounds,
+and interrupted preparation/handshakes. No production endpoint or committed
+PEM/private key is needed. Missing
 `NATS_SERVER_BIN` skips the broker layer; a skip is not verification. Run subprocess
 cases on both Linux and macOS: cross-compilation does not prove runtime stopping.
 The existing `make test-all` remains the final regression gate. Local results do

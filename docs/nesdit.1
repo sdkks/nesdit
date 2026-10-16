@@ -185,7 +185,7 @@ Show help and exit.
 .SH NATS OBSERVATION
 .B nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
 .PP
-Observe live Core NATS JSON without reading files or stdin. Server and positive
+Observe live Core NATS JSON without reading input documents or stdin. Server and positive
 finite total duration are required; duration includes connection setup, not just
 idle time. The optional positive count limits messages admitted for processing,
 not every publication or the number successfully displayed. Admission happens
@@ -218,9 +218,32 @@ capture. Readiness and stop/error diagnostics are on stderr, with admitted/emitt
 counts and an unfinished-event indication; stdout contains events only.
 .PP
 Use one explicit nats://host:port or tls://host:port endpoint. TLS verifies the
-server certificate and hostname using system trust. URL credentials, lists,
-queries and fragments are rejected; there is no insecure TLS mode or credential,
-custom-CA or client-certificate file flag in this command.
+server certificate and hostname. URL credentials, lists, queries and fragments
+are rejected; there is no insecure TLS mode.
+.TP
+.B --creds path/to/operator.creds
+Load a combined user JWT/NKey credentials file. Requires explicit tls://.
+.TP
+.B --tls-ca path/to/ca.pem
+Load a PEM trust bundle for this connection, replacing system roots. Omit this
+flag to use system trust. Requires explicit tls://.
+.TP
+.B --tls-cert path/to/client.pem --tls-key path/to/client.key
+Load a matching PEM client certificate/private-key pair for mutual TLS. Both
+flags must be supplied together and require explicit tls://. May be combined
+with JWT credentials.
+.PP
+Security files must be readable regular files, at most 1 MiB each. Empty paths,
+missing pairs, malformed credentials, invalid/empty CA bundles and invalid or
+mismatched key pairs fail before connecting. Credential container/user-key syntax
+is checked locally; the broker verifies JWT signatures, trust, expiry and
+permissions. Protect private files with restrictive permissions.
+Files are preloaded before the duration clock starts; no handshake callback reads
+them again. First-interrupt handling includes preparation. Diagnostics identify
+flags/stages without paths, file contents, keys, JWTs or raw TLS errors.
+Token/user-password-only, TLS-first-only, proxy, WebSocket and NATS context registry
+configurations are unsupported. Local tests do not establish actual-cluster
+compatibility; use an authorized bounded smoke test without weakening security.
 .PP
 .B --nats-output auto
 selects two-space pretty JSON on a Unix stdout terminal and JSONL when redirected.
@@ -240,7 +263,8 @@ Fixed limits: 10 MiB payload, 1000 container depth, eight pending messages and
 and reply, 1 MiB per inline expression, and 16 MiB serialized output including
 whitespace and final newline. Raw projection results are checked before recursive
 conversion: depth 1000, 1,000,000 container/scalar value nodes and 16 MiB aggregate
-key/string bytes. Query compilation precedes the session timer; evaluation and
+key/string bytes. Query compilation and security-file preparation precede the
+session timer; evaluation and
 result checks share the session deadline and cancellation.
 At-limit values are allowed. Client frame/header allocations precede application
 checks; these are component limits, not a whole-process memory bound. Use a trusted,

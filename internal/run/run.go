@@ -325,7 +325,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				if process != nil {
 					stop = process.stop
 				}
-				return runNATS(opts, natsOpts, stop, natsinspect.Open)
+				return runNATS(opts, natsOpts, stop, natsinspect.OpenSecure)
 			}
 			limits := format.Limits{
 				MaxBytes:     maxBytes,
@@ -510,7 +510,7 @@ Supported modes:
   - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
     resource caps for decode-phase hardening.
 
-Live Core NATS JSON observation (reads neither files nor stdin):
+Live Core NATS JSON observation (reads neither input documents nor stdin):
   nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \
     --filter '.show == true' --project '{id: .id}'
 Server and positive total duration are required; count is optional and counts
@@ -520,6 +520,12 @@ one boolean (false suppresses without projection); --project exactly one JSON
 value. Use comparisons, not select(); zero/multiple results are errors.
 Observation is live and at-most-once; readiness does not guarantee complete
 delivery. No reconnect.
+Security files require tls://: --creds for a user JWT/NKey file, --tls-ca for
+custom trust, and paired --tls-cert/--tls-key for mutual TLS. Files must be regular,
+at most 1 MiB each, and are validated/loaded before the duration starts. Omitted
+CA uses system trust; certificate/hostname verification is never disabled.
+Do not put credentials in URLs. Token/user-password-only, TLS-first-only, proxy
+and WebSocket connections are not supported. First interrupt covers preparation.
 --nats-output auto uses pretty JSON on a terminal, JSONL when redirected;
 explicit pretty is a sequence of multiline JSON documents, not JSONL.
 One interrupt stops observation on Linux/macOS. A one-second forced-stop fallback

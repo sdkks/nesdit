@@ -4,6 +4,7 @@ package run
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -29,6 +30,24 @@ func TestNATSProcessHelper(t *testing.T) {
 			return nil, ctx.Err()
 		}}
 		os.Exit(Run([]string{"--nats", "x", "--server", "nats://nats-test.invalid:4222", "--duration", "10s"}))
+	case "nats-security-preparation":
+		process := &natsProcess{exit: os.Exit}
+		process.start(context.Background())
+		path := os.Args[len(os.Args)-2]
+		_, _ = fmt.Fprintln(os.Stdout, "entered")
+		// Repeat bounded preparation to make the signal phase deterministic,
+		// without adding a timing hook or a blocking reader to product code.
+		for {
+			err := runNATS(RunOptions{Ctx: context.Background(), Logger: logx.New(io.Discard)}, natsOptions{server: "tls://localhost:1", creds: path}, process.stop,
+				func(context.Context, string, string, natsinspect.Security, func(error)) (natsinspect.Session, error) {
+					t.Fatal("unexpected dial")
+					return nil, nil
+				})
+			if _, ok := err.(*natsCancelled); ok {
+				process.finish()
+				os.Exit(130)
+			}
+		}
 	case "nats-stderr", "nats-cleanup":
 		process := &natsProcess{exit: os.Exit}
 		process.start(context.Background())
@@ -40,7 +59,9 @@ func TestNATSProcessHelper(t *testing.T) {
 		} else {
 			f.close = func() { _, _ = fmt.Fprintln(os.Stdout, "entered"); select {} }
 		}
-		err := runNATS(RunOptions{Ctx: context.Background(), Stdout: io.Discard, Logger: logger}, natsOptions{duration: 10 * time.Second, count: 1}, process.stop, func(context.Context, string, string, func(error)) (natsinspect.Session, error) { return f, nil })
+		err := runNATS(RunOptions{Ctx: context.Background(), Stdout: io.Discard, Logger: logger}, natsOptions{duration: 10 * time.Second, count: 1}, process.stop, func(context.Context, string, string, natsinspect.Security, func(error)) (natsinspect.Session, error) {
+			return f, nil
+		})
 		t.Fatalf("blocking helper unexpectedly returned: %v", err)
 	}
 }
@@ -53,11 +74,15 @@ func (blockingNATSLog) Write([]byte) (int, error) {
 }
 
 func TestNATSProcessPhaseBounds(t *testing.T) {
-	for _, mode := range []string{"nats-dns", "nats-stderr", "nats-cleanup"} {
+	for _, mode := range []string{"nats-dns", "nats-security-preparation", "nats-stderr", "nats-cleanup"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestNATSProcessHelper$", "--", mode)
+			args := []string{"-test.run=^TestNATSProcessHelper$", "--"}
+			if mode == "nats-security-preparation" {
+				args = append(args, securityTestFile(t, bytes.Repeat([]byte("x"), natsSecurityFileLimit)))
+			}
+			cmd := exec.CommandContext(ctx, os.Args[0], append(args, mode)...)
 			stdout, err := cmd.StdoutPipe()
 			if err != nil {
 				t.Fatal(err)
