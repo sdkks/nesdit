@@ -29,7 +29,7 @@ for target in linux/amd64 linux/arm64 darwin/arm64; do
         -ldflags="-s -w -extldflags=-static -X github.com/sdkks/nesdit/internal/run.Version=$VERSION -X github.com/sdkks/nesdit/internal/run.Commit=$short" \
         -o "$stage/nesdit" ./cmd/nesdit
     bytes=$(wc -c < "$stage/nesdit")
-    [ "$bytes" -lt 16777216 ] || fail "$target binary is $bytes bytes (limit: < 16777216)."
+    [ "$bytes" -lt 41943040 ] || fail "$target binary is $bytes bytes (limit: < 41943040)."
     cp README.md "$stage/README.md"
     cp THIRD-PARTY-NOTICES.md "$stage/THIRD-PARTY-NOTICES.md"
     cp docs/nesdit.1 "$stage/share/man/man1/nesdit.1"

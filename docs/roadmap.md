@@ -149,10 +149,13 @@ traffic, publishers or subscriptions. It does not add native JetStream support.
   of exact original-byte fidelity.
 - Preserve deterministic serialization, key order, value types, atomic file writes,
   existing resource safeguards, and the separation of terminal styling from serialized bytes.
-- Preserve no-CGO builds and binaries smaller than 16 MiB on `linux/amd64`, `linux/arm64`,
-  and `darwin/arm64`. All three 0.5.0 release binaries were verified with CGO disabled
+- Preserve no-CGO builds on `linux/amd64`, `linux/arm64`, and `darwin/arm64`.
+  The current release-binary ceiling is strictly below 40 MiB (41,943,040 bytes),
+  an interim budget that maintainers may explicitly revisit as milestones progress;
+  it is neither a permanent final budget nor permission for automatic increases.
+  Historically, all three 0.5.0 release binaries were verified with CGO disabled
   and strictly below 16 MiB (16,777,216 bytes). Recheck native-client dependencies
-  and binary sizes for each future milestone; today's result is not a future size guarantee.
+  and binary sizes for each future milestone; that result is not a future size guarantee.
 - Match authentication and TLS to the deployment's requirements.
   Never weaken broker security to make inspection work. Future milestones still need
   their own API, permissions and security design; milestone order does not approve them.

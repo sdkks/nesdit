@@ -66,18 +66,18 @@ jobs:
         run: make lint
       - name: make test-all
         run: make test-all
-      - name: Binary size guardrail (< 16 MiB)
-        # Binary-size guardrail: a release-shape nesdit binary
-        # MUST stay under 16 MiB so the single-binary distribution story
-        # holds. `wc -c < file` is portable across macOS and linux
+      - name: Binary size guardrail (< 40 MiB)
+        # Interim roadmap budget: a release-shape nesdit binary
+        # MUST stay under 40 MiB. Revisit explicitly as milestones progress.
+        # `wc -c < file` is portable across macOS and linux
         # (avoids GNU-only `stat -c%s`).
         # -ldflags='-s -w' strips debug info; historical baseline ~4.13 MiB
         # (darwin/arm64, 2026-04-27). Previous debug baseline was ~5.83 MiB.
         run: |
           bytes=$(wc -c < bin/nesdit | tr -d ' ')
-          limit=16777216
+          limit=41943040
           echo "nesdit binary size: ${bytes} bytes (limit: ${limit})"
           if [ "${bytes}" -ge "${limit}" ]; then
-            echo "::error::nesdit binary exceeded 16 MiB limit (${bytes} >= ${limit})"
+            echo "::error::nesdit binary exceeded 40 MiB limit (${bytes} >= ${limit})"
             exit 1
           fi
