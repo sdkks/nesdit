@@ -7,8 +7,9 @@ V1–V4 name milestones, not semantic-major releases.
 
 Native Core NATS JSON observation **shipped in [0.5.0](https://github.com/sdkks/nesdit/releases/tag/v0.5.0)**.
 Start with the [NATS observation guide](modes/nats.md) for the supported command,
-security configuration, limits, and failure behavior. Protobuf and Kafka remain
-planned; JetStream is **WIP — design; not shipped**.
+security configuration, limits, and failure behavior. Read-only
+[Protobuf inspection](modes/protobuf.md) and bounded
+[JetStream history](modes/nats-history.md) are **available in 0.6.0**. Kafka remains planned.
 
 The direction combines bounded event inspection with local data inspection and conversion:
 read data from files, stdin or brokers, and inspect payloads with source metadata where applicable.
@@ -65,49 +66,51 @@ and limitations; do not weaken broker security to accommodate inspection.
 
 ## V2 — Explicit Protobuf decoding
 
-**Status: planned; not shipped.**
+**Status: available in 0.6.0.**
 
-**Scope**
+**Delivered scope**
 
-- Decode one raw Protobuf message per payload using a local descriptor set and an
-  explicitly selected exact message type.
-- Support read-only file/stdin inspection and live Core NATS payloads, with reuse for
-  retained-history inspection when V3 is available.
+- Decode one raw Protobuf message per payload using a local, self-contained descriptor
+  set and an explicitly selected exact message type.
+- Support read-only file or explicitly selected stdin inspection, live Core NATS
+  payloads, and retained JetStream history.
 - Use the standard ProtoJSON mapping for decoded views, filtering, projection, and output.
-- Add Protobuf fixtures and integration cases at this milestone.
 
 **Non-goals:** runtime schema compilation, schema registries, automatic type or codec
 detection, Protobuf encoding, and binary write-back.
 
-**Demo outcome:** inspect a known Protobuf message from a file or stdin, or a Core NATS
-publication, using its descriptor set and type. Show a ProtoJSON payload view with
-NATS metadata where applicable, and report descriptor or decoding failures clearly.
+**Delivered workflow:** inspect a known Protobuf message from a file or explicitly
+selected stdin, a Core NATS publication, or retained JetStream history, using its
+descriptor set and type. Show a ProtoJSON payload view with NATS metadata where
+applicable, and report descriptor or decoding failures clearly. See the
+[Protobuf guide](modes/protobuf.md) for input selection, mappings, limits and failures.
 
 A decoded view is not a lossless binary representation. Successful decoding alone does
 not establish that the selected type was correct; descriptors and type must match the payload.
 
 ## V3 — Bounded JetStream history
 
-**Status: WIP — design; not shipped.** Native retained-history reads, consumers,
-replay and ACK handling are not available in nesdit. The scope below is a design
-direction, not a supported API or a guarantee that every retention policy or
-permission configuration will allow consumer-free inspection.
+**Status: available in 0.6.0.** Consumer-free history supports stable NATS 2.15.x
+from 2.15.0 through the default account-local `$JS.API` route. Standalone servers
+or homogeneous same-series clusters are required; homogeneity is an external
+deployment precondition, not something inspection certifies. See the
+[history guide](modes/nats-history.md) for precise bounds, permissions and compatibility.
 
-**Scope**
+**Delivered scope**
 
-- Inspect retained JetStream messages within explicit bounds.
-- Select a starting position or time where the supported APIs permit it.
+- Inspect retained JetStream JSON or explicitly selected Protobuf messages within explicit bounds.
+- Select an inclusive starting sequence or broker storage time.
 - Use standard consumer-free stream INFO and message GET requests, subject to retention
   and permissions; do not fall back to consumers.
-- Add JetStream retention, permissions, and history cases at this milestone.
 
-**Non-goals:** creating consumers, consumer fallback, ACKs, changing stream configuration,
-administering streams, or replaying messages by publishing them. Inspection requires
-broker API request traffic; those requests are not application-message publishing.
+**Non-goals:** creating or binding consumers, consumer pulls or fallback, ACKs, changing
+stream configuration, administering streams, or replaying messages by publishing them.
+Inspection requires broker API request traffic; those requests are not
+application-message publishing.
 
-**Demo outcome:** inspect a bounded range of retained messages from a selected position
-or supported time, with metadata and the existing JSON or Protobuf views, without
-acknowledging an application consumer.
+**Delivered workflow:** inspect a bounded range of retained messages from a selected
+sequence or time, with metadata and JSON or Protobuf views, without acknowledging
+an application consumer.
 
 Retained history is not an immutable snapshot or a guarantee of every past publication.
 Retention can remove messages during inspection. Unsupported read paths or insufficient
@@ -131,9 +134,9 @@ offset, and filter or project their payload views without changing application-g
 
 ## Local formats and conversion — future work
 
-**Status: future direction; not shipped.** Finish the existing Protobuf and JetStream
-work before this expansion. V1–V4 retain their order; these additions have no promised
-dates or new release commitments.
+**Status: future direction; not shipped.** These additions extend beyond the read-only
+Protobuf and JetStream workflows available in 0.6.0. V1–V4 retain their order;
+these additions have no promised dates or new release commitments.
 
 **Direction**
 
@@ -171,7 +174,7 @@ nesdit stream.yaml --query '.spec.subjects'
 
 This reads a local document, not the broker. A declaration catalog describes
 configured subjects or patterns; it is not a complete inventory of live Core NATS
-traffic, publishers or subscriptions. It does not add native JetStream support.
+traffic, publishers or subscriptions. It is separate from native JetStream history inspection.
 
 ## Shared architecture principles
 
@@ -217,19 +220,19 @@ Use several layers of evidence; fixtures alone cannot prove network lifecycle be
 Fixture capture is test support, not a commitment to a shipped capture/archive subsystem.
 Future local validation and conversion need their own format-specific fixtures, failure
 cases and fidelity checks; they are not delivered by the event-inspection milestones.
-Add Protobuf and JetStream cases in their respective milestones; introduce no Kafka
-infrastructure before V4. Preserve regression coverage for current file and pipe
-workflows throughout.
+Introduce no Kafka infrastructure before V4. Preserve regression coverage for current
+file and pipe workflows throughout.
 
-## Using the shipped milestone and planning the next
+## Using available milestones and planning the next
 
-The [NATS observation guide](modes/nats.md) documents the shipped CLI, security
-inputs, component budgets, exit statuses and partial-output limitations. The
-[command reference](reference/nesdit.md) lists current flags. These are the sources
+The [NATS observation guide](modes/nats.md), [Protobuf guide](modes/protobuf.md) and
+[JetStream history guide](modes/nats-history.md) document the supported workflows,
+security inputs, component budgets, exit statuses and partial-output limitations.
+The [command reference](reference/nesdit.md) lists current flags. These are the sources
 for today's behavior, not the future milestone descriptions above.
 
-Complete the existing Protobuf and JetStream designs and milestones before expanding
-local formats and conversion. Unshipped work still needs its applicable detailed design
-and verification before implementation or release. This roadmap does not ratify exact
-CLI shapes, dependencies, permission needs or operational policies. Keep each milestone
-bounded and usable without introducing infrastructure for later work.
+Future local formats and conversion remain separate work. Unshipped work still needs
+its applicable detailed design and verification before implementation or release.
+This roadmap does not ratify exact future CLI shapes, dependencies, permission needs
+or operational policies. Keep each milestone bounded and usable without introducing
+infrastructure for later work.
