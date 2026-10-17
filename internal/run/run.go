@@ -76,7 +76,7 @@ func NewRootCmd() *cobra.Command {
 //   - 0 — success
 //   - 1 — any error
 //   - 2 — --check drift detected (only this path returns 2)
-//   - 130 — native observation or standalone Protobuf interrupted or cancelled
+//   - 130 — native observation or standalone inspection interrupted or cancelled
 func Run(args []string) int {
 	process := &natsProcess{exit: os.Exit}
 	defer process.finish()
@@ -91,7 +91,7 @@ func Run(args []string) int {
 
 // Execute is the in-process entrypoint taking a RunOptions struct. It
 // fills in defaults for any zero-valued field and dispatches to the
-// cobra command tree. Native observation and standalone Protobuf are cooperative
+// cobra command tree. Native observation and standalone inspection are cooperative
 // here: no process signal handlers or exit hooks are installed. Borrowed readers
 // and writers must return for cancellation to be observed.
 func Execute(opts RunOptions) int { return execute(opts, nil) }
@@ -123,7 +123,7 @@ func execute(opts RunOptions, process *natsProcess) int {
 	err := root.ExecuteContext(opts.Ctx)
 	// Flag parsing can fail after an inspection selector but before PreRunE.
 	// Arm its process owner before any potentially blocking final diagnostic.
-	if err != nil && process != nil && (protobufSelected(root) || nativeSelected(root)) {
+	if err != nil && process != nil && (protobufSelected(root) || nativeSelected(root) || localSelected(root)) {
 		process.start(opts.Ctx)
 	}
 	if process != nil && process.stop != nil && err != nil {
@@ -153,7 +153,7 @@ func execute(opts RunOptions, process *natsProcess) int {
 	// Default: treat as a flag-parse / cobra-generic error and emit
 	// in canonical shape. Standalone validation errors use its selected
 	// diagnostic format too; PreRunE's logger is invocation-local.
-	if (protobufSelected(root) || nativeSelected(root)) && root.Flags().Changed("log-format") {
+	if (protobufSelected(root) || nativeSelected(root) || localSelected(root)) && root.Flags().Changed("log-format") {
 		logFormat, _ := root.Flags().GetString("log-format")
 		if logFormat == "text" || logFormat == "json" {
 			opts.Logger = logx.NewFormat(opts.Stderr, logx.Format(logFormat))
@@ -180,6 +180,7 @@ func newRootCmd(opts RunOptions) *cobra.Command { return newRootCmdProcess(opts,
 func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 	var natsOpts natsOptions
 	var protobufOpts protobufOptions
+	var localOpts localOptions
 	var (
 		queryExpr      string
 		queryFile      string
@@ -234,7 +235,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
-			if nativeSelected(cmd) || protobufSelected(cmd) {
+			if nativeSelected(cmd) || protobufSelected(cmd) || localSelected(cmd) {
 				return nil
 			}
 			// --edit mode requires exactly one file argument.
@@ -272,7 +273,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 		// exits 1 before any IO. After validation, an explicitly supplied
 		// format reconstructs the Logger over Stderr.
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if (nativeSelected(cmd) || protobufSelected(cmd)) && process != nil {
+			if (nativeSelected(cmd) || protobufSelected(cmd) || localSelected(cmd)) && process != nil {
 				process.start(opts.Ctx)
 			}
 			// Validate --log-format before any IO.
@@ -281,7 +282,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				case logx.FormatText, logx.FormatJSON:
 					// valid
 				default:
-					if protobufSelected(cmd) || nativeSelected(cmd) {
+					if protobufSelected(cmd) || nativeSelected(cmd) || localSelected(cmd) {
 						// Return before writing: execute arms the stop watchdog first.
 						return errors.New("--log-format: supported values are text and json")
 					}
@@ -298,6 +299,13 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				// This is safe: no emit has occurred yet (flag-conflict
 				// checks below may be the first).
 				opts.Logger = logx.NewFormat(opts.Stderr, logx.Format(logFormatStr))
+			}
+			if err := localOpts.validate(cmd, args); err != nil {
+				return err
+			}
+			if localSelected(cmd) {
+				natsOpts.filterSet, natsOpts.projectSet = cmd.Flags().Changed("filter"), cmd.Flags().Changed("project")
+				return nil
 			}
 			if err := protobufOpts.validate(cmd, args); err != nil {
 				return err
@@ -334,6 +342,10 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 			return validateFlagInteraction(opts.Logger, cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if localSelected(cmd) {
+				opts.Ctx = cmd.Context()
+				return runLocalInput(opts, localOpts, natsOpts, process)
+			}
 			if protobufSelected(cmd) {
 				opts.Ctx = cmd.Context()
 				return runProtobufInput(opts, protobufOpts, natsOpts, process)
@@ -506,6 +518,15 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 
 	natsOpts.flags(cmd)
 	protobufOpts.flags(cmd)
+	localOpts.flags(cmd)
+	cmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		if localSelected(cmd) || (nativeSelected(cmd) && natsOpts.codec == "text") {
+			// Parser errors can quote option values. Text inspection diagnostics
+			// must not disclose payload queries or credential-bearing values.
+			return errors.New("configuration: invalid inspection option or value")
+		}
+		return err
+	})
 	cmd.SetOut(opts.Stdout)
 	cmd.SetErr(opts.Stderr)
 	return cmd
@@ -530,6 +551,27 @@ Supported modes:
   - --timeout <dur> to cancel a runaway query on a deadline.
   - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
     resource caps for decode-phase hardening.
+
+Whole-body UTF-8 inspection (JSON output only, no editing):
+  nesdit --input-file notes.txt --input-codec text
+  producer | nesdit --input-stdin --input-codec text --project 'split("\n")'
+Choose exactly one source: a single regular file (commas literal, - not stdin)
+or explicitly true stdin. Repeated sources, positionals and unrelated options
+fail. --input-codec text is required; --to json is optional. Read through EOF,
+at most 10 MiB. Empty input, BOM, NUL, CR/LF and whitespace remain string content;
+invalid UTF-8 fails before filtering. Queries compile before reading and see the
+original string root. No projection means no identity normalization. A false
+filter succeeds with no output; projection must yield one JSON value.
+Output is one JSON value plus LF, pretty on terminals and compact otherwise,
+with exact 16 MiB size admission before encoding. Never redirect over the input:
+the shell can truncate it first. No local overall timer; open stdin may wait.
+One interrupt requests stopping on Linux/macOS with the existing one-second
+process fallback; embedded Execute requires responsive borrowed I/O.
+For native whole-body strings, use --nats-codec text with Core or history.
+The unchanged envelope, including metadata and layout, must fit 16 MiB. Ordinary
+empty bodies become strings; Core bodyless status remains an error, while stored
+history Status headers are data. No descriptor flags with text. See the text
+guide for independent budgets, output failures and lifecycle qualifications.
 
 Standalone Protobuf inspection (JSON output only, no editing):
   nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
@@ -573,7 +615,7 @@ Live Core NATS observation (JSON default; reads neither input documents nor stdi
 For Protobuf, add --nats-codec protobuf --descriptor-set schemas/events.pb
 --message-type example.Order. The local schema is prepared before connection and
 the duration starts; no codec or framing is guessed. Schema flags are invalid
-with JSON. Output remains subject, headers, payload, unlike standalone values.
+with JSON or text. Output remains subject, headers, payload, unlike standalone values.
 The shared Protobuf component limits apply, plus the 16 MiB final event limit.
 Server and positive total duration are required; count is optional and counts
 messages admitted before filtering, not matches or all publications. Queries see

@@ -63,6 +63,26 @@ replacement/disappearance fails, but changes between checks can remain undetecte
 Rerunning starts a new observation with a potentially different retained range;
 a displayed sequence is not a guaranteed resume token.
 
+## UTF-8 bodies (development source)
+
+The current development source supports `--nats-codec text` with the same history
+selector, bounds and permissions:
+
+```sh
+bin/nesdit --nats-history LOGS --subject 'logs.>' --start-seq 1 \
+  --server tls://broker.example.com:4222 --duration 20s --nats-codec text \
+  --filter 'contains("error")'
+```
+
+Each whole valid UTF-8 body becomes one string; empty data becomes `""`, and stored
+`Status` headers remain ordinary data. BOM, NUL, CR/LF and whitespace are retained.
+Invalid UTF-8 fails before filtering. Queries see the original string root, not
+provenance; count remains before decoding/filtering. No descriptor flags are
+allowed. The exact JSON-output preflight counts the full history envelope,
+metadata escaping, layout and LF against 16 MiB. See the [text guide](text.md).
+This does not announce a public release or broaden history's server/security or
+INFO/GET-only authority.
+
 ## JSON or explicit Protobuf
 
 JSON is the default and needs no schema. To inspect Protobuf:
@@ -76,7 +96,7 @@ nesdit --nats-history ORDERS --subject 'orders.>' --start-seq 1 \
 
 The same [local descriptor, ProtoJSON mappings and component limits](protobuf.md)
 as standalone and Core apply. Both schema options are required for Protobuf and
-forbidden for JSON. Each stored body is one raw message, without prefix stripping,
+forbidden for JSON or text. Each stored body is one raw message, without prefix stripping,
 framing, decompression or schema guessing. Omitted GET data is a legitimate
 zero-byte body: it may decode as Protobuf when the type permits it, but is not
 valid JSON. Stored `Status: 503` headers are **data**, not Core's bodyless-503

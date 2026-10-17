@@ -20,6 +20,7 @@ import (
 	"github.com/sdkks/nesdit/internal/omap"
 	"github.com/sdkks/nesdit/internal/protobufview"
 	"github.com/sdkks/nesdit/internal/query"
+	"github.com/sdkks/nesdit/internal/textview"
 )
 
 type natsOptions struct {
@@ -59,7 +60,7 @@ func (n *natsOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&n.ca, "tls-ca", "", "NATS: PEM CA file (regular, at most 1 MiB); requires tls://; omitted uses system trust")
 	cmd.Flags().StringVar(&n.cert, "tls-cert", "", "NATS: PEM client certificate file (regular, at most 1 MiB); requires --tls-key and tls://")
 	cmd.Flags().StringVar(&n.key, "tls-key", "", "NATS: PEM client private key file (regular, at most 1 MiB); requires --tls-cert and tls://")
-	cmd.Flags().StringVar(&n.codec, "nats-codec", "json", "NATS: payload codec json or protobuf; protobuf requires --descriptor-set and --message-type")
+	cmd.Flags().StringVar(&n.codec, "nats-codec", "json", "NATS: payload codec json, protobuf or text (whole UTF-8); protobuf requires --descriptor-set and --message-type")
 	cmd.Flags().StringVar(&n.subject, "nats", "", "NATS: observe one live subject expression; reads neither input documents nor stdin")
 	cmd.Flags().StringVar(&n.server, "server", "", "NATS: required explicit nats://host:port or tls://host:port")
 	cmd.Flags().DurationVar(&n.duration, "duration", 0, "NATS: required total observation limit including connection setup; not an idle timeout")
@@ -85,7 +86,7 @@ func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 		isNATS := isHistory || f.Name == "nats-codec" || f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output" || f.Name == "filter" || f.Name == "project" || f.Name == "creds" || f.Name == "tls-ca" || f.Name == "tls-cert" || f.Name == "tls-key"
 		if !selected && isNATS {
 			if f.Name == "filter" || f.Name == "project" {
-				conflict = errors.New("inspection flags require --nats, --nats-history, --protobuf-file or --protobuf-stdin")
+				conflict = errors.New("inspection flags require --nats, --nats-history, --protobuf-file, --protobuf-stdin, --input-file or --input-stdin")
 			} else {
 				conflict = errors.New("NATS flags require --nats or --nats-history")
 			}
@@ -113,8 +114,8 @@ func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 	if !selected {
 		return nil
 	}
-	if n.codec != "json" && n.codec != "protobuf" {
-		return errors.New("--nats-codec must be json or protobuf")
+	if n.codec != "json" && n.codec != "protobuf" && n.codec != "text" {
+		return errors.New("--nats-codec must be json, protobuf or text")
 	}
 	if len(args) != 0 {
 		return errors.New("native NATS inspection accepts no file arguments")
@@ -223,6 +224,9 @@ func runNATS(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen) (res
 			return fmt.Errorf("prepare: %w", err)
 		}
 	}
+	if n.codec == "text" {
+		decode = textview.Decode
+	}
 	n.security, err = prepareNATSSecurity(ctx, n)
 	if err != nil {
 		return err
@@ -233,7 +237,7 @@ func runNATS(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen) (res
 		}
 	}
 	return runNATSWithRenderer(opts, n, stop, open, func(ctx context.Context, r natsinspect.Record, pretty, color bool) ([]byte, []display.Span, error) {
-		return natsDecodedEvent(ctx, r, pretty, color, filter, project, decode)
+		return natsDecodedEventPreflight(ctx, r, pretty, color, filter, project, decode, n.codec == "text")
 	})
 }
 

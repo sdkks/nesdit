@@ -63,6 +63,30 @@ nesdit config.json --output-format yaml --query '.'
 nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $replicas'
 ```
 
+## Whole-body UTF-8 inspection (development source)
+
+```sh
+bin/nesdit --input-file notes.txt --input-codec text
+producer | bin/nesdit --input-stdin --input-codec text --project 'split("\n")'
+```
+
+Build the current checkout with `make build`; these flags do not announce a new
+published release. Explicit file or stdin selection reads one complete UTF-8 body
+through EOF as a string, preserving empty input, BOM, NUL, CR/LF and whitespace.
+Invalid UTF-8 fails even with a false filter. Output is one JSON value plus LF,
+pretty on Unix terminals and compact when redirected; no raw-text export or
+editing is performed. `--to json` is optional. Queries use the original string
+root; only `--filter` and `--project` are supported, not legacy query options.
+
+For live or retained NATS bodies, use `--nats-codec text` with the existing source,
+server and duration flags. Provenance, count-before-filter, permissions and stop
+behavior stay unchanged. Ordinary empty bodies become `""`; Core bodyless-status
+failures remain distinct from stored history headers, which are data.
+
+See the [text inspection guide](docs/modes/text.md) for source isolation, fixed
+10 MiB input and exact 16 MiB JSON-output limits, safe redirection, and cooperative
+versus process interruption. MessagePack and FlatBuffers remain future work.
+
 ## Read-only Protobuf inspection
 
 ```sh
@@ -105,7 +129,7 @@ nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
   --filter '.active == true' --project '{id: .id}'
 ```
 
-Both schema options are required for native Protobuf and rejected with JSON.
+Both schema options are required for native Protobuf and rejected with JSON or text.
 The self-contained local descriptor and exact type are prepared before connecting
 and starting the total duration. The same Protobuf mapping and component limits
 as standalone apply, but native output is an envelope, not a bare value; the

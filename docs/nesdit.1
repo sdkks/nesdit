@@ -182,6 +182,68 @@ flag is an explicit alias provided for documentation purposes.
 .TP
 .BR \-h ", " \-\-help
 Show help and exit.
+.SH UTF-8 INSPECTION
+Whole-body text inspection is available in the current development source;
+this documents source capability, not a new published release.
+.TP
+.B --input-file FILE
+Read exactly one nonempty regular-file path. Commas are literal; repeated files,
+- as a stdin alias, and positional inputs are rejected. Symlinks resolving to
+regular files are allowed. File mode never reads stdin or writes the source.
+.TP
+.B --input-stdin
+Read one whole body through EOF. Must be explicitly true and supplied once;
+mutually exclusive with input-file. False and repeated selections fail.
+.TP
+.B --input-codec text
+Required for local text inspection. No charset, extension or content guessing.
+The complete body must be valid UTF-8; invalid bytes fail before filtering.
+Empty input becomes an empty string. BOM, NUL, CR/LF and whitespace remain content.
+There is no trimming, line framing, arbitrary-byte fallback or raw-text export.
+.TP
+.B --to json
+Optional explicit JSON target. No other local codec or target is currently supported.
+.PP
+Options and queries are validated before payload reads. Use --filter and --project
+against the original string root. A filter returns exactly one boolean; false
+succeeds with zero output and skips projection. Projection returns exactly one
+JSON value. Without projection the string bypasses identity normalization.
+Only source, codec, target, filter, project, log-format and normal help/version
+are allowed. Orphaned flags, legacy query/edit/format/presentation options,
+Protobuf/native settings, timers and resource overrides fail even at defaults.
+.PP
+Local output is one JSON value plus LF, no envelope or banner. Unix terminals
+use two-space pretty layout; redirected output is compact/plain. NO_COLOR and
+TERM=dumb disable color, not indentation. Payload controls are JSON-escaped.
+Windows output remains plain/compact.
+.PP
+The inclusive raw cap is 10 MiB. At the cap EOF or a next byte is required;
+byte cap+1 fails immediately. An unfinished producer may wait indefinitely:
+no local overall timer is provided. One depth-zero string also fits decoded/view
+limits of depth 100, 1000000 nodes and 16 MiB aggregate text. Queries retain
+1 MiB inline and depth 1000/1000000 nodes/16 MiB result limits. Exact JSON-size
+preflight counts escaping, punctuation, indentation and LF against 16 MiB before
+encoding; a valid body may expand past it. Filters run before output preflight,
+but cannot hide invalid input. These are not hard RSS/CPU bounds or a query sandbox.
+.PP
+Native --nats-codec text uses the same whole-string decoder. Queries prepare before
+connection. Existing envelope, provenance, count-before-filter, duration, TLS/auth
+and permissions stay unchanged. Full-envelope JSON preflight includes metadata
+and layout. Ordinary empty Core data becomes an empty string; bodyless status
+failures remain errors. History empty data becomes an empty string and stored
+Status headers remain data. Descriptor options are forbidden with text. History
+retains NATS 2.15.x/default-route/homogeneous-deployment and INFO/GET-only rules.
+.PP
+Staging completes before external writing: pre-write failure emits no value,
+while write/short-write failure may leave partial output. Never redirect over
+the input: the shell may truncate it before nesdit starts. On Linux/macOS one
+interrupt requests stopping, with the existing one-second process fallback even
+for blocked I/O/diagnostics and invalid options after a parsed source selector.
+Forced exit can truncate output or omit cleanup. Embedded Execute remains
+cooperative: no host exit, borrowed closes/deadline changes or abandoned blocked
+worker. Callers must unblock I/O. No new Windows bounded-stop promise.
+Success/false filter exits 0, failure 1, cancellation 130. Diagnostics identify
+stages/categories without body, query or evaluator contents. See the text guide.
 .SH PROTOBUF INSPECTION
 .B nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
 .PP
@@ -289,7 +351,7 @@ beyond H can cross the wire but is not admitted. This is retained observation, n
 a snapshot, completeness guarantee, loss count or guaranteed resume facility.
 .PP
 Add --nats-codec protobuf plus descriptor-set and message-type for the existing
-local Protobuf decoder. JSON remains the default and forbids schema flags. Queries
+local Protobuf decoder. JSON remains the default; JSON and text forbid schema flags. Queries
 see only the decoded payload root. Omitted GET data is a zero-byte body: it may be
 valid Protobuf, but is not JSON. Stored Status: 503 headers are data, not Core's
 bodyless sentinel. API no-responders is still an error.
@@ -343,7 +405,7 @@ before decoding/filtering; a malformed message or false predicate consumes a slo
 No reconnect, queue group, history or publishing is performed.
 File editing/query flags are rejected; use --filter and --project instead.
 .TP
-.B --nats-codec json|protobuf
+.B --nats-codec json|protobuf|text
 Select the payload codec; defaults to json, with no guessing. Protobuf requires
 both --descriptor-set FILE and --message-type NAME. Use a separate self-contained
 local binary FileDescriptorSet and exact full message name, without leading dot
@@ -460,7 +522,7 @@ Success.
 Error (bad query, unreadable file, parse failure, etc.).
 .TP
 .B 130
-Native observation or standalone Protobuf interrupted or cancelled
+Native observation or standalone inspection interrupted or cancelled
 (Linux/macOS CLI interrupt handling).
 .TP
 .B 2

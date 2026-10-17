@@ -132,6 +132,16 @@ and full kcat feature parity.
 **Demo outcome:** inspect a bounded set of Kafka records, locate them by partition and
 offset, and filter or project their payload views without changing application-group state.
 
+## Whole-body UTF-8 inspection — development source
+
+The current source supports explicit file/stdin text inspection and native Core
+or JetStream history `--nats-codec text`. Whole valid UTF-8 bodies become strings;
+queries select JSON views without modifying input or broker state. Empty bodies,
+BOM, NUL and whitespace remain content. Invalid UTF-8 fails; arbitrary-byte viewing
+and raw-text export are not included. See the [text guide](modes/text.md) for the
+source selectors, exact output-size limits and stop behavior. This is not a new
+published release announcement.
+
 ## Local formats and conversion — future work
 
 **Status: future direction; not shipped.** These additions extend beyond the read-only
@@ -140,7 +150,6 @@ these additions have no promised dates or new release commitments.
 
 **Direction**
 
-- UTF-8 string and raw-byte inspection views, with explicit output selection.
 - MessagePack inspection and local encoding.
 - Avro inspection and local encoding using local schemas, including Avro container files.
 - Protobuf encoding as separate future work, not part of V2's read-only decoding scope.

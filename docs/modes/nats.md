@@ -19,6 +19,24 @@ records with explicit sequence/time bounds. History is a separate selector with
 its own server-version and INFO/GET permission requirements; it does not change
 Core's live envelope or support policy.
 
+## UTF-8 payloads (development source)
+
+The current development source also supports `--nats-codec text`:
+
+```sh
+bin/nesdit --nats 'logs.>' --server tls://broker.example.com:4222 \
+  --duration 20s --count 10 --nats-codec text --filter 'contains("error")'
+```
+
+Each complete body is one UTF-8 string, including empty input, BOM, NUL and CR/LF.
+Invalid UTF-8 fails before filtering; there is no raw-byte fallback. Queries see
+that original string, not the envelope. Ordinary empty publications yield `""`,
+while the existing bodyless-status failure remains an error. Schema flags are
+not allowed. Count, security, provenance, layout and stopping rules are unchanged.
+The exact 16 MiB JSON preflight includes the whole envelope, metadata escaping,
+indentation and final LF, before staging. See the [text guide](text.md) for local
+sources and output limits. This describes source capability, not a new release.
+
 ## Protobuf payloads
 
 ```sh
@@ -32,7 +50,7 @@ nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
 URL). Include every import and `Any` target in that set. Schema and queries are
 prepared once, under cancellation, before connection and the total duration
 clock. No registry, network schema lookup or runtime compiler is used. Native
-observation never reads stdin. Schema options are rejected with JSON or legacy
+observation never reads stdin. Schema options are rejected with JSON, text or legacy
 file/pipe modes; `--nats-codec` alone does not select a source and is invalid with
 standalone Protobuf.
 

@@ -24,6 +24,27 @@ Supported modes:
   - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
     resource caps for decode-phase hardening.
 
+Whole-body UTF-8 inspection (JSON output only, no editing):
+  nesdit --input-file notes.txt --input-codec text
+  producer | nesdit --input-stdin --input-codec text --project 'split("\n")'
+Choose exactly one source: a single regular file (commas literal, - not stdin)
+or explicitly true stdin. Repeated sources, positionals and unrelated options
+fail. --input-codec text is required; --to json is optional. Read through EOF,
+at most 10 MiB. Empty input, BOM, NUL, CR/LF and whitespace remain string content;
+invalid UTF-8 fails before filtering. Queries compile before reading and see the
+original string root. No projection means no identity normalization. A false
+filter succeeds with no output; projection must yield one JSON value.
+Output is one JSON value plus LF, pretty on terminals and compact otherwise,
+with exact 16 MiB size admission before encoding. Never redirect over the input:
+the shell can truncate it first. No local overall timer; open stdin may wait.
+One interrupt requests stopping on Linux/macOS with the existing one-second
+process fallback; embedded Execute requires responsive borrowed I/O.
+For native whole-body strings, use --nats-codec text with Core or history.
+The unchanged envelope, including metadata and layout, must fit 16 MiB. Ordinary
+empty bodies become strings; Core bodyless status remains an error, while stored
+history Status headers are data. No descriptor flags with text. See the text
+guide for independent budgets, output failures and lifecycle qualifications.
+
 Standalone Protobuf inspection (JSON output only, no editing):
   nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
   producer | nesdit --protobuf-stdin --descriptor-set schemas/events.pb --message-type example.Order \
@@ -66,7 +87,7 @@ Live Core NATS observation (JSON default; reads neither input documents nor stdi
 For Protobuf, add --nats-codec protobuf --descriptor-set schemas/events.pb
 --message-type example.Order. The local schema is prepared before connection and
 the duration starts; no codec or framing is guessed. Schema flags are invalid
-with JSON. Output remains subject, headers, payload, unlike standalone values.
+with JSON or text. Output remains subject, headers, payload, unlike standalone values.
 The shared Protobuf component limits apply, plus the 16 MiB final event limit.
 Server and positive total duration are required; count is optional and counts
 messages admitted before filtering, not matches or all publications. Queries see
@@ -113,6 +134,9 @@ nesdit [flags] <file> [<file>...]
   -f, --from-file string            load query from file (mutually exclusive with --query)
   -h, --help                        help for nesdit
   -i, --in-place                    edit file(s) in-place using atomic temp+rename writes
+      --input-codec string          Inspection: required input codec: text (whole UTF-8 body)
+      --input-file stringArray      Inspection: one regular file; commas are literal, - is not stdin
+      --input-stdin                 Inspection: explicitly read one complete body through EOF from stdin; no overall timer
       --keep-going                  continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred
       --log-format string           stderr rendering mode: text (default, canonical lines) or json (NDJSON) (default "text")
       --max-bytes int               reject inputs larger than this many bytes; 0 disables the cap (default 10485760)
@@ -121,7 +145,7 @@ nesdit [flags] <file> [<file>...]
       --max-yaml-nodes int          YAML node-materialisation cap (billion-laughs mitigation); 0 disables the cap (default 100000)
       --message-type string         Protobuf: required exact fully qualified message name (no leading dot or URL)
       --nats string                 NATS: observe one live subject expression; reads neither input documents nor stdin
-      --nats-codec string           NATS: payload codec json or protobuf; protobuf requires --descriptor-set and --message-type (default "json")
+      --nats-codec string           NATS: payload codec json, protobuf or text (whole UTF-8); protobuf requires --descriptor-set and --message-type (default "json")
       --nats-history string         NATS: inspect bounded retained history from an explicit stream without consumers (2.15.x only)
       --nats-output string          NATS: auto (terminal pretty, redirected JSONL), jsonl, or pretty (multiline documents) (default "auto")
       --output-format string        output format (json|yaml|toml); defaults to same as input format when not specified. jsonl is not a valid output format: JSONL output happens automatically when the input format is jsonl (one output line per input line). When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)
@@ -139,6 +163,7 @@ nesdit [flags] <file> [<file>...]
       --tls-ca string               NATS: PEM CA file (regular, at most 1 MiB); requires tls://; omitted uses system trust
       --tls-cert string             NATS: PEM client certificate file (regular, at most 1 MiB); requires --tls-key and tls://
       --tls-key string              NATS: PEM client private key file (regular, at most 1 MiB); requires --tls-cert and tls://
+      --to string                   Inspection: output target: json (default "json")
       --where string                filter docs by jq predicate: only matching docs have --query applied (stream: others pass through; in-place batch mode (-i): non-matching files are skipped; not supported in single-file stdout mode)
       --yaml-version string         YAML dialect for boolean coercion: 1.1 (yes/no/on/off as bools) or 1.2 (true/false only; default) (default "1.2")
 ```

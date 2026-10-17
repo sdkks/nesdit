@@ -55,6 +55,11 @@ func natsQueriedEvent(ctx context.Context, record natsinspect.Record, pretty, co
 
 // A nil decoder preserves the JSON path, including its ordering and limits.
 func natsDecodedEvent(ctx context.Context, record natsinspect.Record, pretty, color bool, filter, project *query.Inspection, decode func(context.Context, []byte) (omap.Value, error)) ([]byte, []display.Span, error) {
+	return natsDecodedEventPreflight(ctx, record, pretty, color, filter, project, decode, false)
+}
+
+// Only new text views opt into exact size admission of the complete envelope.
+func natsDecodedEventPreflight(ctx context.Context, record natsinspect.Record, pretty, color bool, filter, project *query.Inspection, decode func(context.Context, []byte) (omap.Value, error), preflight bool) ([]byte, []display.Span, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
@@ -121,6 +126,13 @@ func natsDecodedEvent(ctx context.Context, record natsinspect.Record, pretty, co
 	envelope.Set("subject", omap.StrValue(record.Subject))
 	envelope.Set("headers", omap.MapValue(headers))
 	envelope.Set("payload", payload)
+	if preflight {
+		data, spans, err := inspectionJSON(ctx, omap.MapValue(envelope), pretty, color)
+		if err != nil {
+			return nil, nil, fmt.Errorf("encode: %w", err)
+		}
+		return data, spans, nil
+	}
 	buf := &eventBuffer{ctx: ctx}
 	var spans []display.Span
 	var observe func(display.Span)
