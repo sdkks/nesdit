@@ -18,8 +18,9 @@ existing editing behavior: a file named `text` does not select this mode.
 
 `--input-codec text` is mandatory. The only local target is JSON, also selectable
 as `--to json`. No charset, file-extension or content guessing is performed.
-MessagePack, JSON conversion and FlatBuffers inputs are not available through
-these flags. Existing Protobuf selectors remain separate.
+For binary MessagePack, explicitly select `--input-codec msgpack`; see the
+[MessagePack guide](msgpack.md). JSON conversion and FlatBuffers inputs remain
+unimplemented. Existing Protobuf selectors remain separate.
 
 ## One body, one string
 

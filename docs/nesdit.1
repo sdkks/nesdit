@@ -202,7 +202,7 @@ Empty input becomes an empty string. BOM, NUL, CR/LF and whitespace remain conte
 There is no trimming, line framing, arbitrary-byte fallback or raw-text export.
 .TP
 .B --to json
-Optional explicit JSON target. No other local codec or target is currently supported.
+Optional explicit JSON target. Text and MessagePack inspection support only JSON.
 .PP
 Options and queries are validated before payload reads. Use --filter and --project
 against the original string root. A filter returns exactly one boolean; false
@@ -244,6 +244,56 @@ cooperative: no host exit, borrowed closes/deadline changes or abandoned blocked
 worker. Callers must unblock I/O. No new Windows bounded-stop promise.
 Success/false filter exits 0, failure 1, cancellation 130. Diagnostics identify
 stages/categories without body, query or evaluator contents. See the text guide.
+.SH MESSAGEPACK INSPECTION
+Available in development source; no new published release is announced.
+.B nesdit --input-file event.msgpack --input-codec msgpack
+or pipe one body to
+.B nesdit --input-stdin --input-codec msgpack
+with optional --to json. Source isolation, queries, JSON display, output staging,
+fixed limits and stop/ownership behavior follow local text inspection above.
+Encoding, ordinary/rich JSON import, binary targets and broker MessagePack are
+not implemented. No JSONL, YAML/TOML conversion or automatic codec detection.
+.PP
+Exactly one complete MessagePack value and EOF are required. Empty input,
+reserved code 0xc1, truncation, a second value or any trailing byte (even LF)
+fails before filtering. Empty encoded strings, arrays, maps and binary are valid.
+.PP
+MessagePack JSON v1 uses null, booleans, valid UTF-8 strings and arrays directly.
+Every map becomes {"$map":[[key,value],...]}, retaining order, duplicates and
+compound keys. A literal application map {"$int":"7"} therefore displays as
+{"$map":[["$int","7"]]}, not as a typed integer.
+Integers use {"$int":"decimal"} in -2^63 through 2^64-1, with no plus,
+leading zeros, exponent or integer negative zero. Signed-positive opcodes and
+fixints of equal value have equal views; opcode/width identity is not preserved.
+.PP
+Floats use {"$float":"binary64-roundtrip"}. Float32 widens exactly:
+float32 near 0.1 displays 0.10000000149011612, versus float64's 0.1.
+Special strings are -0, NaN, Infinity and -Infinity; positive zero is 0.
+This identifies IEEE values, not exact rational decimals or NaN payload bits.
+Binary uses {"$bin":"base64"}; invalid-UTF-8 str uses {"$str64":"base64"},
+never replacement characters or bin coercion. Base64 is padded and canonical.
+Opaque extensions use {"$ext":[signed-ID,"base64"]} for IDs -128 through 127
+except -1, including reserved negatives. Timestamp -1 uses
+{"$time":["seconds",nanoseconds]} with signed-int64 seconds and nanos 0-999999999.
+Valid 4/8/12-byte payloads and equivalent headers are accepted. Invalid timestamp
+length/nanos fails, never opaque fallback; no RFC3339 range normalization.
+.PP
+Queries see the actual rich grammar, not ordinary map fields. For duplicate names,
+--project '[."$map"[] | select(.[0] == "name") | .[1]]' collects all matches.
+An uncollected projection fails for zero/multiple results. Arbitrary projected
+JSON can display but is not automatically rich interchange. No projection means
+no identity-query normalization; explicit numeric queries can lose precision.
+.PP
+Decoded depth 100, one million semantic values and 16 MiB str/bin/ext bytes
+are independent of view depth 100, one million JSON values and 16 MiB key/string
+bytes. Roots have depth zero. Keys and values count separately; view wrappers,
+entries/pair arrays and decimal/base64 strings all count. Counters do not reset.
+Base64/container costs are checked before allocation. Wrappers can hit the view
+limit before the semantic limit, and a fitting view can exceed exact 16 MiB
+serialized output. False filtering skips only that output check, never source
+admission. These are not hard memory/CPU limits. A 10-16 MiB view cannot fit the
+10 MiB input cap even with a future importer. Value fidelity is not byte identity.
+See the MessagePack guide for the full grammar, resource and lifecycle contract.
 .SH PROTOBUF INSPECTION
 .B nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
 .PP

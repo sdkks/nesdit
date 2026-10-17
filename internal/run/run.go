@@ -521,7 +521,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 	localOpts.flags(cmd)
 	cmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		if localSelected(cmd) || (nativeSelected(cmd) && natsOpts.codec == "text") {
-			// Parser errors can quote option values. Text inspection diagnostics
+			// Parser errors can quote option values. Local inspection diagnostics
 			// must not disclose payload queries or credential-bearing values.
 			return errors.New("configuration: invalid inspection option or value")
 		}
@@ -572,6 +572,22 @@ The unchanged envelope, including metadata and layout, must fit 16 MiB. Ordinary
 empty bodies become strings; Core bodyless status remains an error, while stored
 history Status headers are data. No descriptor flags with text. See the text
 guide for independent budgets, output failures and lifecycle qualifications.
+
+Local MessagePack inspection (JSON output only, no encoding):
+  nesdit --input-file event.msgpack --input-codec msgpack > event.view.json
+  producer | nesdit --input-stdin --input-codec msgpack
+Uses the same explicit sources, JSON target, query/output and stop rules as text.
+Exactly one complete value and EOF are required; empty input and any trailing
+byte, even LF, fail before filtering. Maps become ordered $map entry arrays,
+retaining duplicate and compound keys. $int/$float strings preserve numeric
+values; $bin/$str64 distinguish binary from invalid-UTF-8 strings. $ext is opaque
+except timestamp -1, which becomes $time with exact seconds/nanoseconds.
+Float32 widens exactly; wire width, opcode choices and NaN bits are not retained.
+Queries see this actual MessagePack JSON v1 data. Wrappers/base64 independently
+count toward depth 100, one million values and 16 MiB key/string bytes; decoded
+semantics have separate budgets. See the MessagePack guide for the full grammar.
+Encoding, JSON/rich-JSON import, binary targets and broker MessagePack are not
+implemented. Never redirect over the source file.
 
 Standalone Protobuf inspection (JSON output only, no editing):
   nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order

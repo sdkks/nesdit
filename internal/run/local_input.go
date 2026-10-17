@@ -13,6 +13,7 @@ import (
 
 	"github.com/sdkks/nesdit/internal/display"
 	"github.com/sdkks/nesdit/internal/logx"
+	"github.com/sdkks/nesdit/internal/msgpackview"
 	"github.com/sdkks/nesdit/internal/protobufview"
 	"github.com/sdkks/nesdit/internal/query"
 	"github.com/sdkks/nesdit/internal/textview"
@@ -49,7 +50,7 @@ func (p *localOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&p.files, "input-file", nil, "Inspection: one regular file; commas are literal, - is not stdin")
 	cmd.Flags().Var(&p.stdin, "input-stdin", "Inspection: explicitly read one complete body through EOF from stdin; no overall timer")
 	cmd.Flags().Lookup("input-stdin").NoOptDefVal = "true"
-	cmd.Flags().StringVar(&p.codec, "input-codec", "", "Inspection: required input codec: text (whole UTF-8 body)")
+	cmd.Flags().StringVar(&p.codec, "input-codec", "", "Inspection: required input codec: text (whole UTF-8 body) or msgpack (MessagePack JSON v1 view)")
 	cmd.Flags().StringVar(&p.target, "to", "json", "Inspection: output target: json")
 }
 
@@ -84,11 +85,11 @@ func (p *localOptions) validate(cmd *cobra.Command, args []string) error {
 	if conflict != nil {
 		return conflict
 	}
-	if p.codec != "text" {
-		return errors.New("--input-codec is required and must be text")
+	if p.codec != "text" && p.codec != "msgpack" {
+		return errors.New("--input-codec is required and must be text or msgpack")
 	}
 	if p.target != "json" {
-		return errors.New("--to must be json for text inspection")
+		return errors.New("--to must be json for local inspection")
 	}
 	return nil
 }
@@ -148,7 +149,11 @@ func runLocalInput(opts RunOptions, p localOptions, n natsOptions, process *nats
 	if err != nil {
 		return fail("acquire", err)
 	}
-	value, err := textview.Decode(ctx, data)
+	decode := textview.Decode
+	if p.codec == "msgpack" {
+		decode = msgpackview.Decode
+	}
+	value, err := decode(ctx, data)
 	if err != nil {
 		return fail("decode", err)
 	}

@@ -116,7 +116,7 @@ func TestTextFlagIsolation(t *testing.T) {
 			t.Fatal(args, code, out)
 		}
 	}
-	for _, codec := range []string{"json", "msgpack", "msgpack-json", "flatbuffers", "protobuf", "", "TEXT"} {
+	for _, codec := range []string{"json", "msgpack-json", "flatbuffers", "protobuf", "", "TEXT"} {
 		code, out, _ := textExecute([]string{"--input-stdin", "--input-codec", codec}, textNoRead{t})
 		if code != 1 || out != "" {
 			t.Fatal(codec, code, out)

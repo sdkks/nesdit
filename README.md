@@ -85,7 +85,27 @@ failures remain distinct from stored history headers, which are data.
 
 See the [text inspection guide](docs/modes/text.md) for source isolation, fixed
 10 MiB input and exact 16 MiB JSON-output limits, safe redirection, and cooperative
-versus process interruption. MessagePack and FlatBuffers remain future work.
+versus process interruption.
+
+## Local MessagePack inspection (development source)
+
+```sh
+bin/nesdit --input-file event.msgpack --input-codec msgpack > event.view.json
+producer | bin/nesdit --input-stdin --input-codec msgpack
+```
+
+The current source inspects one complete MessagePack value as MessagePack JSON v1.
+Maps retain order, duplicate and compound keys as `$map` entry arrays; integers,
+floats, binary, invalid-UTF-8 strings, extensions and timestamps have explicit
+JSON wrappers. This preserves semantic values, not original wire bytes or widths.
+Empty input and every trailing byte (even LF) fail before filtering. Use only
+`--filter`/`--project` and optional `--to json`; arbitrary projected JSON can display.
+
+See the [MessagePack guide](docs/modes/msgpack.md) for the exact grammar, map
+queries, numeric fidelity, independent resource limits and lifecycle. Never
+redirect over the input: the shell can truncate it first. Encoding, JSON/rich-JSON
+import, binary targets, broker MessagePack and FlatBuffers remain future work;
+this source capability does not announce a new published release.
 
 ## Read-only Protobuf inspection
 

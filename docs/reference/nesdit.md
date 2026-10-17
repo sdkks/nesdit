@@ -45,6 +45,22 @@ empty bodies become strings; Core bodyless status remains an error, while stored
 history Status headers are data. No descriptor flags with text. See the text
 guide for independent budgets, output failures and lifecycle qualifications.
 
+Local MessagePack inspection (JSON output only, no encoding):
+  nesdit --input-file event.msgpack --input-codec msgpack > event.view.json
+  producer | nesdit --input-stdin --input-codec msgpack
+Uses the same explicit sources, JSON target, query/output and stop rules as text.
+Exactly one complete value and EOF are required; empty input and any trailing
+byte, even LF, fail before filtering. Maps become ordered $map entry arrays,
+retaining duplicate and compound keys. $int/$float strings preserve numeric
+values; $bin/$str64 distinguish binary from invalid-UTF-8 strings. $ext is opaque
+except timestamp -1, which becomes $time with exact seconds/nanoseconds.
+Float32 widens exactly; wire width, opcode choices and NaN bits are not retained.
+Queries see this actual MessagePack JSON v1 data. Wrappers/base64 independently
+count toward depth 100, one million values and 16 MiB key/string bytes; decoded
+semantics have separate budgets. See the MessagePack guide for the full grammar.
+Encoding, JSON/rich-JSON import, binary targets and broker MessagePack are not
+implemented. Never redirect over the source file.
+
 Standalone Protobuf inspection (JSON output only, no editing):
   nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
   producer | nesdit --protobuf-stdin --descriptor-set schemas/events.pb --message-type example.Order \
@@ -134,7 +150,7 @@ nesdit [flags] <file> [<file>...]
   -f, --from-file string            load query from file (mutually exclusive with --query)
   -h, --help                        help for nesdit
   -i, --in-place                    edit file(s) in-place using atomic temp+rename writes
-      --input-codec string          Inspection: required input codec: text (whole UTF-8 body)
+      --input-codec string          Inspection: required input codec: text (whole UTF-8 body) or msgpack (MessagePack JSON v1 view)
       --input-file stringArray      Inspection: one regular file; commas are literal, - is not stdin
       --input-stdin                 Inspection: explicitly read one complete body through EOF from stdin; no overall timer
       --keep-going                  continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred

@@ -142,6 +142,16 @@ and raw-text export are not included. See the [text guide](modes/text.md) for th
 source selectors, exact output-size limits and stop behavior. This is not a new
 published release announcement.
 
+## Local MessagePack inspection — development source
+
+The current source supports one local MessagePack value from explicit file or
+stdin, with JSON-only output and queries against MessagePack JSON v1. Maps retain
+ordered duplicate/compound entries; explicit wrappers distinguish integers,
+floats, binary, invalid strings, opaque extensions and timestamps. Exact EOF,
+independent semantic/view limits and output expansion checks apply. See the
+[MessagePack guide](modes/msgpack.md) for the grammar and value-versus-wire fidelity.
+This is read-only inspection, not encoding or a published release announcement.
+
 ## Local formats and conversion — future work
 
 **Status: future direction; not shipped.** These additions extend beyond the read-only
@@ -150,7 +160,7 @@ these additions have no promised dates or new release commitments.
 
 **Direction**
 
-- MessagePack inspection and local encoding.
+- MessagePack local encoding and ordinary/rich JSON import (inspection is available in development source).
 - Avro inspection and local encoding using local schemas, including Avro container files.
 - Protobuf encoding as separate future work, not part of V2's read-only decoding scope.
 - Local JSON Schema validation over JSON, not a separate wire codec.
