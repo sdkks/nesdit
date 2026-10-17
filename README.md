@@ -63,6 +63,33 @@ nesdit config.json --output-format yaml --query '.'
 nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $replicas'
 ```
 
+## Read-only Protobuf inspection
+
+```sh
+nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
+producer | nesdit --protobuf-stdin --descriptor-set schemas/events.pb --message-type example.Order \
+  --filter '.active == true' --project '{id: .id}'
+```
+
+Choose one source explicitly. The separate, self-contained local descriptor set
+and exact message name are required; no registry or runtime compiler is used.
+One raw message is read through EOF, capped at 10 MiB, without prefix stripping
+or guessed framing. An open under-limit stdin can wait indefinitely: there is no
+standalone timer. File mode never reads stdin or modifies the input.
+
+Output is only the decoded/projected JSON value, including scalar and array roots:
+pretty on Unix terminals, compact when redirected, with one LF. A false filter
+writes nothing and skips projection. Standard ProtoJSON mappings include local
+expanded `Any`, extensions and well-known types; unknown wire fields are omitted
+and decoded object keys sort recursively. Legacy query/edit/format/presentation,
+broker and resource-override flags are rejected, even explicit defaults.
+
+See the [Protobuf guide](docs/modes/protobuf.md) for preparation, mapping, independent
+structure budgets, the conservative 16 MiB pre-Marshal certificate (which can
+reject actual-fitting output), the separate final-output limit and cooperative
+versus process-watchdog interruption. This is read-only inspection, not encoding
+or a lossless binary capture.
+
 ## Live NATS observation
 
 ```sh
@@ -175,4 +202,4 @@ asset names, and partial-upload recovery.
 
 ## License
 
-See [LICENSE](LICENSE). YAML highlighting and native NATS dependency attributions and supplied licenses are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), also included in release archives.
+See [LICENSE](LICENSE). YAML highlighting, native NATS and Protobuf dependency attributions and supplied licenses are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), also included in release archives.

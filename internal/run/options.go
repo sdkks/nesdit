@@ -33,8 +33,11 @@ type RunOptions struct {
 	// so cancellation and --timeout deadlines reach the evaluator.
 	Ctx context.Context
 
-	// Stdin is the input stream for invocations without a file argument
-	// or with an explicit "-" argument.
+	// Stdin is the input stream for invocations without a file argument,
+	// with an explicit "-" argument, or with --protobuf-stdin. All Execute
+	// streams are borrowed: they are never automatically closed or deadlined.
+	// Protobuf reads and writes are synchronous/cooperative; callers must
+	// supply responsive I/O or arrange unblocking. Only Run has a watchdog.
 	Stdin io.Reader
 
 	// Stdout and Stderr are the output streams. Stderr is also the

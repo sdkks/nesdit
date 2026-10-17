@@ -182,6 +182,79 @@ flag is an explicit alias provided for documentation purposes.
 .TP
 .BR \-h ", " \-\-help
 Show help and exit.
+.SH PROTOBUF INSPECTION
+.B nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
+.PP
+.B producer | nesdit --protobuf-stdin --descriptor-set schemas/events.pb --message-type example.Order
+.PP
+Inspect one raw binary message read-only, without a broker. Select exactly one
+explicit source. The descriptor is a separate regular local binary FileDescriptorSet
+containing all ordinary and option-only imports, well-known types and Any targets.
+The message name is exact and fully qualified, without a leading dot or URL.
+No ambient registry, network resolution, runtime compiler or binary write-back is used.
+.TP
+.B --protobuf-file FILE
+Read one regular payload file. Repeated selections, positional inputs and a literal
+- are rejected (use ./- for that filename). Commas remain literal. File mode never
+reads redirected stdin. Symlinks resolving to regular files are allowed.
+.TP
+.B --protobuf-stdin
+Explicitly read one body through EOF. False is invalid; redirected stdin and schema
+options alone do not select this mode. There is no framing, prefix removal or
+codec guessing. Success does not establish schema identity or absence of concatenation.
+.PP
+The inclusive raw cap is 10 MiB; exactly that size still requires EOF or another
+byte. One byte over fails without waiting for EOF. Zero-byte EOF is a real body
+and may succeed, depending on the type; missing required fields fail. Open
+under-limit stdin can wait indefinitely: no standalone timer is provided.
+.PP
+Stdout is only the decoded/projected JSON value, including scalar and array roots,
+with no source or NATS envelope, readiness banner or footer. Presentation is
+pretty on a Unix terminal, compact when redirected, with one LF. NO_COLOR and
+TERM=dumb disable color; Windows stays plain. Use --filter and --project against
+the decoded root. Filter requires one boolean; false emits zero bytes and skips
+projection. Projection requires one value and may construct new keys without
+editing input; it is ordinary JSON, not a Protobuf round-trip guarantee.
+.PP
+Standard ProtoJSON names, presence, enum, base64-byte, decimal-string 64-bit integer
+and special-float mappings apply. Well-known types and locally declared bracketed
+extensions are supported. Any expands locally using its URL's final type name;
+its hostname is not fetched or authenticated. Missing targets, malformed embedded
+data and missing required fields inside expansions fail. Unknown wire fields are
+omitted. Decoded object/map keys sort recursively; array and query-result ordering
+are retained. This is not lossless binary inspection or universal canonical JSON.
+.PP
+Only the source, descriptor-set, message-type, filter, project and log-format flags
+plus help/version are accepted. Native broker options, legacy format/output-format
+(even json), pretty, query/where/from-file/arg/argjson, editing/check/dry-run/backup,
+strict/keep-going, timeout and resource overrides fail even at explicit defaults.
+Options, queries and descriptors are prepared before payload access.
+.PP
+Fixed descriptor caps: 4 MiB, 256 files, 10000 declarations, depth 100 for the
+message tree and import chains. Declarations count files, messages, fields,
+extensions, oneofs, enums, enum values, services and methods, including synthetic
+map entries and oneofs. Options/source locations count toward depth, not declarations.
+Decoded/expanded and actual-WKT-shaped JSON structures each independently allow
+depth 100, 1000000 value nodes and 16 MiB key/string bytes. Roots are depth zero;
+containers/scalars count nodes, keys count bytes, and bytes charge base64 length.
+Any targets descend without resetting budgets and share 10 MiB aggregate embedded
+wire bytes. Both shapes are assessed before full marshaling. A conservative
+16 MiB serialized certificate covers escaping, numeric bounds, syntax and optional
+comma spaces; it can reject a value whose actual bytes would fit. Actual output
+must still fit the certificate and view budgets. Final buffered JSON has a separate
+16 MiB limit including layout and LF. Inline queries retain the 1 MiB limit and
+existing projection limits. These are component checks, not a heap/OOM guarantee.
+.PP
+One interrupt requests cancellation on Linux/macOS. Process-owned deadline-capable
+stdin is unblocked; ordinary inherited blocking pipes may require the one-second
+process fallback after a stop request. Forced stopping can truncate output or
+omit diagnostics. Execute's borrowed I/O stays synchronous/cooperative and is
+never automatically closed/deadlined; callers must arrange responsive I/O or
+unblocking. No read worker is abandoned, no host exit is installed, and no new
+Windows interrupt bound is claimed. Success exits 0, failure 1, interruption 130.
+Read/decode/query/encoding failures emit no value; external write failure can
+leave partial bytes. Diagnostics identify stages without quoting input contents.
+See the Protobuf guide for full limits and cancellation qualifications.
 .SH NATS OBSERVATION
 .B nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
 .PP
@@ -292,7 +365,8 @@ Success.
 Error (bad query, unreadable file, parse failure, etc.).
 .TP
 .B 130
-Native observation interrupted or cancelled (Linux/macOS CLI interrupt handling).
+Native observation or standalone Protobuf interrupted or cancelled
+(Linux/macOS CLI interrupt handling).
 .TP
 .B 2
 Drift detected: the query would change the input (only when

@@ -24,6 +24,19 @@ Supported modes:
   - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
     resource caps for decode-phase hardening.
 
+Standalone Protobuf inspection (JSON output only, no editing):
+  nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
+  producer | nesdit --protobuf-stdin --descriptor-set schemas/events.pb --message-type example.Order \
+    --filter '.active == true' --project '{id: .id}'
+Choose exactly one source explicitly. One raw body is read through EOF, at most
+10 MiB; no prefixes or framing are inferred. Open stdin can wait indefinitely:
+there is no standalone timer. Schema and queries are prepared before payload
+input. Output is the JSON value only, pretty on terminals, compact otherwise,
+with one LF; a false filter writes nothing. Use --filter/--project, not legacy
+query, format, presentation, editing, timeout or resource flags. All descriptor
+imports and Any targets must be local. See the Protobuf inspection guide for
+mapping, conservative limits and cooperative versus process-stop behavior.
+
 Live Core NATS JSON observation (reads neither input documents nor stdin):
   nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \
     --filter '.show == true' --project '{id: .id}'
@@ -55,41 +68,45 @@ nesdit [flags] <file> [<file>...]
 ### Options
 
 ```
-      --arg stringArray          bind $K=V in the query as a literal string (repeatable)
-      --argjson stringArray      bind $K=V in the query as a JSON-decoded value (repeatable)
-      --backup string[=".bak"]   write a sibling backup before each in-place edit (default suffix .bak; custom: --backup=.orig); requires -i
-      --check                    exit 2 if the query would change the input; exit 0 if identical; exit 1 on error
-      --count uint               NATS: stop after N messages admitted for processing, before filtering; may show fewer events
-      --create-missing           allow queries to create keys/paths that do not exist in the input document; by default, absent paths are rejected
-      --creds string             NATS: JWT/NKey credentials file (regular, at most 1 MiB); requires tls://
-  -n, --dry-run                  emit a unified diff of before/after to stdout; do not write any file
-      --duration duration        NATS: required total observation limit including connection setup; not an idle timeout
-      --edit                     open $EDITOR on a temp copy of the file; diff before/after and emit suggested query
-      --filter string            NATS: payload-root predicate returning exactly one boolean; false suppresses
-      --format string            force input format (json|jsonl|yaml|toml); default is extension-based detection
-  -f, --from-file string         load query from file (mutually exclusive with --query)
-  -h, --help                     help for nesdit
-  -i, --in-place                 edit file(s) in-place using atomic temp+rename writes
-      --keep-going               continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred
-      --log-format string        stderr rendering mode: text (default, canonical lines) or json (NDJSON) (default "text")
-      --max-bytes int            reject inputs larger than this many bytes; 0 disables the cap (default 10485760)
-      --max-depth int            reject documents nested deeper than this; 0 disables the cap (default 1000)
-      --max-query-bytes int      reject query files (--from-file) larger than this many bytes; 0 disables the cap (default 1048576)
-      --max-yaml-nodes int       YAML node-materialisation cap (billion-laughs mitigation); 0 disables the cap (default 100000)
-      --nats string              NATS: observe one live JSON subject expression; reads neither input documents nor stdin
-      --nats-output string       NATS: auto (terminal pretty, redirected JSONL), jsonl, or pretty (multiline documents) (default "auto")
-      --output-format string     output format (json|yaml|toml); defaults to same as input format when not specified. jsonl is not a valid output format: JSONL output happens automatically when the input format is jsonl (one output line per input line). When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)
-      --pretty                   emit human-friendly TOML output: multi-line arrays, expanded tables, blank lines between entries (currently only affects TOML output)
-      --project string           NATS: payload-root projection returning exactly one JSON value
-      --query string             jq-style query (default '.' identity when neither --query nor -f is given)
-      --server string            NATS: required explicit nats://host:port or tls://host:port
-      --strict                   halt on the first document error (default behaviour; explicit alias for documentation)
-      --timeout duration         cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap
-      --tls-ca string            NATS: PEM CA file (regular, at most 1 MiB); requires tls://; omitted uses system trust
-      --tls-cert string          NATS: PEM client certificate file (regular, at most 1 MiB); requires --tls-key and tls://
-      --tls-key string           NATS: PEM client private key file (regular, at most 1 MiB); requires --tls-cert and tls://
-      --where string             filter docs by jq predicate: only matching docs have --query applied (stream: others pass through; in-place batch mode (-i): non-matching files are skipped; not supported in single-file stdout mode)
-      --yaml-version string      YAML dialect for boolean coercion: 1.1 (yes/no/on/off as bools) or 1.2 (true/false only; default) (default "1.2")
+      --arg stringArray             bind $K=V in the query as a literal string (repeatable)
+      --argjson stringArray         bind $K=V in the query as a JSON-decoded value (repeatable)
+      --backup string[=".bak"]      write a sibling backup before each in-place edit (default suffix .bak; custom: --backup=.orig); requires -i
+      --check                       exit 2 if the query would change the input; exit 0 if identical; exit 1 on error
+      --count uint                  NATS: stop after N messages admitted for processing, before filtering; may show fewer events
+      --create-missing              allow queries to create keys/paths that do not exist in the input document; by default, absent paths are rejected
+      --creds string                NATS: JWT/NKey credentials file (regular, at most 1 MiB); requires tls://
+      --descriptor-set string       Protobuf: required self-contained local binary FileDescriptorSet, at most 4 MiB
+  -n, --dry-run                     emit a unified diff of before/after to stdout; do not write any file
+      --duration duration           NATS: required total observation limit including connection setup; not an idle timeout
+      --edit                        open $EDITOR on a temp copy of the file; diff before/after and emit suggested query
+      --filter string               Inspection: decoded-root predicate returning exactly one boolean; false suppresses
+      --format string               force input format (json|jsonl|yaml|toml); default is extension-based detection
+  -f, --from-file string            load query from file (mutually exclusive with --query)
+  -h, --help                        help for nesdit
+  -i, --in-place                    edit file(s) in-place using atomic temp+rename writes
+      --keep-going                  continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred
+      --log-format string           stderr rendering mode: text (default, canonical lines) or json (NDJSON) (default "text")
+      --max-bytes int               reject inputs larger than this many bytes; 0 disables the cap (default 10485760)
+      --max-depth int               reject documents nested deeper than this; 0 disables the cap (default 1000)
+      --max-query-bytes int         reject query files (--from-file) larger than this many bytes; 0 disables the cap (default 1048576)
+      --max-yaml-nodes int          YAML node-materialisation cap (billion-laughs mitigation); 0 disables the cap (default 100000)
+      --message-type string         Protobuf: required exact fully qualified message name (no leading dot or URL)
+      --nats string                 NATS: observe one live JSON subject expression; reads neither input documents nor stdin
+      --nats-output string          NATS: auto (terminal pretty, redirected JSONL), jsonl, or pretty (multiline documents) (default "auto")
+      --output-format string        output format (json|yaml|toml); defaults to same as input format when not specified. jsonl is not a valid output format: JSONL output happens automatically when the input format is jsonl (one output line per input line). When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)
+      --pretty                      emit human-friendly TOML output: multi-line arrays, expanded tables, blank lines between entries (currently only affects TOML output)
+      --project string              Inspection: decoded-root projection returning exactly one JSON value
+      --protobuf-file stringArray   Protobuf: inspect one raw regular file as JSON; no positional input, framing, or editing
+      --protobuf-stdin              Protobuf: explicitly read one raw message through EOF from stdin; no overall timer
+      --query string                jq-style query (default '.' identity when neither --query nor -f is given)
+      --server string               NATS: required explicit nats://host:port or tls://host:port
+      --strict                      halt on the first document error (default behaviour; explicit alias for documentation)
+      --timeout duration            cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap
+      --tls-ca string               NATS: PEM CA file (regular, at most 1 MiB); requires tls://; omitted uses system trust
+      --tls-cert string             NATS: PEM client certificate file (regular, at most 1 MiB); requires --tls-key and tls://
+      --tls-key string              NATS: PEM client private key file (regular, at most 1 MiB); requires --tls-cert and tls://
+      --where string                filter docs by jq predicate: only matching docs have --query applied (stream: others pass through; in-place batch mode (-i): non-matching files are skipped; not supported in single-file stdout mode)
+      --yaml-version string         YAML dialect for boolean coercion: 1.1 (yes/no/on/off as bools) or 1.2 (true/false only; default) (default "1.2")
 ```
 
 ###### Auto generated by spf13/cobra on 17-Oct-2026

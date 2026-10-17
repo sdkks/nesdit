@@ -76,7 +76,7 @@ func NewRootCmd() *cobra.Command {
 //   - 0 — success
 //   - 1 — any error
 //   - 2 — --check drift detected (only this path returns 2)
-//   - 130 — native observation interrupted or cancelled
+//   - 130 — native observation or standalone Protobuf interrupted or cancelled
 func Run(args []string) int {
 	process := &natsProcess{exit: os.Exit}
 	defer process.finish()
@@ -91,8 +91,9 @@ func Run(args []string) int {
 
 // Execute is the in-process entrypoint taking a RunOptions struct. It
 // fills in defaults for any zero-valued field and dispatches to the
-// cobra command tree. Native observation is cooperative here: no process signal
-// handlers or exit hooks are installed, and writers must respond to cancellation.
+// cobra command tree. Native observation and standalone Protobuf are cooperative
+// here: no process signal handlers or exit hooks are installed. Borrowed readers
+// and writers must return for cancellation to be observed.
 func Execute(opts RunOptions) int { return execute(opts, nil) }
 
 func execute(opts RunOptions, process *natsProcess) int {
@@ -120,8 +121,13 @@ func execute(opts RunOptions, process *natsProcess) int {
 	root.SilenceErrors = true
 
 	err := root.ExecuteContext(opts.Ctx)
+	// Flag parsing can fail after the standalone selector but before PreRunE.
+	// Arm its process owner before any potentially blocking final diagnostic.
+	if err != nil && process != nil && protobufSelected(root) {
+		process.start(opts.Ctx)
+	}
 	if process != nil && process.stop != nil && err != nil {
-		process.stop.request("failure", "configuration: observation did not complete", 1)
+		process.stop.request("failure", "configuration: inspection did not complete", 1)
 	}
 	if err == nil {
 		return int(ExitOK)
@@ -145,7 +151,14 @@ func execute(opts RunOptions, process *natsProcess) int {
 		return int(ExitError)
 	}
 	// Default: treat as a flag-parse / cobra-generic error and emit
-	// in canonical shape.
+	// in canonical shape. Standalone validation errors use its selected
+	// diagnostic format too; PreRunE's logger is invocation-local.
+	if protobufSelected(root) && root.Flags().Changed("log-format") {
+		logFormat, _ := root.Flags().GetString("log-format")
+		if logFormat == "text" || logFormat == "json" {
+			opts.Logger = logx.NewFormat(opts.Stderr, logx.Format(logFormat))
+		}
+	}
 	opts.Logger.ErrorGlobal(logx.EventFlagInvalid, err.Error())
 	return int(ExitError)
 }
@@ -166,6 +179,7 @@ func newRootCmd(opts RunOptions) *cobra.Command { return newRootCmdProcess(opts,
 
 func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 	var natsOpts natsOptions
+	var protobufOpts protobufOptions
 	var (
 		queryExpr      string
 		queryFile      string
@@ -220,7 +234,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
-			if cmd.Flags().Changed("nats") {
+			if cmd.Flags().Changed("nats") || protobufSelected(cmd) {
 				return nil
 			}
 			// --edit mode requires exactly one file argument.
@@ -258,7 +272,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 		// exits 1 before any IO. After validation, an explicitly supplied
 		// format reconstructs the Logger over Stderr.
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Flags().Changed("nats") && process != nil {
+			if (cmd.Flags().Changed("nats") || protobufSelected(cmd)) && process != nil {
 				process.start(opts.Ctx)
 			}
 			// Validate --log-format before any IO.
@@ -267,9 +281,13 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				case logx.FormatText, logx.FormatJSON:
 					// valid
 				default:
+					if protobufSelected(cmd) {
+						// Return before writing: execute arms the stop watchdog first.
+						return errors.New("--log-format: supported values are text and json")
+					}
 					msg := fmt.Sprintf("--log-format: unknown value %q; supported values are: text, json", logFormatStr)
 					opts.Logger.ErrorGlobal(logx.EventFlagInvalid, msg)
-					return &emittedError{cause: fmt.Errorf("%s", msg)}
+					return &emittedError{cause: errors.New(msg)}
 				}
 				// Re-create Logger with the requested format. Only do
 				// this when the caller did not supply a Logger via
@@ -280,6 +298,13 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				// This is safe: no emit has occurred yet (flag-conflict
 				// checks below may be the first).
 				opts.Logger = logx.NewFormat(opts.Stderr, logx.Format(logFormatStr))
+			}
+			if err := protobufOpts.validate(cmd, args); err != nil {
+				return err
+			}
+			if protobufSelected(cmd) {
+				natsOpts.filterSet, natsOpts.projectSet = cmd.Flags().Changed("filter"), cmd.Flags().Changed("project")
+				return nil
 			}
 			if err := natsOpts.validate(cmd, args); err != nil {
 				return err
@@ -309,6 +334,10 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 			return validateFlagInteraction(opts.Logger, cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if protobufSelected(cmd) {
+				opts.Ctx = cmd.Context()
+				return runProtobufInput(opts, protobufOpts, natsOpts, process)
+			}
 			if cmd.Flags().Changed("nats") {
 				opts.Ctx = cmd.Context()
 				var stop *natsStop
@@ -475,6 +504,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 	cmd.Flags().BoolVar(&pretty, "pretty", false, "emit human-friendly TOML output: multi-line arrays, expanded tables, blank lines between entries (currently only affects TOML output)")
 
 	natsOpts.flags(cmd)
+	protobufOpts.flags(cmd)
 	cmd.SetOut(opts.Stdout)
 	cmd.SetErr(opts.Stderr)
 	return cmd
@@ -499,6 +529,19 @@ Supported modes:
   - --timeout <dur> to cancel a runaway query on a deadline.
   - --max-bytes, --max-depth, --max-yaml-nodes, and --max-query-bytes
     resource caps for decode-phase hardening.
+
+Standalone Protobuf inspection (JSON output only, no editing):
+  nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
+  producer | nesdit --protobuf-stdin --descriptor-set schemas/events.pb --message-type example.Order \
+    --filter '.active == true' --project '{id: .id}'
+Choose exactly one source explicitly. One raw body is read through EOF, at most
+10 MiB; no prefixes or framing are inferred. Open stdin can wait indefinitely:
+there is no standalone timer. Schema and queries are prepared before payload
+input. Output is the JSON value only, pretty on terminals, compact otherwise,
+with one LF; a false filter writes nothing. Use --filter/--project, not legacy
+query, format, presentation, editing, timeout or resource flags. All descriptor
+imports and Any targets must be local. See the Protobuf inspection guide for
+mapping, conservative limits and cooperative versus process-stop behavior.
 
 Live Core NATS JSON observation (reads neither input documents nor stdin):
   nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \

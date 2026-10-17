@@ -39,8 +39,8 @@ func (n *natsOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&n.server, "server", "", "NATS: required explicit nats://host:port or tls://host:port")
 	cmd.Flags().DurationVar(&n.duration, "duration", 0, "NATS: required total observation limit including connection setup; not an idle timeout")
 	cmd.Flags().Uint64Var(&n.count, "count", 0, "NATS: stop after N messages admitted for processing, before filtering; may show fewer events")
-	cmd.Flags().StringVar(&n.filter, "filter", "", "NATS: payload-root predicate returning exactly one boolean; false suppresses")
-	cmd.Flags().StringVar(&n.project, "project", "", "NATS: payload-root projection returning exactly one JSON value")
+	cmd.Flags().StringVar(&n.filter, "filter", "", "Inspection: decoded-root predicate returning exactly one boolean; false suppresses")
+	cmd.Flags().StringVar(&n.project, "project", "", "Inspection: decoded-root projection returning exactly one JSON value")
 	cmd.Flags().StringVar(&n.output, "nats-output", "auto", "NATS: auto (terminal pretty, redirected JSONL), jsonl, or pretty (multiline documents)")
 }
 
@@ -51,7 +51,11 @@ func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 	cmd.Flags().Visit(func(f *pflag.Flag) {
 		isNATS := f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output" || f.Name == "filter" || f.Name == "project" || f.Name == "creds" || f.Name == "tls-ca" || f.Name == "tls-cert" || f.Name == "tls-key"
 		if !selected && isNATS {
-			conflict = errors.New("NATS flags require --nats")
+			if f.Name == "filter" || f.Name == "project" {
+				conflict = errors.New("inspection flags require --nats, --protobuf-file or --protobuf-stdin")
+			} else {
+				conflict = errors.New("NATS flags require --nats")
+			}
 		}
 		if selected && !isNATS && f.Name != "log-format" {
 			hint := ""

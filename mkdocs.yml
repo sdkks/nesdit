@@ -41,6 +41,7 @@ nav:
   - Modes:
     - In-place (-i): modes/in-place.md
     - Stdout (default): modes/stdout.md
+    - Protobuf inspection: modes/protobuf.md
     - NATS observation: modes/nats.md
     - STDIN stream: modes/stdin.md
     - Dry-run (-n): modes/dryrun.md
