@@ -1,6 +1,6 @@
-# Event inspection roadmap
+# Data I/O and event inspection roadmap
 
-This roadmap is for users and contributors planning event-debugging workflows in nesdit.
+This roadmap is for users and contributors planning data I/O and event-debugging workflows in nesdit.
 It records shipped capabilities and the direction of future work, not delivery dates
 or approved detailed specifications for later milestones.
 V1–V4 name milestones, not semantic-major releases.
@@ -10,10 +10,13 @@ Start with the [NATS observation guide](modes/nats.md) for the supported command
 security configuration, limits, and failure behavior. Protobuf and Kafka remain
 planned; JetStream is **WIP — design; not shipped**.
 
-The direction is bounded event inspection: connect, find relevant messages, and read
-structured payloads with their metadata. It is not broker administration or full kcat parity.
-Current file and pipe workflows remain supported without changes to their behavior;
-see the [overview](index.md) and [STDIN guide](modes/stdin.md) for today's capabilities.
+The direction combines bounded event inspection with local data inspection and conversion:
+read data from files, stdin or brokers, and inspect payloads with source metadata where applicable.
+It is not broker administration or full kcat parity. Broker transport and payload codecs are
+separate concerns; carrying a format does not imply built-in decoding support.
+Current JSON/YAML/TOML file and pipe workflows remain supported without changes to their
+behavior; see the [overview](index.md) and [STDIN guide](modes/stdin.md) for today's capabilities.
+The additional local formats and binary conversion described below are future work, not shipped features.
 
 ## V1 — Native Core NATS with JSON
 
@@ -66,15 +69,19 @@ and limitations; do not weaken broker security to accommodate inspection.
 
 **Scope**
 
-- Decode payloads using a local descriptor set and an explicitly selected exact message type.
-- Reuse the payload inspection pipeline for filtering, projection, and readable views.
+- Decode one raw Protobuf message per payload using a local descriptor set and an
+  explicitly selected exact message type.
+- Support read-only file/stdin inspection and live Core NATS payloads, with reuse for
+  retained-history inspection when V3 is available.
+- Use the standard ProtoJSON mapping for decoded views, filtering, projection, and output.
 - Add Protobuf fixtures and integration cases at this milestone.
 
 **Non-goals:** runtime schema compilation, schema registries, automatic type or codec
-detection, and binary write-back.
+detection, Protobuf encoding, and binary write-back.
 
-**Demo outcome:** inspect a known Protobuf message using its descriptor set and type,
-show the decoded view with NATS metadata, and report descriptor or decoding failures clearly.
+**Demo outcome:** inspect a known Protobuf message from a file or stdin, or a Core NATS
+publication, using its descriptor set and type. Show a ProtoJSON payload view with
+NATS metadata where applicable, and report descriptor or decoding failures clearly.
 
 A decoded view is not a lossless binary representation. Successful decoding alone does
 not establish that the selected type was correct; descriptors and type must match the payload.
@@ -90,11 +97,13 @@ permission configuration will allow consumer-free inspection.
 
 - Inspect retained JetStream messages within explicit bounds.
 - Select a starting position or time where the supported APIs permit it.
-- Prefer retention-aware, consumer-free reads where permissions allow.
+- Use standard consumer-free stream INFO and message GET requests, subject to retention
+  and permissions; do not fall back to consumers.
 - Add JetStream retention, permissions, and history cases at this milestone.
 
-**Non-goals:** acknowledging application consumers, changing stream configuration,
-administering streams, or replaying messages by publishing them.
+**Non-goals:** creating consumers, consumer fallback, ACKs, changing stream configuration,
+administering streams, or replaying messages by publishing them. Inspection requires
+broker API request traffic; those requests are not application-message publishing.
 
 **Demo outcome:** inspect a bounded range of retained messages from a selected position
 or supported time, with metadata and the existing JSON or Protobuf views, without
@@ -102,7 +111,7 @@ acknowledging an application consumer.
 
 Retained history is not an immutable snapshot or a guarantee of every past publication.
 Retention can remove messages during inspection. Unsupported read paths or insufficient
-permissions must be resolved explicitly, not by silently changing consumer behavior.
+permissions must produce clear failures, not trigger consumer fallback or configuration changes.
 
 ## V4 — Native Kafka inspection
 
@@ -119,6 +128,33 @@ and full kcat feature parity.
 
 **Demo outcome:** inspect a bounded set of Kafka records, locate them by partition and
 offset, and filter or project their payload views without changing application-group state.
+
+## Local formats and conversion — future work
+
+**Status: future direction; not shipped.** Finish the existing Protobuf and JetStream
+work before this expansion. V1–V4 retain their order; these additions have no promised
+dates or new release commitments.
+
+**Direction**
+
+- UTF-8 string and raw-byte inspection views, with explicit output selection.
+- MessagePack inspection and local encoding.
+- Avro inspection and local encoding using local schemas, including Avro container files.
+- Protobuf encoding as separate future work, not part of V2's read-only decoding scope.
+- Local JSON Schema validation over JSON, not a separate wire codec.
+
+FlatBuffers and Cap'n Proto are conditional, later specialist additions, not prerequisites
+for these formats. Live Schema Registry integration is optional, separate work; local
+schemas must not require a network registry.
+
+Local encoding does not authorize broker publishing or binary in-place editing. Each
+format needs its own design for mappings, framing, fidelity, resource limits and safe
+output. Decoding to an inspection view, validating data and encoding under a target schema
+are distinct capabilities; this roadmap does not promise universal lossless conversion,
+byte-identical round trips, zero-copy processing or performance gains.
+
+Reuse existing capabilities where appropriate. A generic codec framework or source CLI
+redesign is not a prerequisite for the current milestones.
 
 ## Subject discovery — future work
 
@@ -141,8 +177,8 @@ traffic, publishers or subscriptions. It does not add native JetStream support.
 
 - Deliver each milestone as a usable inspection workflow. No milestone requires
   scaffolding or infrastructure for later milestones.
-- Keep broker connection and message-delivery concerns separate from payload decoding,
-  queries, and presentation. Reuse existing capabilities where their semantics fit.
+- Keep broker connection and message-delivery concerns separate from payload codecs,
+  validation, queries, and presentation. Reuse existing capabilities where their semantics fit.
 - Do not repurpose existing editing flags to silently change file or pipe behavior.
   Current STDIN filtering is conditional transformation, not event suppression.
 - Keep metadata and payload views distinct. Decoded or formatted output is not a promise
@@ -178,10 +214,12 @@ Use several layers of evidence; fixtures alone cannot prove network lifecycle be
    Do not publish test messages, acknowledge application work or change broker settings
    during passive checks. Keep endpoints, credentials and captured data out of public docs.
 
-Fixture capture is test support, not a commitment to a shipped capture/archive or
-validation subsystem. Add Protobuf and JetStream cases in their respective milestones;
-introduce no Kafka infrastructure before V4. Preserve regression coverage for current
-file and pipe workflows throughout.
+Fixture capture is test support, not a commitment to a shipped capture/archive subsystem.
+Future local validation and conversion need their own format-specific fixtures, failure
+cases and fidelity checks; they are not delivered by the event-inspection milestones.
+Add Protobuf and JetStream cases in their respective milestones; introduce no Kafka
+infrastructure before V4. Preserve regression coverage for current file and pipe
+workflows throughout.
 
 ## Using the shipped milestone and planning the next
 
@@ -190,7 +228,8 @@ inputs, component budgets, exit statuses and partial-output limitations. The
 [command reference](reference/nesdit.md) lists current flags. These are the sources
 for today's behavior, not the future milestone descriptions above.
 
-Protobuf, JetStream, Kafka and subject discovery need detailed design and verification
-before implementation or release. Their CLI shapes, dependencies, permission needs
-and operational policies are not pre-approved by this roadmap. Keep each milestone
+Complete the existing Protobuf and JetStream designs and milestones before expanding
+local formats and conversion. Unshipped work still needs its applicable detailed design
+and verification before implementation or release. This roadmap does not ratify exact
+CLI shapes, dependencies, permission needs or operational policies. Keep each milestone
 bounded and usable without introducing infrastructure for later work.
