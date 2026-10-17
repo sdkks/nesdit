@@ -48,25 +48,39 @@ func natsEvent(ctx context.Context, record natsinspect.Record, pretty, color boo
 }
 
 func natsQueriedEvent(ctx context.Context, record natsinspect.Record, pretty, color bool, filter, project *query.Inspection) ([]byte, []display.Span, error) {
+	return natsDecodedEvent(ctx, record, pretty, color, filter, project, nil)
+}
+
+// A nil decoder preserves the JSON path, including its ordering and limits.
+func natsDecodedEvent(ctx context.Context, record natsinspect.Record, pretty, color bool, filter, project *query.Inspection, decode func(context.Context, []byte) (omap.Value, error)) ([]byte, []display.Span, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
 	if len(record.Data) > 10<<20 || record.HeaderBytes > 64<<10 || len(record.Subject) > 4096 || len(record.Reply) > 4096 {
 		return nil, nil, errors.New("resource: admitted payload or metadata exceeds limit")
 	}
-	valid := json.Valid(record.Data)
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
-	}
-	if !valid {
-		return nil, nil, errors.New("decode: expected one complete JSON value")
-	}
-	payload, err := jsonfmt.DecodeValueWithLimits(bytes.NewReader(record.Data), format.DefaultLimits())
-	if ctx.Err() != nil {
-		return nil, nil, ctx.Err()
-	}
-	if err != nil {
-		return nil, nil, errors.New("decode: invalid JSON value or nesting limit exceeded")
+	var payload omap.Value
+	var err error
+	if decode != nil {
+		payload, err = decode(ctx, record.Data)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		valid := json.Valid(record.Data)
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
+		if !valid {
+			return nil, nil, errors.New("decode: expected one complete JSON value")
+		}
+		payload, err = jsonfmt.DecodeValueWithLimits(bytes.NewReader(record.Data), format.DefaultLimits())
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		if err != nil {
+			return nil, nil, errors.New("decode: invalid JSON value or nesting limit exceeded")
+		}
 	}
 	if filter != nil {
 		match, err := filter.Predicate(ctx, payload)

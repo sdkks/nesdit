@@ -344,6 +344,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				if process != nil {
 					stop = process.stop
 				}
+				natsOpts.protobuf = protobufOpts
 				return runNATS(opts, natsOpts, stop, natsinspect.OpenSecure)
 			}
 			limits := format.Limits{
@@ -543,9 +544,14 @@ query, format, presentation, editing, timeout or resource flags. All descriptor
 imports and Any targets must be local. See the Protobuf inspection guide for
 mapping, conservative limits and cooperative versus process-stop behavior.
 
-Live Core NATS JSON observation (reads neither input documents nor stdin):
+Live Core NATS observation (JSON default; reads neither input documents nor stdin):
   nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \
     --filter '.show == true' --project '{id: .id}'
+For Protobuf, add --nats-codec protobuf --descriptor-set schemas/events.pb
+--message-type example.Order. The local schema is prepared before connection and
+the duration starts; no codec or framing is guessed. Schema flags are invalid
+with JSON. Output remains subject, headers, payload, unlike standalone values.
+The shared Protobuf component limits apply, plus the 16 MiB final event limit.
 Server and positive total duration are required; count is optional and counts
 messages admitted before filtering, not matches or all publications. Queries see
 the body root: use .id, not the displayed .payload.id. --filter requires exactly

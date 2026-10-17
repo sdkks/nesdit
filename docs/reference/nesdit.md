@@ -37,9 +37,14 @@ query, format, presentation, editing, timeout or resource flags. All descriptor
 imports and Any targets must be local. See the Protobuf inspection guide for
 mapping, conservative limits and cooperative versus process-stop behavior.
 
-Live Core NATS JSON observation (reads neither input documents nor stdin):
+Live Core NATS observation (JSON default; reads neither input documents nor stdin):
   nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \
     --filter '.show == true' --project '{id: .id}'
+For Protobuf, add --nats-codec protobuf --descriptor-set schemas/events.pb
+--message-type example.Order. The local schema is prepared before connection and
+the duration starts; no codec or framing is guessed. Schema flags are invalid
+with JSON. Output remains subject, headers, payload, unlike standalone values.
+The shared Protobuf component limits apply, plus the 16 MiB final event limit.
 Server and positive total duration are required; count is optional and counts
 messages admitted before filtering, not matches or all publications. Queries see
 the body root: use .id, not the displayed .payload.id. --filter requires exactly
@@ -91,7 +96,8 @@ nesdit [flags] <file> [<file>...]
       --max-query-bytes int         reject query files (--from-file) larger than this many bytes; 0 disables the cap (default 1048576)
       --max-yaml-nodes int          YAML node-materialisation cap (billion-laughs mitigation); 0 disables the cap (default 100000)
       --message-type string         Protobuf: required exact fully qualified message name (no leading dot or URL)
-      --nats string                 NATS: observe one live JSON subject expression; reads neither input documents nor stdin
+      --nats string                 NATS: observe one live subject expression; reads neither input documents nor stdin
+      --nats-codec string           NATS: payload codec json or protobuf; protobuf requires --descriptor-set and --message-type (default "json")
       --nats-output string          NATS: auto (terminal pretty, redirected JSONL), jsonl, or pretty (multiline documents) (default "auto")
       --output-format string        output format (json|yaml|toml); defaults to same as input format when not specified. jsonl is not a valid output format: JSONL output happens automatically when the input format is jsonl (one output line per input line). When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)
       --pretty                      emit human-friendly TOML output: multi-line arrays, expanded tables, blank lines between entries (currently only affects TOML output)

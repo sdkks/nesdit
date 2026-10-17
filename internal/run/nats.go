@@ -17,11 +17,15 @@ import (
 	"github.com/sdkks/nesdit/internal/display"
 	"github.com/sdkks/nesdit/internal/logx"
 	"github.com/sdkks/nesdit/internal/natsinspect"
+	"github.com/sdkks/nesdit/internal/omap"
+	"github.com/sdkks/nesdit/internal/protobufview"
 	"github.com/sdkks/nesdit/internal/query"
 )
 
 type natsOptions struct {
 	subject, server, output string
+	codec                   string
+	protobuf                protobufOptions
 	filter, project         string
 	filterSet, projectSet   bool
 	duration                time.Duration
@@ -35,7 +39,8 @@ func (n *natsOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&n.ca, "tls-ca", "", "NATS: PEM CA file (regular, at most 1 MiB); requires tls://; omitted uses system trust")
 	cmd.Flags().StringVar(&n.cert, "tls-cert", "", "NATS: PEM client certificate file (regular, at most 1 MiB); requires --tls-key and tls://")
 	cmd.Flags().StringVar(&n.key, "tls-key", "", "NATS: PEM client private key file (regular, at most 1 MiB); requires --tls-cert and tls://")
-	cmd.Flags().StringVar(&n.subject, "nats", "", "NATS: observe one live JSON subject expression; reads neither input documents nor stdin")
+	cmd.Flags().StringVar(&n.codec, "nats-codec", "json", "NATS: payload codec json or protobuf; protobuf requires --descriptor-set and --message-type")
+	cmd.Flags().StringVar(&n.subject, "nats", "", "NATS: observe one live subject expression; reads neither input documents nor stdin")
 	cmd.Flags().StringVar(&n.server, "server", "", "NATS: required explicit nats://host:port or tls://host:port")
 	cmd.Flags().DurationVar(&n.duration, "duration", 0, "NATS: required total observation limit including connection setup; not an idle timeout")
 	cmd.Flags().Uint64Var(&n.count, "count", 0, "NATS: stop after N messages admitted for processing, before filtering; may show fewer events")
@@ -49,7 +54,7 @@ func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 	selected := cmd.Flags().Changed("nats")
 	var conflict error
 	cmd.Flags().Visit(func(f *pflag.Flag) {
-		isNATS := f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output" || f.Name == "filter" || f.Name == "project" || f.Name == "creds" || f.Name == "tls-ca" || f.Name == "tls-cert" || f.Name == "tls-key"
+		isNATS := f.Name == "nats-codec" || f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output" || f.Name == "filter" || f.Name == "project" || f.Name == "creds" || f.Name == "tls-ca" || f.Name == "tls-cert" || f.Name == "tls-key"
 		if !selected && isNATS {
 			if f.Name == "filter" || f.Name == "project" {
 				conflict = errors.New("inspection flags require --nats, --protobuf-file or --protobuf-stdin")
@@ -57,7 +62,7 @@ func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 				conflict = errors.New("NATS flags require --nats")
 			}
 		}
-		if selected && !isNATS && f.Name != "log-format" {
+		if selected && !isNATS && f.Name != "log-format" && f.Name != "descriptor-set" && f.Name != "message-type" {
 			hint := ""
 			if f.Name == "where" {
 				hint = "; use --filter to suppress nonmatching messages"
@@ -79,6 +84,9 @@ func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 	}
 	if !selected {
 		return nil
+	}
+	if n.codec != "json" && n.codec != "protobuf" {
+		return errors.New("--nats-codec must be json or protobuf")
 	}
 	if len(args) != 0 {
 		return errors.New("--nats accepts no file arguments")
@@ -161,12 +169,19 @@ func runNATS(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen) (res
 			return fmt.Errorf("project: %w", err)
 		}
 	}
+	var decode func(context.Context, []byte) (omap.Value, error)
+	if n.codec == "protobuf" {
+		decode, err = protobufview.Prepare(ctx, n.protobuf.descriptor, n.protobuf.message)
+		if err != nil {
+			return fmt.Errorf("prepare: %w", err)
+		}
+	}
 	n.security, err = prepareNATSSecurity(ctx, n)
 	if err != nil {
 		return err
 	}
 	return runNATSWithRenderer(opts, n, stop, open, func(ctx context.Context, r natsinspect.Record, pretty, color bool) ([]byte, []display.Span, error) {
-		return natsQueriedEvent(ctx, r, pretty, color, filter, project)
+		return natsDecodedEvent(ctx, r, pretty, color, filter, project, decode)
 	})
 }
 

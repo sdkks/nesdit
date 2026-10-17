@@ -97,7 +97,22 @@ nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
   --filter '.show == true' --project '{id: .id}'
 ```
 
-This explicit mode reads neither input documents nor stdin. It displays each complete JSON
+JSON is the default (`--nats-codec json`). To inspect Protobuf instead:
+
+```sh
+nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \
+  --nats-codec protobuf --descriptor-set schemas/events.pb --message-type example.Order \
+  --filter '.active == true' --project '{id: .id}'
+```
+
+Both schema options are required for native Protobuf and rejected with JSON.
+The self-contained local descriptor and exact type are prepared before connecting
+and starting the total duration. The same Protobuf mapping and component limits
+as standalone apply, but native output is an envelope, not a bare value; the
+whole event must fit 16 MiB including headers, whitespace and final LF. Ordinary
+empty Protobuf can succeed; a bodyless `Status: 503` remains a failure.
+
+This explicit mode reads neither input documents nor stdin. It displays each decoded
 message with its delivered subject and repeated headers, using pretty JSON on a
 Unix terminal and JSONL when redirected. Server and total duration are required;
 count is an optional cap on messages admitted **before filtering**, not matches or

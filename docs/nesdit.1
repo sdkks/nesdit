@@ -258,13 +258,32 @@ See the Protobuf guide for full limits and cancellation qualifications.
 .SH NATS OBSERVATION
 .B nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
 .PP
-Observe live Core NATS JSON without reading input documents or stdin. Server and positive
+Observe live Core NATS without reading input documents or stdin. JSON is the default.
+Server and positive
 finite total duration are required; duration includes connection setup, not just
 idle time. The optional positive count limits messages admitted for processing,
 not every publication or the number successfully displayed. Admission happens
 before decoding/filtering; a malformed message or false predicate consumes a slot.
 No reconnect, queue group, history or publishing is performed.
 File editing/query flags are rejected; use --filter and --project instead.
+.TP
+.B --nats-codec json|protobuf
+Select the payload codec; defaults to json, with no guessing. Protobuf requires
+both --descriptor-set FILE and --message-type NAME. Use a separate self-contained
+local binary FileDescriptorSet and exact full message name, without leading dot
+or URL. Include imports and Any targets locally; no registry lookup or compiler
+is used. Schema options are invalid with JSON or legacy file/pipe input, and
+--nats-codec is invalid without --nats or with standalone Protobuf.
+.PP
+Schema preparation runs once under cancellation before connection and the total
+duration clock. Protobuf bodies are raw, without prefix stripping or framing.
+Standard ProtoJSON mapping, sorted object keys, WKT/Any/extensions and all shared
+Protobuf component limits described above apply. Queries see the decoded root,
+including scalar roots. Unlike standalone output, Core retains its transport
+envelope; headers, layout and LF count toward the separate 16 MiB final event cap.
+Ordinary zero-byte Protobuf can succeed when the type permits it; bodyless
+Status: 503 fails before decoding. Malformed wire data and missing required
+fields fail, not quiet success. JSON payload order remains unchanged.
 .PP
 .B --filter '.show == true' --project '{id: .id}'
 selects and projects at the payload root: use .id, not the displayed .payload.id.
@@ -279,12 +298,12 @@ Without filtering every decoded message matches; without projection the original
 decoded payload bypasses gojq. Queries use floating-point decimal/exponent numbers
 and machine/big integers, not universal numeric precision. Expressions compile
 once before connection; blank, invalid or oversized expressions fail locally.
-Malformed JSON fails before filtering. Query/encoding failures emit none of that
+Malformed payloads fail before filtering. Query/encoding failures emit none of that
 event and retain earlier output. Three false predicates with count three stop at
 admitted=3, emitted=0, unfinished_event=false; emitted counts fully written events.
 .PP
-Each message must contain one complete JSON value. Multiline bodies and scalars
-work; empty, malformed and concatenated values fail. The JSON envelope contains
+With the default JSON codec, each message must contain one complete JSON value.
+Multiline bodies and scalars work; empty, malformed and concatenated values fail. The JSON envelope contains
 subject, sorted headers with repeated-value arrays, and payload, in that order.
 Payload metadata-like keys remain separate. This is a decoded view, not byte-exact
 capture. Readiness and stop/error diagnostics are on stderr, with admitted/emitted
@@ -331,12 +350,12 @@ delivery guarantee. A quiet ready duration is successful; expiration before
 readiness fails. Detected disconnection, pending overflow, malformed data, resource
 or output errors fail immediately and retain earlier complete output.
 .PP
-Fixed limits: 10 MiB payload, 1000 container depth, eight pending messages and
+Fixed limits: 10 MiB raw payload, 1000 JSON container depth, eight pending messages and
 64 MiB pending payload-only bytes, 64 KiB admitted wire headers, 4 KiB each subject
 and reply, 1 MiB per inline expression, and 16 MiB serialized output including
 whitespace and final newline. Raw projection results are checked before recursive
 conversion: depth 1000, 1,000,000 container/scalar value nodes and 16 MiB aggregate
-key/string bytes. Query compilation and security-file preparation precede the
+key/string bytes. Query compilation, Protobuf schema and security-file preparation precede the
 session timer; evaluation and
 result checks share the session deadline and cancellation.
 At-limit values are allowed. Client frame/header allocations precede application

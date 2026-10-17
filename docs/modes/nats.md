@@ -1,6 +1,6 @@
 # Live Core NATS observation
 
-Observe JSON messages without publishing application messages, creating consumers,
+Observe JSON (the default) or explicitly selected Protobuf messages without publishing application messages, creating consumers,
 joining queue groups, acknowledging work, or changing broker configuration:
 
 ```sh
@@ -13,6 +13,38 @@ named `nats` still works as a positional file. Quote wildcard expressions:
 `orders.*` matches one token after `orders`, while `orders.>` matches one or more,
 not the bare `orders` subject. Empty tokens, embedded wildcards, whitespace and
 control characters are rejected locally.
+
+## Protobuf payloads
+
+```sh
+nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \
+  --nats-codec protobuf --descriptor-set schemas/events.pb --message-type example.Order \
+  --filter '.active == true' --project '{id: .id}'
+```
+
+`--nats-codec json` is the default. Protobuf requires both a separate local binary
+`FileDescriptorSet` and an exact fully qualified message name (no leading dot or
+URL). Include every import and `Any` target in that set. Schema and queries are
+prepared once, under cancellation, before connection and the total duration
+clock. No registry, network schema lookup or runtime compiler is used. Native
+observation never reads stdin. Schema options are rejected with JSON or legacy
+file/pipe modes; `--nats-codec` alone does not select a source and is invalid with
+standalone Protobuf.
+
+Each admitted body is one raw Protobuf message: no codec guessing, prefix removal,
+decompression or framing. An ordinary zero-byte body can produce a valid view
+when its type permits it. A bodyless `Status: 503` still fails before decoding;
+it is not an empty successful observation. Malformed wire data, missing required
+fields, unresolved types and resource violations fail without emitting that event.
+Successful decoding does not prove schema identity or absence of concatenated
+wire encodings.
+
+The [Protobuf guide](protobuf.md) describes the shared standard ProtoJSON mappings,
+local WKT/`Any`/extensions, omitted unknown fields, recursive lexical object-key
+ordering and independent resource limits. Unlike standalone value-only output,
+Core output retains the `subject`, `headers`, `payload` envelope. Queries see the
+decoded root, including scalar roots, not the envelope. Projection cannot change
+transport metadata. JSON payload ordering remains unchanged.
 
 ## Connection and readiness
 
@@ -74,7 +106,7 @@ observation never proves that nothing was published or that delivery was complet
 
 ## Output and fidelity
 
-One complete JSON value in each NATS message becomes one event. Multiline objects,
+With the default JSON codec, one complete JSON value in each NATS message becomes one event. Multiline objects,
 arrays, strings, numbers, booleans and null are accepted. Empty/malformed bodies,
 trailing content and concatenated values fail immediately, retaining earlier
 complete output. A bodyless `Status: 503` message is an empty-JSON error, not a
@@ -93,7 +125,7 @@ but is not displayed. No timestamp or sequence/completeness claim is added.
 
 This is a decoded view, **not byte-exact capture**: whitespace, escape spelling,
 header wire formatting and duplicate JSON keys are not retained as original bytes.
-Payload key order and existing supported value types are preserved. Without
+Payload key order for JSON and existing supported value types are preserved. Without
 projection the full decoded payload bypasses the query engine, even when a filter
 is supplied. This is not an arbitrary-precision promise: numbers must remain
 representable by the existing JSON encoder. Queries normalize decimal/exponent
@@ -126,7 +158,7 @@ headers and collisions with payload fields named `subject` or `headers`.
   expressions fail locally. There are no query-file or argument-binding flags.
   Existing file/pipe `--query` and `--where` are rejected in this mode; their
   conditional passthrough and missing-path safeguards remain unchanged.
-- JSON is validated before filtering. A false predicate cannot hide a malformed
+- The selected codec validates the body before filtering. A false predicate cannot hide a malformed
   body. A failing filter, projection or encoder emits none of that event; earlier
   complete events remain. Diagnostics identify the stage without echoing query
   text, payloads, headers or evaluator error values.
@@ -152,7 +184,7 @@ color flag. Status/diagnostics, help and file serializers remain plain.
 ## Stopping and exit status
 
 The total duration starts just before connection setup, after local validation,
-security-file preparation and query compilation,
+security-file and Protobuf schema preparation and query compilation,
 and includes connect, readiness, receive, decode, filtering, projection, encoding
 and output. It is not
 an idle timeout and never restarts with traffic. Connect and readiness each have
@@ -194,8 +226,8 @@ context, and receives cooperative cancellation only.
 
 | Component | Maximum accepted value |
 | --- | --- |
-| Admitted JSON payload | 10 MiB (10,485,760 bytes) |
-| Payload container depth | 1000; root scalar has depth zero |
+| Admitted raw payload (JSON or Protobuf) | 10 MiB (10,485,760 bytes) |
+| JSON payload container depth | 1000; root scalar has depth zero |
 | Client pending queue | 8 messages and 64 MiB **payload-only** bytes |
 | Admitted wire header block | 64 KiB (65,536 bytes) |
 | Subject / reply routing strings | 4 KiB (4096 bytes) each |
@@ -203,6 +235,15 @@ context, and receives cooperative cancellation only.
 | Inline filter / projection | 1 MiB (1,048,576 bytes) each, before compilation |
 | Raw projection result | Depth 1000, 1,000,000 value nodes, 16 MiB aggregate key/string bytes |
 | Serialized event | 16 MiB (16,777,216 bytes), including layout and final LF |
+
+Protobuf additionally uses the shared descriptor limit (4 MiB, 256 files, 10,000
+declarations, depth 100), independent decoded/expanded and JSON-view budgets
+(depth 100, 1,000,000 nodes, 16 MiB key/string bytes each), 10 MiB aggregate expanded
+`Any` wire bytes and a conservative 16 MiB pre-Marshal size certificate. That
+certificate can reject a value whose actual JSON would fit. These checks precede
+queries; filtering cannot rescue over-limit decoding. The final **envelope**, with
+headers, layout and LF, must independently fit the 16 MiB event cap. See the
+[shared limits](protobuf.md#fixed-limits) for accounting details.
 
 At-limit values are allowed; one over fails without truncation. Pretty indentation
 can exceed the event limit where compact output fits. The event is fully validated
