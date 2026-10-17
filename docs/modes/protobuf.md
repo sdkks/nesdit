@@ -18,6 +18,12 @@ fully qualified name, without a leading dot or URL. Obtain a binary
 ordinary and option-only import, well-known type and possible `Any` target.
 nesdit does not compile `.proto` files, use an ambient registry or fetch schemas.
 
+For broker payloads, select [live Core observation](nats.md#protobuf-payloads) or
+[consumer-free retained history](nats-history.md#json-or-explicit-protobuf), then add
+`--nats-codec protobuf` and the same descriptor/type options. Those native modes
+require a total duration and emit broker envelopes; the standalone workflow below
+has neither a broker envelope nor an overall timer.
+
 ## Choose exactly one input
 
 - `--protobuf-file FILE` selects one readable regular file. Commas in its name

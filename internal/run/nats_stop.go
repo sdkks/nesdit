@@ -61,10 +61,10 @@ func (s *natsStop) failure(message string) {
 }
 
 // Incomplete emission and synchronous adapter errors captured before deliberate
-// teardown cannot be reported as normal duration/count completion.
+// teardown cannot be reported as normal duration/count/exhaustion completion.
 func (s *natsStop) incomplete(message string) {
 	s.mu.Lock()
-	if !s.finished && (s.reason == "duration" || s.reason == "count") {
+	if !s.finished && (s.reason == "duration" || s.reason == "count" || s.reason == "exhaustion") {
 		s.reason, s.message, s.code = "failure", message, 1
 	}
 	s.mu.Unlock()

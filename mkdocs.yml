@@ -43,6 +43,7 @@ nav:
     - Stdout (default): modes/stdout.md
     - Protobuf inspection: modes/protobuf.md
     - NATS observation: modes/nats.md
+    - JetStream history: modes/nats-history.md
     - STDIN stream: modes/stdin.md
     - Dry-run (-n): modes/dryrun.md
     - Check (--check): modes/check.md

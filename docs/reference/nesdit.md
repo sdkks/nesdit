@@ -37,6 +37,29 @@ query, format, presentation, editing, timeout or resource flags. All descriptor
 imports and Any targets must be local. See the Protobuf inspection guide for
 mapping, conservative limits and cooperative versus process-stop behavior.
 
+Retained JetStream history (consumer-free; JSON default):
+  nesdit --nats-history ORDERS --subject 'orders.>' --start-seq 1 \
+    --server nats://127.0.0.1:4222 --duration 30s --count 20
+Choose exactly one inclusive --start-seq or timezone-qualified --start-time;
+optional --end-seq narrows the initial stream end. Time precision is at most
+nanoseconds, within 1677-09-21T00:12:43.145224192Z through
+2262-04-11T23:47:16.854775807Z inclusive. Later publications do not extend the range.
+Add the same --nats-codec protobuf and schema flags for raw Protobuf history.
+Output adds stream, decimal-string sequence and UTC stored_time before subject,
+headers, payload. Queries still see only the decoded payload root. Stored Status
+headers are data, unlike Core's bodyless-503 sentinel.
+History requires stable NATS 2.15.x (from 2.15.0), default account-local API routing,
+and a standalone server or homogeneous same-series cluster. Runtime version checks
+do not certify every future leader; cluster homogeneity is an external precondition.
+INFO/GET request publication plus reply-inbox subscription authority is required;
+GET is stream-level, not a subject ACL. No consumers, ACKs, application publication,
+stream changes, direct reads, reconnect or fallback. Reads neither files nor stdin.
+Initial INFO establishes readiness. Empty/no-match/range exhaustion succeeds with
+reason=exhaustion, not a completeness guarantee: retention creates gaps and stream
+replacement is only detected at checks. Count/duration stops may leave unread data.
+History-only flags are invalid in other modes. See the history guide for protocol
+limits, retention caveats, permissions and stopping behavior.
+
 Live Core NATS observation (JSON default; reads neither input documents nor stdin):
   nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \
     --filter '.show == true' --project '{id: .id}'
@@ -84,6 +107,7 @@ nesdit [flags] <file> [<file>...]
   -n, --dry-run                     emit a unified diff of before/after to stdout; do not write any file
       --duration duration           NATS: required total observation limit including connection setup; not an idle timeout
       --edit                        open $EDITOR on a temp copy of the file; diff before/after and emit suggested query
+      --end-seq uint                History: optional positive inclusive end sequence; initial stream end always bounds reads
       --filter string               Inspection: decoded-root predicate returning exactly one boolean; false suppresses
       --format string               force input format (json|jsonl|yaml|toml); default is extension-based detection
   -f, --from-file string            load query from file (mutually exclusive with --query)
@@ -98,6 +122,7 @@ nesdit [flags] <file> [<file>...]
       --message-type string         Protobuf: required exact fully qualified message name (no leading dot or URL)
       --nats string                 NATS: observe one live subject expression; reads neither input documents nor stdin
       --nats-codec string           NATS: payload codec json or protobuf; protobuf requires --descriptor-set and --message-type (default "json")
+      --nats-history string         NATS: inspect bounded retained history from an explicit stream without consumers (2.15.x only)
       --nats-output string          NATS: auto (terminal pretty, redirected JSONL), jsonl, or pretty (multiline documents) (default "auto")
       --output-format string        output format (json|yaml|toml); defaults to same as input format when not specified. jsonl is not a valid output format: JSONL output happens automatically when the input format is jsonl (one output line per input line). When outputting toml with multiple documents, documents are separated by +++ (Hugo-style convention; not TOML spec)
       --pretty                      emit human-friendly TOML output: multi-line arrays, expanded tables, blank lines between entries (currently only affects TOML output)
@@ -106,7 +131,10 @@ nesdit [flags] <file> [<file>...]
       --protobuf-stdin              Protobuf: explicitly read one raw message through EOF from stdin; no overall timer
       --query string                jq-style query (default '.' identity when neither --query nor -f is given)
       --server string               NATS: required explicit nats://host:port or tls://host:port
+      --start-seq uint              History: inclusive positive starting sequence; exactly one of --start-seq/--start-time
+      --start-time string           History: inclusive stored time, timezone-qualified RFC3339, at most nanoseconds, within signed Unix-nanosecond range
       --strict                      halt on the first document error (default behaviour; explicit alias for documentation)
+      --subject string              History: required subject pattern; explicit > selects all
       --timeout duration            cancel the query after this duration (e.g. 500ms, 30s); 0 disables the cap
       --tls-ca string               NATS: PEM CA file (regular, at most 1 MiB); requires tls://; omitted uses system trust
       --tls-cert string             NATS: PEM client certificate file (regular, at most 1 MiB); requires --tls-key and tls://
@@ -115,4 +143,4 @@ nesdit [flags] <file> [<file>...]
       --yaml-version string         YAML dialect for boolean coercion: 1.1 (yes/no/on/off as bools) or 1.2 (true/false only; default) (default "1.2")
 ```
 
-###### Auto generated by spf13/cobra on 17-Oct-2026
+###### Auto generated by spf13/cobra on 18-Oct-2026

@@ -14,6 +14,11 @@ named `nats` still works as a positional file. Quote wildcard expressions:
 not the bare `orders` subject. Empty tokens, embedded wildcards, whitespace and
 control characters are rejected locally.
 
+Use [consumer-free JetStream history](nats-history.md) instead when you need retained
+records with explicit sequence/time bounds. History is a separate selector with
+its own server-version and INFO/GET permission requirements; it does not change
+Core's live envelope or support policy.
+
 ## Protobuf payloads
 
 ```sh

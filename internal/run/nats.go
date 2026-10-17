@@ -23,6 +23,9 @@ import (
 )
 
 type natsOptions struct {
+	history                 natsinspect.HistoryOptions
+	historySelected         bool
+	startTime               string
 	subject, server, output string
 	codec                   string
 	protobuf                protobufOptions
@@ -34,7 +37,24 @@ type natsOptions struct {
 	security                natsinspect.Security
 }
 
+func nativeSelected(cmd *cobra.Command) bool {
+	return cmd.Flags().Changed("nats") || cmd.Flags().Changed("nats-history")
+}
+
+func historyFlag(name string) bool {
+	switch name {
+	case "nats-history", "subject", "start-seq", "start-time", "end-seq":
+		return true
+	}
+	return false
+}
+
 func (n *natsOptions) flags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&n.history.Stream, "nats-history", "", "NATS: inspect bounded retained history from an explicit stream without consumers (2.15.x only)")
+	cmd.Flags().StringVar(&n.history.Subject, "subject", "", "History: required subject pattern; explicit > selects all")
+	cmd.Flags().Uint64Var(&n.history.StartSeq, "start-seq", 0, "History: inclusive positive starting sequence; exactly one of --start-seq/--start-time")
+	cmd.Flags().StringVar(&n.startTime, "start-time", "", "History: inclusive stored time, timezone-qualified RFC3339, at most nanoseconds, within signed Unix-nanosecond range")
+	cmd.Flags().Uint64Var(&n.history.EndSeq, "end-seq", 0, "History: optional positive inclusive end sequence; initial stream end always bounds reads")
 	cmd.Flags().StringVar(&n.creds, "creds", "", "NATS: JWT/NKey credentials file (regular, at most 1 MiB); requires tls://")
 	cmd.Flags().StringVar(&n.ca, "tls-ca", "", "NATS: PEM CA file (regular, at most 1 MiB); requires tls://; omitted uses system trust")
 	cmd.Flags().StringVar(&n.cert, "tls-cert", "", "NATS: PEM client certificate file (regular, at most 1 MiB); requires --tls-key and tls://")
@@ -51,15 +71,23 @@ func (n *natsOptions) flags(cmd *cobra.Command) {
 
 func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 	n.filterSet, n.projectSet = cmd.Flags().Changed("filter"), cmd.Flags().Changed("project")
-	selected := cmd.Flags().Changed("nats")
+	selected := nativeSelected(cmd)
+	n.historySelected = cmd.Flags().Changed("nats-history")
+	if n.historySelected && cmd.Flags().Changed("nats") {
+		return errors.New("--nats and --nats-history are mutually exclusive")
+	}
 	var conflict error
 	cmd.Flags().Visit(func(f *pflag.Flag) {
-		isNATS := f.Name == "nats-codec" || f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output" || f.Name == "filter" || f.Name == "project" || f.Name == "creds" || f.Name == "tls-ca" || f.Name == "tls-cert" || f.Name == "tls-key"
+		isHistory := historyFlag(f.Name)
+		if isHistory && !n.historySelected {
+			conflict = fmt.Errorf("--%s requires --nats-history", f.Name)
+		}
+		isNATS := isHistory || f.Name == "nats-codec" || f.Name == "nats" || f.Name == "server" || f.Name == "duration" || f.Name == "count" || f.Name == "nats-output" || f.Name == "filter" || f.Name == "project" || f.Name == "creds" || f.Name == "tls-ca" || f.Name == "tls-cert" || f.Name == "tls-key"
 		if !selected && isNATS {
 			if f.Name == "filter" || f.Name == "project" {
-				conflict = errors.New("inspection flags require --nats, --protobuf-file or --protobuf-stdin")
+				conflict = errors.New("inspection flags require --nats, --nats-history, --protobuf-file or --protobuf-stdin")
 			} else {
-				conflict = errors.New("NATS flags require --nats")
+				conflict = errors.New("NATS flags require --nats or --nats-history")
 			}
 		}
 		if selected && !isNATS && f.Name != "log-format" && f.Name != "descriptor-set" && f.Name != "message-type" {
@@ -76,7 +104,7 @@ func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 			if f.Name == "pretty" || f.Name == "output-format" {
 				hint = "; use --nats-output"
 			}
-			conflict = fmt.Errorf("--%s is not supported with --nats%s", f.Name, hint)
+			conflict = fmt.Errorf("--%s is not supported with native NATS inspection%s", f.Name, hint)
 		}
 	})
 	if conflict != nil {
@@ -89,16 +117,35 @@ func (n *natsOptions) validate(cmd *cobra.Command, args []string) error {
 		return errors.New("--nats-codec must be json or protobuf")
 	}
 	if len(args) != 0 {
-		return errors.New("--nats accepts no file arguments")
+		return errors.New("native NATS inspection accepts no file arguments")
 	}
 	if !cmd.Flags().Changed("server") || !cmd.Flags().Changed("duration") || n.duration <= 0 {
-		return errors.New("--nats requires --server and a positive --duration")
+		return errors.New("native NATS inspection requires --server and a positive --duration")
 	}
 	if cmd.Flags().Changed("count") && n.count == 0 {
 		return errors.New("--count must be positive")
 	}
 	if n.output != "auto" && n.output != "jsonl" && n.output != "pretty" {
 		return errors.New("--nats-output must be auto, jsonl, or pretty")
+	}
+	if n.historySelected {
+		if !cmd.Flags().Changed("subject") || cmd.Flags().Changed("start-seq") == cmd.Flags().Changed("start-time") {
+			return errors.New("--nats-history requires --subject and exactly one --start-seq or --start-time")
+		}
+		if cmd.Flags().Changed("end-seq") && n.history.EndSeq == 0 {
+			return errors.New("--end-seq must be positive")
+		}
+		if cmd.Flags().Changed("start-time") {
+			var err error
+			n.history.StartTime, err = natsinspect.ParseHistoryTime(n.startTime)
+			if err != nil {
+				return err
+			}
+		}
+		if err := n.history.Validate(); err != nil {
+			return err
+		}
+		n.subject = n.history.Subject
 	}
 	if n.subject == "" || len(n.subject) > 4096 || strings.ContainsFunc(n.subject, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
 		return errors.New("invalid NATS subject: use nonempty tokens without whitespace, at most 4 KiB")
@@ -180,6 +227,11 @@ func runNATS(opts RunOptions, n natsOptions, stop *natsStop, open natsOpen) (res
 	if err != nil {
 		return err
 	}
+	if n.historySelected {
+		open = func(ctx context.Context, server, _ string, security natsinspect.Security, onFailure func(error)) (natsinspect.Session, error) {
+			return natsinspect.OpenHistory(ctx, server, n.history, security, onFailure)
+		}
+	}
 	return runNATSWithRenderer(opts, n, stop, open, func(ctx context.Context, r natsinspect.Record, pretty, color bool) ([]byte, []display.Span, error) {
 		return natsDecodedEvent(ctx, r, pretty, color, filter, project, decode)
 	})
@@ -213,7 +265,11 @@ func runNATSWithRenderer(opts RunOptions, n natsOptions, stop *natsStop, open na
 		pretty := n.output == "pretty" || (n.output == "auto" && display.Terminal(opts.Stdout))
 		color := display.Enabled(opts.Stdout)
 		ready = true
-		if err = opts.Logger.Emit(logx.Record{Sev: logx.SeverityInfo, Event: logx.EventNATSReady, Msg: "Ready for live observation; delivery is at-most-once"}); err != nil {
+		readyMessage := "Ready for live observation; delivery is at-most-once"
+		if n.historySelected {
+			readyMessage = "History ready; retained range bounded by initial stream state"
+		}
+		if err = opts.Logger.Emit(logx.Record{Sev: logx.SeverityInfo, Event: logx.EventNATSReady, Msg: readyMessage}); err != nil {
 			stop.incomplete("write: readiness diagnostic failed")
 		}
 		for ctx.Err() == nil {
@@ -222,17 +278,33 @@ func runNATSWithRenderer(opts RunOptions, n natsOptions, stop *natsStop, open na
 				break
 			}
 			record, recvErr := session.Next(ctx)
-			if ctx.Err() != nil {
+			if failure := session.Err(); failure != nil {
+				stop.incomplete(failure.Error())
+				break
+			}
+			if errors.Is(recvErr, natsinspect.ErrExhausted) {
+				if ctx.Err() == nil {
+					stop.request("exhaustion", "", 0)
+				}
 				break
 			}
 			if errors.Is(recvErr, natsinspect.ErrEmptyPayload) {
 				admitted++
 				unfinished = true
-				stop.failure(recvErr.Error())
+				stop.incomplete(recvErr.Error())
 				break
 			}
 			if recvErr != nil {
-				stop.failure("delivery: receive failed")
+				if ctx.Err() == nil || (!errors.Is(recvErr, context.Canceled) && !errors.Is(recvErr, context.DeadlineExceeded)) {
+					message := "delivery: receive failed"
+					if n.historySelected {
+						message = recvErr.Error()
+					}
+					stop.incomplete(message)
+				}
+				break
+			}
+			if ctx.Err() != nil {
 				break
 			}
 			admitted++
@@ -240,7 +312,7 @@ func runNATSWithRenderer(opts RunOptions, n natsOptions, stop *natsStop, open na
 			data, spans, eventErr := render(ctx, record, pretty, color)
 			if eventErr != nil {
 				if !errors.Is(eventErr, context.Canceled) && !errors.Is(eventErr, context.DeadlineExceeded) {
-					stop.failure(eventErr.Error())
+					stop.incomplete(eventErr.Error())
 				}
 				break
 			}

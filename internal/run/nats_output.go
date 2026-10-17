@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
+	"time"
 
 	"github.com/sdkks/nesdit/internal/display"
 	"github.com/sdkks/nesdit/internal/format"
@@ -68,18 +70,18 @@ func natsDecodedEvent(ctx context.Context, record natsinspect.Record, pretty, co
 		}
 	} else {
 		valid := json.Valid(record.Data)
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
-		}
 		if !valid {
 			return nil, nil, errors.New("decode: expected one complete JSON value")
 		}
-		payload, err = jsonfmt.DecodeValueWithLimits(bytes.NewReader(record.Data), format.DefaultLimits())
-		if ctx.Err() != nil {
-			return nil, nil, ctx.Err()
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
 		}
+		payload, err = jsonfmt.DecodeValueWithLimits(bytes.NewReader(record.Data), format.DefaultLimits())
 		if err != nil {
 			return nil, nil, errors.New("decode: invalid JSON value or nesting limit exceeded")
+		}
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
 		}
 	}
 	if filter != nil {
@@ -111,6 +113,11 @@ func natsDecodedEvent(ctx context.Context, record natsinspect.Record, pretty, co
 		headers.Set(key, omap.Value{Kind: omap.KindSeq, Seq: values})
 	}
 	envelope := omap.New()
+	if record.History != nil {
+		envelope.Set("stream", omap.StrValue(record.History.Stream))
+		envelope.Set("sequence", omap.StrValue(strconv.FormatUint(record.History.Sequence, 10)))
+		envelope.Set("stored_time", omap.StrValue(record.History.StoredTime.UTC().Format(time.RFC3339Nano)))
+	}
 	envelope.Set("subject", omap.StrValue(record.Subject))
 	envelope.Set("headers", omap.MapValue(headers))
 	envelope.Set("payload", payload)

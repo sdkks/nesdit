@@ -1,4 +1,4 @@
-// Package natsinspect owns a single temporary, read-only Core NATS subscription.
+// Package natsinspect owns temporary Core subscriptions and consumer-free history reads.
 package natsinspect
 
 import (
@@ -29,6 +29,7 @@ type Record struct {
 	Headers        map[string][]string
 	Data           []byte
 	HeaderBytes    int
+	History        *HistoryMetadata
 }
 
 // Session has no publishing or administrative operations.
@@ -115,7 +116,7 @@ func openWithDial(ctx context.Context, server, subject string, onFailure func(er
 	return openConfigured(ctx, server, subject, onFailure, Security{TLS: trust}, dial)
 }
 
-func openConfigured(ctx context.Context, server, subject string, onFailure func(error), security Security, dial func(context.Context, string, string) (net.Conn, error)) (Session, error) {
+func connectConfigured(ctx context.Context, server string, onFailure func(error), security Security, dial func(context.Context, string, string) (net.Conn, error)) (*client, error) {
 	opts := nats.GetDefaultOptions()
 	if len(security.Credentials) > 0 {
 		if err := nats.UserCredentialBytes(security.Credentials)(&opts); err != nil {
@@ -166,6 +167,15 @@ func openConfigured(ctx context.Context, server, subject string, onFailure func(
 		c.Close()
 		return nil, startupError(err, "connect")
 	}
+	return c, nil
+}
+
+func openConfigured(ctx context.Context, server, subject string, onFailure func(error), security Security, dial func(context.Context, string, string) (net.Conn, error)) (Session, error) {
+	c, err := connectConfigured(ctx, server, onFailure, security, dial)
+	if err != nil {
+		return nil, err
+	}
+	nc := c.nc
 	sub, err := nc.SubscribeSync(subject)
 	if err == nil {
 		c.mu.Lock()
@@ -285,6 +295,15 @@ func (c *client) Next(ctx context.Context) (Record, error) {
 		return Record{}, ErrEmptyPayload
 	}
 	if err != nil {
+		// Intentional context teardown can close the receive channel before the
+		// client's context select wins. Preserve real latched failures, but do
+		// not turn that cancellation-generated close into a delivery failure.
+		if ctx.Err() != nil && (errors.Is(err, nats.ErrConnectionClosed) || errors.Is(err, nats.ErrBadSubscription)) {
+			if failure := c.Err(); failure != nil {
+				return Record{}, failure
+			}
+			return Record{}, ctx.Err()
+		}
 		return Record{}, err
 	}
 	return Record{Subject: m.Subject, Reply: m.Reply, Headers: m.Header, Data: m.Data,

@@ -143,6 +143,34 @@ Interrupt/output failure can leave a partial final record; check exit status.
 See the [NATS guide](docs/modes/nats.md) for limits, verified TLS, cancellation,
 output modes, and disposable-broker testing.
 
+## Retained JetStream history
+
+```sh
+nesdit --nats-history ORDERS --subject 'orders.>' --start-seq 1 \
+  --server nats://127.0.0.1:4222 --duration 30s --count 20
+```
+
+Read retained JSON by default, without creating/binding/pulling/acknowledging
+consumers or changing stream configuration. For Protobuf, add `--nats-codec protobuf`,
+`--descriptor-set schemas/events.pb` and `--message-type example.Order`; the same
+local decoder and payload-root queries apply. History reads neither stdin nor files.
+
+Choose exactly one inclusive positive sequence or timezone-qualified `--start-time`
+(with at most nine fractional digits and within the signed Unix-nanosecond range).
+Optional `--end-seq` narrows the initial stream end; later publications never extend
+that bound. Count is admitted-before-filter. Output adds trustworthy `stream`,
+decimal-string `sequence` and UTC `stored_time` before `subject`, `headers`, `payload`.
+Stored Status headers are data, unlike Core's bodyless-503 sentinel.
+
+History requires stable NATS **2.15.x from 2.15.0**, the default account API route,
+and a standalone server or externally assured homogeneous same-series cluster.
+Authority is INFO/GET request publication plus reply-inbox subscription; GET is
+stream-level, not subject-isolated. There is no direct/consumer/reconnect fallback.
+Normal exhaustion is not proof of complete history: retention creates gaps, and
+stream replacement is only detected at checks. See the [history guide](docs/modes/nats-history.md)
+for exact time bounds, permissions, limits, metadata and count/duration/exhaustion
+semantics. Core observation retains its existing server support policy.
+
 ## Supported formats
 
 | Format | Extensions      | Notes                       |

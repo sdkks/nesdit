@@ -255,6 +255,82 @@ Windows interrupt bound is claimed. Success exits 0, failure 1, interruption 130
 Read/decode/query/encoding failures emit no value; external write failure can
 leave partial bytes. Diagnostics identify stages without quoting input contents.
 See the Protobuf guide for full limits and cancellation qualifications.
+.SH JETSTREAM HISTORY
+.B nesdit --nats-history ORDERS --subject 'orders.>' --start-seq 1 --server nats://127.0.0.1:4222 --duration 30s
+.PP
+Read bounded retained JSON through standard leader INFO/GET, without creating,
+binding, pulling or acknowledging consumers, advancing existing consumer positions,
+changing stream configuration or republishing application messages. API request
+publications and reply-inbox subscriptions are expected; broker accounting can change.
+.TP
+.B --nats-history STREAM
+Select one explicit stream, mutually exclusive with Core and standalone selectors.
+No positional files or stdin are read. Stream names must be safe API tokens without
+dots, wildcards, path separators, whitespace or control characters.
+.TP
+.B --subject PATTERN
+Required explicit subject pattern. Quote wildcards; > deliberately selects all.
+.TP
+.B --start-seq N / --start-time RFC3339
+Exactly one inclusive start is required: positive uint64 sequence or timezone-qualified
+stored-message time with at most nine fractional digits. Time must be within
+1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z inclusive,
+including equivalent offset instants. Invalid bounds fail before connection, never
+rounding or overflowing nanoseconds.
+.TP
+.B --end-seq N
+Optional positive inclusive upper sequence, not below a sequence start. The initial
+INFO fixes H, the last sequence; the effective upper bound never exceeds H.
+.PP
+Server and positive total duration are mandatory. Optional count counts validated,
+in-range admissions before decode/filter, not emitted matches. Holes and nonmatches
+are skipped by next-by-subject requests. Later publications never extend H; a reply
+beyond H can cross the wire but is not admitted. This is retained observation, not
+a snapshot, completeness guarantee, loss count or guaranteed resume facility.
+.PP
+Add --nats-codec protobuf plus descriptor-set and message-type for the existing
+local Protobuf decoder. JSON remains the default and forbids schema flags. Queries
+see only the decoded payload root. Omitted GET data is a zero-byte body: it may be
+valid Protobuf, but is not JSON. Stored Status: 503 headers are data, not Core's
+bodyless sentinel. API no-responders is still an error.
+.PP
+Envelope order is stream, sequence (decimal string), stored_time (UTC RFC3339Nano),
+subject, headers, payload. Metadata is validated broker provenance, not payload or
+header names. Repeated headers and native output layouts are preserved.
+.PP
+History supports stable 2.15.x from 2.15.0 on standalone servers or homogeneous
+same-series clusters, default account-local $JS.API only. Connected-server version
+and INFO's server-generated _nats.ver are checked; missing, malformed, prerelease,
+other-series or leaderless cluster responses fail closed. Homogeneity is an external
+precondition, not certified for future leaders. Core has no new version restriction.
+INFO/GET request-PUB and reply-inbox-SUB authority is needed; GET permission covers
+the whole stream. Subject selection is not a broker-enforced subject ACL.
+No direct-read, consumer, reconnect, permission-widening or scan-from-start fallback.
+Verified TLS/auth and separate security-file rules remain unchanged.
+.PP
+Local preparation precedes the total clock; duration then covers connect, INFO,
+GET, decode, queries and output. Each request has at most five seconds, capped by
+remaining duration. One request is outstanding, without prefetch. History readiness
+means initial INFO was validated, not a subscription or arriving record.
+.PP
+Empty/range/no-match exhaustion succeeds with reason=exhaustion. Only API 404/10037
+means server-reported no message; missing stream 10059 and other failures fail.
+The server maps storage lookup errors to 10037, so exhaustion does not prove no
+internal storage fault. An active session rechecks stream identity before exhaustion,
+without replacing H; detected disappearance/recreation fails. Count/duration need
+no extra read. Detected fatal errors override normal stops. Before-ready expiry
+fails; ready cooperative duration may leave unread or unfinished events.
+.PP
+INFO is capped at 1 MiB and GET at 16 MiB before JSON/base64 conversion. Decoded
+payload is capped at 10 MiB, headers at 64 KiB and routing strings at 4 KiB each.
+Native query/final-event and selected Protobuf budgets still apply, inclusively,
+without truncation; these are not heap/OOM guarantees. Invalid protocol metadata,
+duplicate keys, trailing content and simultaneous success/error fail.
+.PP
+History-only options fail in other modes. Legacy editing/format/resource flags fail
+here, even explicit defaults. Success exits 0, failure 1, interruption 130. Native
+one-second process-stop fallback and cooperative Execute qualifications apply.
+See the history guide for full support, retention, permission and lifecycle limits.
 .SH NATS OBSERVATION
 .B nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3
 .PP
@@ -273,7 +349,7 @@ both --descriptor-set FILE and --message-type NAME. Use a separate self-containe
 local binary FileDescriptorSet and exact full message name, without leading dot
 or URL. Include imports and Any targets locally; no registry lookup or compiler
 is used. Schema options are invalid with JSON or legacy file/pipe input, and
---nats-codec is invalid without --nats or with standalone Protobuf.
+--nats-codec is invalid without --nats or --nats-history, or with standalone Protobuf.
 .PP
 Schema preparation runs once under cancellation before connection and the total
 duration clock. Protobuf bodies are raw, without prefix stripping or framing.

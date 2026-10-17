@@ -121,9 +121,9 @@ func execute(opts RunOptions, process *natsProcess) int {
 	root.SilenceErrors = true
 
 	err := root.ExecuteContext(opts.Ctx)
-	// Flag parsing can fail after the standalone selector but before PreRunE.
+	// Flag parsing can fail after an inspection selector but before PreRunE.
 	// Arm its process owner before any potentially blocking final diagnostic.
-	if err != nil && process != nil && protobufSelected(root) {
+	if err != nil && process != nil && (protobufSelected(root) || nativeSelected(root)) {
 		process.start(opts.Ctx)
 	}
 	if process != nil && process.stop != nil && err != nil {
@@ -153,7 +153,7 @@ func execute(opts RunOptions, process *natsProcess) int {
 	// Default: treat as a flag-parse / cobra-generic error and emit
 	// in canonical shape. Standalone validation errors use its selected
 	// diagnostic format too; PreRunE's logger is invocation-local.
-	if protobufSelected(root) && root.Flags().Changed("log-format") {
+	if (protobufSelected(root) || nativeSelected(root)) && root.Flags().Changed("log-format") {
 		logFormat, _ := root.Flags().GetString("log-format")
 		if logFormat == "text" || logFormat == "json" {
 			opts.Logger = logx.NewFormat(opts.Stderr, logx.Format(logFormat))
@@ -234,7 +234,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
-			if cmd.Flags().Changed("nats") || protobufSelected(cmd) {
+			if nativeSelected(cmd) || protobufSelected(cmd) {
 				return nil
 			}
 			// --edit mode requires exactly one file argument.
@@ -272,7 +272,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 		// exits 1 before any IO. After validation, an explicitly supplied
 		// format reconstructs the Logger over Stderr.
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if (cmd.Flags().Changed("nats") || protobufSelected(cmd)) && process != nil {
+			if (nativeSelected(cmd) || protobufSelected(cmd)) && process != nil {
 				process.start(opts.Ctx)
 			}
 			// Validate --log-format before any IO.
@@ -281,7 +281,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				case logx.FormatText, logx.FormatJSON:
 					// valid
 				default:
-					if protobufSelected(cmd) {
+					if protobufSelected(cmd) || nativeSelected(cmd) {
 						// Return before writing: execute arms the stop watchdog first.
 						return errors.New("--log-format: supported values are text and json")
 					}
@@ -309,7 +309,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 			if err := natsOpts.validate(cmd, args); err != nil {
 				return err
 			}
-			if cmd.Flags().Changed("nats") {
+			if nativeSelected(cmd) {
 				return nil
 			}
 			// Validate --output-format before any IO.
@@ -338,7 +338,7 @@ func newRootCmdProcess(opts RunOptions, process *natsProcess) *cobra.Command {
 				opts.Ctx = cmd.Context()
 				return runProtobufInput(opts, protobufOpts, natsOpts, process)
 			}
-			if cmd.Flags().Changed("nats") {
+			if nativeSelected(cmd) {
 				opts.Ctx = cmd.Context()
 				var stop *natsStop
 				if process != nil {
@@ -543,6 +543,29 @@ with one LF; a false filter writes nothing. Use --filter/--project, not legacy
 query, format, presentation, editing, timeout or resource flags. All descriptor
 imports and Any targets must be local. See the Protobuf inspection guide for
 mapping, conservative limits and cooperative versus process-stop behavior.
+
+Retained JetStream history (consumer-free; JSON default):
+  nesdit --nats-history ORDERS --subject 'orders.>' --start-seq 1 \
+    --server nats://127.0.0.1:4222 --duration 30s --count 20
+Choose exactly one inclusive --start-seq or timezone-qualified --start-time;
+optional --end-seq narrows the initial stream end. Time precision is at most
+nanoseconds, within 1677-09-21T00:12:43.145224192Z through
+2262-04-11T23:47:16.854775807Z inclusive. Later publications do not extend the range.
+Add the same --nats-codec protobuf and schema flags for raw Protobuf history.
+Output adds stream, decimal-string sequence and UTC stored_time before subject,
+headers, payload. Queries still see only the decoded payload root. Stored Status
+headers are data, unlike Core's bodyless-503 sentinel.
+History requires stable NATS 2.15.x (from 2.15.0), default account-local API routing,
+and a standalone server or homogeneous same-series cluster. Runtime version checks
+do not certify every future leader; cluster homogeneity is an external precondition.
+INFO/GET request publication plus reply-inbox subscription authority is required;
+GET is stream-level, not a subject ACL. No consumers, ACKs, application publication,
+stream changes, direct reads, reconnect or fallback. Reads neither files nor stdin.
+Initial INFO establishes readiness. Empty/no-match/range exhaustion succeeds with
+reason=exhaustion, not a completeness guarantee: retention creates gaps and stream
+replacement is only detected at checks. Count/duration stops may leave unread data.
+History-only flags are invalid in other modes. See the history guide for protocol
+limits, retention caveats, permissions and stopping behavior.
 
 Live Core NATS observation (JSON default; reads neither input documents nor stdin):
   nesdit --nats 'orders.>' --server nats://127.0.0.1:4222 --duration 30s --count 3 \

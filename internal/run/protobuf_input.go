@@ -39,7 +39,7 @@ func (p *protobufOptions) flags(cmd *cobra.Command) {
 func (p *protobufOptions) validate(cmd *cobra.Command, args []string) error {
 	if !protobufSelected(cmd) {
 		codec, _ := cmd.Flags().GetString("nats-codec")
-		if cmd.Flags().Changed("nats") && codec == "protobuf" {
+		if nativeSelected(cmd) && codec == "protobuf" {
 			if !cmd.Flags().Changed("descriptor-set") || strings.TrimSpace(p.descriptor) == "" || p.descriptor == "-" {
 				return errors.New("--nats-codec protobuf requires --descriptor-set with a separate regular-file path")
 			}
@@ -49,7 +49,7 @@ func (p *protobufOptions) validate(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 		if cmd.Flags().Changed("descriptor-set") || cmd.Flags().Changed("message-type") {
-			return errors.New("--descriptor-set and --message-type require --protobuf-file, --protobuf-stdin or --nats with --nats-codec protobuf")
+			return errors.New("--descriptor-set and --message-type require --protobuf-file, --protobuf-stdin or native NATS with --nats-codec protobuf")
 		}
 		return nil
 	}
