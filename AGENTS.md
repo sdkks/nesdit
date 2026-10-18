@@ -61,6 +61,12 @@ and CI for the checks.
 
 ## Documentation and site
 
+A user-facing change and its `CHANGELOG.md` bullet land in the same commit;
+see `.agents/skills/changelog/SKILL.md` for the format, backfill and release
+rules. Releases follow `docs/releasing.md`; `make release-cli` owns the
+version bump commit, tag and publication — never hand-edit `VERSION` history
+or tags.
+
 `cmd/gendocs/main.go` constructs `run.NewRootCmd()` and generates Cobra Markdown
 into `docs/reference/`. Command metadata, flag names, and descriptions come from
 `internal/run/run.go`; update those sources rather than hand-editing generated reference text.

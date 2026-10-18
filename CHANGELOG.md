@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.7.0] - 2026-10-18
+
+### Added
+
+- Whole-body UTF-8 inspection from an explicit file, explicit stdin, live Core NATS and retained JetStream history (`--input-codec text`, `--nats-codec text`)
+- Local MessagePack inspection as MessagePack JSON v1 (`--input-codec msgpack`): ordered duplicate and compound map entries, exact integers, binary versus invalid-UTF-8 strings, opaque extensions and timestamps
+- MessagePack encoding of a selected value to binary stdout (`--to msgpack`) from ordinary JSON (`--input-codec json`), MessagePack JSON v1 (`--input-codec msgpack-json`) or a MessagePack source, with physical-terminal refusal independent of color settings
+- Read-only FlatBuffers inspection of one local payload against a separate compiled BFBS schema (`--input-codec flatbuffers --bfbs`)
+
+### Fixed
+
+- Correct the stdout mode guide to the supported single-file invocation
+
 ## [0.0.3](https://github.com/sdkks/nesdit/compare/v0.0.2...v0.0.3) (2026-04-27)
 
 
