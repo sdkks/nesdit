@@ -31,6 +31,13 @@ make release                      # prepare if necessary, then verify and publis
 The two publication targets use the same sequential script and are safe with
 `make -j release` or `make -j release-cli`. Do not invoke separate version and
 publication targets concurrently or run multiple release processes at once.
+
+Before or together with publishing, update `CHANGELOG.md` per the changelog
+discipline in `.agents/skills/changelog/SKILL.md`: rename
+`## [Unreleased]` to the release version with the date, insert a fresh empty
+`## [Unreleased]` above it, and commit that change. `make release-cli`
+owns the `VERSION` bump commit, tag and publication; it never edits the
+changelog.
 `BUMP` can also be supplied to a publication target to choose the version.
 
 Automatic detection considers commits since the last **reachable** numeric

@@ -15,6 +15,98 @@
 
 - Correct the stdout mode guide to the supported single-file invocation
 
+## [0.6.0] - 2026-10-18
+
+### Added
+
+- Inspect local Protobuf payloads as JSON with `--protobuf-file` or `--protobuf-stdin`, a required `--descriptor-set` FileDescriptorSet and an exact `--message-type`
+- Decode Protobuf payloads from live Core NATS subjects with `--nats-codec protobuf` plus the same schema flags
+- Inspect retained JetStream history without creating consumers via `--nats-history <stream>`, with a required `--subject` pattern, a `--start-seq` or `--start-time` starting bound and an optional `--end-seq` end bound (NATS 2.15.x)
+
+## [0.5.0] - 2026-10-17
+
+### Added
+
+- Inspect live Core NATS JSON messages with `--nats <subject>`, an explicit `--server nats://host:port` or `tls://host:port` address and a required `--duration` observation window
+- Stop a live observation after N admitted messages with `--count`, applied before filtering
+- Filter live payloads with a jq-style `--filter` boolean predicate and reshape them with a `--project` projection returning one JSON value
+- Render live output with `--nats-output auto|jsonl|pretty`: terminal-friendly by default, JSONL when redirected
+- Authenticate observation with `--creds` credentials and mutual TLS via `--tls-ca`, `--tls-cert` and `--tls-key`
+
+## [0.4.1] - 2026-10-09
+
+### Added
+
+- Add `make install` for native-host installation, preferring an explicit `GOBIN`, then a configured Go bin directory on `PATH`, then `~/.local/bin`
+
+## [0.4.0] - 2026-10-09
+
+### Added
+
+- Highlight JSON, TOML and YAML output on terminal destinations only, keeping serialized bytes unchanged for pipes, redirection and files; a nonempty `NO_COLOR` or `TERM=dumb` disables styling
+- Bundle third-party license notices with release archives
+
+### Changed
+
+- Prepare and publish releases through a guarded local workflow instead of CI automation, keeping release archives, checksums and platforms unchanged
+
+### Removed
+
+- Stop updating the Homebrew tap automatically on release
+
+## [0.3.2] - 2026-04-29
+
+### Fixed
+
+- Apply YAML merge keys (`<<:`) at decode time: anchor entries merge into the parent map with explicit keys taking precedence, instead of appearing as a literal `<<` key
+
+## [0.3.1] - 2026-04-28
+
+### Added
+
+- Publish a Homebrew formula to the `sdkks/homebrew-tap` tap automatically on each release
+
+## [0.3.0] - 2026-04-28
+
+### Added
+
+- Add `--pretty` for human-friendly TOML output: multi-line arrays, expanded tables and blank lines between top-level entries; silently ignored for non-TOML output
+- Separate multi-document TOML output streams with a `+++` delimiter (Hugo-style convention, not part of the TOML specification)
+
+### Fixed
+
+- Decode single-document JSON on stdin as one buffered value, so multi-line objects parse correctly instead of being split as JSONL lines
+
+## [0.2.0] - 2026-04-28
+
+### Added
+
+- Add `--version`, printing the build-time version and commit hash (`dev` for local builds)
+
+## [0.1.2] - 2026-04-28
+
+### Fixed
+
+- Fix the man page path inside release archives to `share/man/man1/nesdit.1`
+
+## [0.1.1] - 2026-04-28
+
+### Added
+
+- Add an `nesdit(1)` man page and bundle it in release archives
+
+## [0.1.0] - 2026-04-28
+
+### Added
+
+- Add `--output-format` to choose the output format (`json`, `yaml`, `toml`) independently of the input format, enabling cross-format transcoding such as YAML to JSON or JSON to TOML; combining it with `-i` is rejected, and TOML output requires a table at the document root
+- Add `--yaml-version` to select the YAML boolean dialect: `1.1` treats unquoted `yes`/`no`/`on`/`off` as booleans, while `1.2` (the default) treats only `true`/`false` as booleans; ignored for non-YAML input
+- Publish the project under the MIT license with a rewritten user-facing README
+
+### Fixed
+
+- Reject `--where` in single-file stdout mode without `-i` or stdin before any input is read
+
 ## [0.0.3](https://github.com/sdkks/nesdit/compare/v0.0.2...v0.0.3) (2026-04-27)
 
 
