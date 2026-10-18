@@ -69,36 +69,22 @@ nesdit config.json
 
 This is useful for normalising a file to `nesdit`'s canonical encoding. The output is always idempotent: running it a second time produces byte-identical output.
 
-## Multiple files to stdout
+## One file per stdout invocation
 
-When multiple files are passed (all the same format), outputs are concatenated with the appropriate framing:
-
-- YAML files: `---` separators between documents.
-- JSON files: one JSON object per line (JSONL).
+Stdout mode accepts exactly one positional file per invocation. Passing
+several files without `-i` is an error:
 
 ```sh
 nesdit a.yaml b.yaml --query '.version = 2'
 ```
 
-**Output:**
-
-```yaml
----
-name: alpha
-version: 2
----
-name: beta
-version: 2
+```
+nesdit: error: flag.invalid: nesdit requires exactly one file argument (or no arguments for STDIN mode)
 ```
 
-!!! warning
-    Mixing formats in one invocation is an error:
-    ```
-    nesdit a.json b.yaml --query '.'
-    ```
-    ```
-    nesdit: error: format.mixed: yaml (b.yaml), json (a.json): single invocation spans multiple formats
-    ```
+To process several files, either run one invocation per file or use
+[`-i` / `--in-place`](in-place.md), which does accept multiple files in a
+single invocation and writes each result back to its own file.
 
 ## Related flags
 
