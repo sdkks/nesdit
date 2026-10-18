@@ -253,8 +253,8 @@ or pipe one body to
 with optional --to json, or explicit --to msgpack for binary stdout.
 Ordinary --input-codec json and rich --input-codec msgpack-json require explicit
 --to msgpack. Text remains JSON-only. Source isolation, query and stop/ownership
-behavior follow local text inspection above. No broker MessagePack, FlatBuffers,
-JSONL, direct YAML/TOML conversion or automatic codec detection.
+behavior follow local text inspection above. No broker MessagePack or
+FlatBuffers, JSONL, direct YAML/TOML conversion or automatic codec detection.
 .PP
 For example, read ordinary.json with --input-codec json --to msgpack and redirect
 to a separate event.msgpack. Read event.view.json with --input-codec msgpack-json
@@ -334,6 +334,38 @@ Write/short-write errors may leave partial output. Never redirect over the input
 the shell can truncate it before nesdit starts. No managed output, in-place edit
 or backup is provided. No new Windows bounded-stop promise.
 See the MessagePack guide for the full grammar, resource and lifecycle contract.
+.SH FLATBUFFERS INSPECTION
+Available in development source; no new published release is announced.
+.B nesdit --input-file event.bin --input-codec flatbuffers --bfbs schemas/event.bfbs
+inspects one local ordinary FlatBuffers payload against one separate ordinary
+BFBS compiled schema. --bfbs is required, must be a regular file distinct from
+the payload and is never stdin; JSON is the only target. The schema (at most
+4 MiB) is fully validated and compiled to a finite root-reachable plan before
+any payload byte is read; the payload is bounded by 10 MiB through EOF. Only
+the BFBS-declared root table is read; a declared four-byte file identifier
+must match. Source isolation, query and stop/ownership behavior follow local
+text inspection above. No FlatBuffers encoding, .fbs parsing, runtime
+compiler, registry, network or broker path.
+.PP
+Known declared fields appear in field-ID order, including deprecated ones;
+unknown payload fields are omitted without being verified. Bools map any
+nonzero byte to true. 8/16/32-bit integers are numbers; all 64-bit integers,
+including enums and union tags, are exact decimal strings. Float32 promotes
+exactly; -0, NaN and infinities use those strings. Single unions emit their
+schema-named discriminator sibling and active value; sparse, aliased and
+8/16/32/64-bit signed or unsigned discriminants are supported. Absent
+ordinary scalars emit BFBS-represented defaults; absent optional scalars and
+references are omitted while present zero/false/empty values are retained.
+.PP
+The compiler can omit an original-schema negative-zero or above-int64 unsigned
+default from BFBS metadata, so such an absent field shows 0 here even though
+the original-schema accessor yields -0 (or the large value); payload-stored
+and genuinely stored metadata bits keep their sign/value. Root-reachable
+arrays, union vectors, Vector64 and offset64 fields are rejected during
+preparation even when absent from the payload, as are DefaultVectorsAndStrings
+and unknown feature bits globally. Neither file is modified. See the
+FlatBuffers guide for the full compatibility profile, budgets and the
+default-fidelity caveat.
 .SH PROTOBUF INSPECTION
 .B nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
 .PP

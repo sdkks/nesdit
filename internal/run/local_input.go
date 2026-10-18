@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/sdkks/nesdit/internal/display"
+	"github.com/sdkks/nesdit/internal/flatview"
 	"github.com/sdkks/nesdit/internal/logx"
 	"github.com/sdkks/nesdit/internal/msgpackview"
 	"github.com/sdkks/nesdit/internal/omap"
@@ -24,6 +26,7 @@ type localOptions struct {
 	files         []string
 	stdin         explicitStdin
 	codec, target string
+	bfbs          []string
 }
 
 // Count explicit selections, including repeated boolean flags.
@@ -51,14 +54,15 @@ func (p *localOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&p.files, "input-file", nil, "Inspection: one regular file; commas are literal, - is not stdin")
 	cmd.Flags().Var(&p.stdin, "input-stdin", "Inspection: explicitly read one complete body through EOF from stdin; no overall timer")
 	cmd.Flags().Lookup("input-stdin").NoOptDefVal = "true"
-	cmd.Flags().StringVar(&p.codec, "input-codec", "", "Local input codec: text, msgpack, json (ordinary), or msgpack-json (MessagePack JSON v1)")
+	cmd.Flags().StringVar(&p.codec, "input-codec", "", "Local input codec: text, msgpack, json (ordinary), msgpack-json (MessagePack JSON v1), or flatbuffers")
 	cmd.Flags().StringVar(&p.target, "to", "json", "Local output: json for inspection; explicit msgpack for binary stdout (never a terminal)")
+	cmd.Flags().StringArrayVar(&p.bfbs, "bfbs", nil, "FlatBuffers inspection: one ordinary compiled schema file, separate from the payload, never stdin")
 }
 
 func (p *localOptions) validate(cmd *cobra.Command, args []string) error {
 	if !localSelected(cmd) {
-		if cmd.Flags().Changed("input-codec") || cmd.Flags().Changed("to") {
-			return errors.New("--input-codec and --to require --input-file or --input-stdin")
+		if cmd.Flags().Changed("input-codec") || cmd.Flags().Changed("to") || cmd.Flags().Changed("bfbs") {
+			return errors.New("--input-codec, --to and --bfbs require --input-file or --input-stdin")
 		}
 		return nil
 	}
@@ -78,7 +82,7 @@ func (p *localOptions) validate(cmd *cobra.Command, args []string) error {
 	var conflict error
 	cmd.Flags().Visit(func(f *pflag.Flag) {
 		switch f.Name {
-		case "input-file", "input-stdin", "input-codec", "to", "filter", "project", "log-format", "help", "version":
+		case "input-file", "input-stdin", "input-codec", "to", "bfbs", "filter", "project", "log-format", "help", "version":
 		default:
 			conflict = fmt.Errorf("--%s is not supported with local inspection", f.Name)
 		}
@@ -99,10 +103,49 @@ func (p *localOptions) validate(cmd *cobra.Command, args []string) error {
 		if !cmd.Flags().Changed("to") || p.target != "msgpack" {
 			return errors.New("JSON import requires explicit --to msgpack")
 		}
+	case "flatbuffers":
+		if p.target != "json" {
+			return errors.New("--to must be json for FlatBuffers inspection")
+		}
 	default:
-		return errors.New("--input-codec is required and must be text, msgpack, json or msgpack-json")
+		return errors.New("--input-codec is required and must be text, msgpack, json, msgpack-json or flatbuffers")
+	}
+	bfbsSet := cmd.Flags().Changed("bfbs")
+	if bfbsSet && p.codec != "flatbuffers" {
+		return errors.New("--bfbs requires --input-codec flatbuffers")
+	}
+	if p.codec == "flatbuffers" {
+		if !bfbsSet || len(p.bfbs) != 1 || strings.TrimSpace(p.bfbs[0]) == "" || p.bfbs[0] == "-" {
+			return errors.New("--input-codec flatbuffers requires exactly one nonempty --bfbs regular-file path")
+		}
+		if !p.stdin.value {
+			if same, err := samePath(p.files[0], p.bfbs[0]); err != nil || same {
+				return errors.New("--bfbs must be a separate file from the payload")
+			}
+		}
 	}
 	return nil
+}
+
+// samePath compares two cleaned absolute paths without following symlinks;
+// the payload and schema must be separate selections.
+func samePath(a, b string) (bool, error) {
+	abs := func(p string) (string, error) {
+		ap, err := filepath.Abs(filepath.Clean(p))
+		if err != nil {
+			return "", err
+		}
+		return ap, nil
+	}
+	aa, err := abs(a)
+	if err != nil {
+		return false, err
+	}
+	bb, err := abs(b)
+	if err != nil {
+		return false, err
+	}
+	return aa == bb, nil
 }
 
 func runLocalInput(opts RunOptions, p localOptions, n natsOptions, process *natsProcess) error {
@@ -151,6 +194,17 @@ func runLocalInput(opts RunOptions, p localOptions, n natsOptions, process *nats
 			return fail("project", err)
 		}
 	}
+	// BFBS acquisition and preparation complete before any payload byte.
+	var schema *flatview.Schema
+	if p.codec == "flatbuffers" {
+		bfbsData, err := protobufview.ReadFile(ctx, p.bfbs[0], flatview.SchemaLimit)
+		if err != nil {
+			return fail("schema", err)
+		}
+		if schema, err = flatview.Prepare(ctx, bfbsData); err != nil {
+			return fail("schema", err)
+		}
+	}
 	var data []byte
 	if p.stdin.value {
 		cleanup := func() {}
@@ -177,6 +231,8 @@ func runLocalInput(opts RunOptions, p localOptions, n natsOptions, process *nats
 		decode = func(ctx context.Context, body []byte) (omap.Value, error) {
 			return msgpackview.ReadJSON(ctx, body, profile)
 		}
+	case "flatbuffers":
+		decode = schema.Decode
 	}
 	value, err := decode(ctx, data)
 	if err != nil {

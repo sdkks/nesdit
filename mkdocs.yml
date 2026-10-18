@@ -43,6 +43,7 @@ nav:
     - Stdout (default): modes/stdout.md
     - UTF-8 inspection: modes/text.md
     - MessagePack inspection: modes/msgpack.md
+    - FlatBuffers inspection: modes/flatbuffers.md
     - Protobuf inspection: modes/protobuf.md
     - NATS observation: modes/nats.md
     - JetStream history: modes/nats-history.md

@@ -120,8 +120,31 @@ shell can truncate it before nesdit starts. Use distinct paths as above.
 See the [MessagePack guide](docs/modes/msgpack.md) for the exact grammar, map
 queries, deterministic encoding and independent limits. Semantic reconstruction
 requires both representations to fit: a 10–16 MiB rich JSON export exceeds the
-10 MiB import cap. Broker MessagePack, FlatBuffers and direct YAML/TOML conversion
+10 MiB import cap. Broker MessagePack and direct YAML/TOML conversion
 remain future work; this source capability does not announce a published release.
+## Read-only FlatBuffers inspection (development source)
+
+The current source inspects one local ordinary FlatBuffers payload against one
+separate ordinary BFBS compiled schema and emits a known-field JSON view.
+
+```sh
+bin/nesdit --input-file event.bin --input-codec flatbuffers --bfbs schemas/event.bfbs \
+  --filter '.active' --project '{id: .id, label: .label}'
+```
+
+`--bfbs` is required, separate from the payload and never stdin; JSON is the
+only target. The schema (at most 4 MiB) is fully validated into a finite
+root-reachable plan before any payload byte is read. Known declared fields
+appear in field-ID order, including deprecated ones; unknown payload fields
+are omitted. 64-bit integers are exact decimal strings; float32 promotes
+exactly; `-0`/`NaN`/infinities use those strings. Wide/sparse/aliased single
+unions emit their discriminator sibling and active value. Absent scalars use
+BFBS-represented defaults: an original-schema `-0` or >int64 unsigned default
+omitted by the compiler reads as `0` here, while payload-stored and stored
+metadata bits keep their sign/value. Neither file is modified; no network or
+schema lookup occurs. See the [FlatBuffers guide](docs/modes/flatbuffers.md)
+for the compatibility profile, exclusions, budgets and the default-fidelity
+caveat.
 
 ## Read-only Protobuf inspection
 

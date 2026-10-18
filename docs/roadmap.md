@@ -158,6 +158,22 @@ grammar, numeric policy, shell-redirection risks and value-versus-wire fidelity.
 No broker MessagePack or binary in-place editing is included. This development
 capability is not a new published release announcement.
 
+## Read-only FlatBuffers inspection — development source
+
+The current source inspects one local ordinary FlatBuffers payload against a
+separate ordinary BFBS schema (`--input-codec flatbuffers --bfbs FILE`,
+JSON-only output). The whole schema is validated and compiled to a finite
+root-reachable plan before payload acquisition; the checked reader validates
+offsets, vtables, layouts, strings and unions with fixed component budgets.
+Known fields (deprecated included) appear in field-ID order with decimal
+strings for all 64-bit values and width-aware single-union discriminators.
+Root-reachable arrays, union vectors, 64-bit vectors/offsets and the
+default-strings feature are rejected during preparation. Absent scalar
+defaults are BFBS-authoritative: compiler-omitted original `-0` and >int64
+unsigned defaults read as `0`, a documented fidelity boundary. See the
+[FlatBuffers guide](modes/flatbuffers.md) for the full profile. This
+development capability is not a new published release announcement.
+
 ## Local formats and conversion — future work
 
 **Status: future direction; not shipped.** These additions extend beyond the read-only

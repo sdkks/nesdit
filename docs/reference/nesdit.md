@@ -78,6 +78,29 @@ partial bytes. Never redirect over the input: the shell can truncate it first.
 Semantic reconstruction requires both representations to fit: a 10-16 MiB JSON
 export exceeds the 10 MiB import cap. See the MessagePack guide for full details.
 
+Read-only FlatBuffers inspection (JSON output only):
+  nesdit --input-file event.bin --input-codec flatbuffers --bfbs schemas/event.bfbs
+Requires one local ordinary payload (file or explicit stdin) and one separate
+ordinary BFBS compiled schema (--bfbs, never stdin, distinct from the payload).
+--to json is the only target. The schema (at most 4 MiB) is fully validated and
+compiled to a finite type plan before any payload byte is read; the payload is
+bounded by 10 MiB. Only the BFBS-declared root table is read; a declared
+four-byte file identifier must match. Known declared fields appear in field-ID
+order, including deprecated ones; unknown payload fields are omitted without
+being verified. 8/16/32-bit integers and floats are JSON numbers; all 64-bit
+integers (including enums and union tags) are exact decimal strings; float32
+promotes exactly; -0, NaN and infinities use those strings. Single unions emit
+their discriminator sibling and active value; sparse, aliased and 8/16/32/64-bit
+signed or unsigned discriminators are supported, while union vectors and
+64-bit offsets are not. Absent scalars use BFBS-represented defaults: an
+original-schema negative-zero (or >int64 unsigned) default can be omitted from
+BFBS by the compiler, so the view shows 0 there even though the original-schema
+accessor yields -0 (or the large value); payload-stored and actually stored
+metadata bits keep their sign. Arrays, DefaultVectorsAndStrings and unknown
+schema features are rejected. Successful inspection never modifies either file,
+performs no network or schema lookup, and certifies only the known fields shown.
+See the FlatBuffers guide for budgets, exclusions and fidelity details.
+
 Standalone Protobuf inspection (JSON output only, no editing):
   nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
   producer | nesdit --protobuf-stdin --descriptor-set schemas/events.pb --message-type example.Order \
@@ -153,6 +176,7 @@ nesdit [flags] <file> [<file>...]
       --arg stringArray             bind $K=V in the query as a literal string (repeatable)
       --argjson stringArray         bind $K=V in the query as a JSON-decoded value (repeatable)
       --backup string[=".bak"]      write a sibling backup before each in-place edit (default suffix .bak; custom: --backup=.orig); requires -i
+      --bfbs stringArray            FlatBuffers inspection: one ordinary compiled schema file, separate from the payload, never stdin
       --check                       exit 2 if the query would change the input; exit 0 if identical; exit 1 on error
       --count uint                  NATS: stop after N messages admitted for processing, before filtering; may show fewer events
       --create-missing              allow queries to create keys/paths that do not exist in the input document; by default, absent paths are rejected
@@ -167,7 +191,7 @@ nesdit [flags] <file> [<file>...]
   -f, --from-file string            load query from file (mutually exclusive with --query)
   -h, --help                        help for nesdit
   -i, --in-place                    edit file(s) in-place using atomic temp+rename writes
-      --input-codec string          Local input codec: text, msgpack, json (ordinary), or msgpack-json (MessagePack JSON v1)
+      --input-codec string          Local input codec: text, msgpack, json (ordinary), msgpack-json (MessagePack JSON v1), or flatbuffers
       --input-file stringArray      Inspection: one regular file; commas are literal, - is not stdin
       --input-stdin                 Inspection: explicitly read one complete body through EOF from stdin; no overall timer
       --keep-going                  continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred
