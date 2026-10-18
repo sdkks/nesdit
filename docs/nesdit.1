@@ -202,7 +202,8 @@ Empty input becomes an empty string. BOM, NUL, CR/LF and whitespace remain conte
 There is no trimming, line framing, arbitrary-byte fallback or raw-text export.
 .TP
 .B --to json
-Optional explicit JSON target. Text and MessagePack inspection support only JSON.
+Optional explicit JSON target for text and MessagePack inspection.
+MessagePack also permits explicit --to msgpack; see conversion below.
 .PP
 Options and queries are validated before payload reads. Use --filter and --project
 against the original string root. A filter returns exactly one boolean; false
@@ -244,15 +245,26 @@ cooperative: no host exit, borrowed closes/deadline changes or abandoned blocked
 worker. Callers must unblock I/O. No new Windows bounded-stop promise.
 Success/false filter exits 0, failure 1, cancellation 130. Diagnostics identify
 stages/categories without body, query or evaluator contents. See the text guide.
-.SH MESSAGEPACK INSPECTION
+.SH MESSAGEPACK INSPECTION AND CONVERSION
 Available in development source; no new published release is announced.
 .B nesdit --input-file event.msgpack --input-codec msgpack
 or pipe one body to
 .B nesdit --input-stdin --input-codec msgpack
-with optional --to json. Source isolation, queries, JSON display, output staging,
-fixed limits and stop/ownership behavior follow local text inspection above.
-Encoding, ordinary/rich JSON import, binary targets and broker MessagePack are
-not implemented. No JSONL, YAML/TOML conversion or automatic codec detection.
+with optional --to json, or explicit --to msgpack for binary stdout.
+Ordinary --input-codec json and rich --input-codec msgpack-json require explicit
+--to msgpack. Text remains JSON-only. Source isolation, query and stop/ownership
+behavior follow local text inspection above. No broker MessagePack, FlatBuffers,
+JSONL, direct YAML/TOML conversion or automatic codec detection.
+.PP
+For example, read ordinary.json with --input-codec json --to msgpack and redirect
+to a separate event.msgpack. Read event.view.json with --input-codec msgpack-json
+--to msgpack to reconstruct its semantic value. Ordinary tag-looking objects
+stay application maps; the explicit rich source interprets tags.
+.PP
+JSON import requires a single value followed only by JSON whitespace. Invalid
+UTF-8, escapes, lone surrogates and duplicate decoded object keys fail. Rich tags
+must have exactly one known key and exact shape/arity; bare numbers are permitted
+only as extension IDs and nanoseconds. Full source admission precedes filtering.
 .PP
 Exactly one complete MessagePack value and EOF are required. Empty input,
 reserved code 0xc1, truncation, a second value or any trailing byte (even LF)
@@ -277,12 +289,26 @@ except -1, including reserved negatives. Timestamp -1 uses
 {"$time":["seconds",nanoseconds]} with signed-int64 seconds and nanos 0-999999999.
 Valid 4/8/12-byte payloads and equivalent headers are accepted. Invalid timestamp
 length/nanos fails, never opaque fallback; no RFC3339 range normalization.
+Encoding uses minimal integers and shortest 4/8/12-byte timestamps. All Floats
+encode as float64 (0xcb), with canonical quiet NaN bits 0x7ff8000000000000.
+Typed finite Float strings permit decimal/exponent syntax and round nearest-even;
+hex, separators and whitespace fail. Base64 import rejects whitespace, missing
+padding and bad pad bits; str64 accepts only invalid-UTF-8 bytes.
+.PP
+Ordinary integer lexemes remain exact within -2^63 through 2^64-1.
+Fraction/exponent tokens select binary64 rounding (0.1 works, 1e3 is Float while
+1000 is Integer). Lexical -0, -0.0 and -0e3 become Float negative zero.
+Overflow and nonzero-to-zero underflow fail; representable subnormals work.
+A valid ordinary out-of-range number may be filtered or projected away; malformed
+sources and invalid rich grammar cannot. Projection may normalize numbers under
+existing gojq semantics; no lexical/type-fidelity promise survives it.
 .PP
 Queries see the actual rich grammar, not ordinary map fields. For duplicate names,
 --project '[."$map"[] | select(.[0] == "name") | .[1]]' collects all matches.
 An uncollected projection fails for zero/multiple results. Arbitrary projected
-JSON can display but is not automatically rich interchange. No projection means
-no identity-query normalization; explicit numeric queries can lose precision.
+JSON can display but must pass rich grammar for a binary target. Ordinary sources
+retain ordinary target interpretation. No projection means no identity-query
+normalization, even with a filter; explicit numeric queries can lose precision.
 .PP
 Decoded depth 100, one million semantic values and 16 MiB str/bin/ext bytes
 are independent of view depth 100, one million JSON values and 16 MiB key/string
@@ -292,7 +318,21 @@ Base64/container costs are checked before allocation. Wrappers can hit the view
 limit before the semantic limit, and a fitting view can exceed exact 16 MiB
 serialized output. False filtering skips only that output check, never source
 admission. These are not hard memory/CPU limits. A 10-16 MiB view cannot fit the
-10 MiB input cap even with a future importer. Value fidelity is not byte identity.
+10 MiB import cap. Reconstruction is semantic, conditional on both representations
+fitting their limits, never original wire-byte identity.
+Ordinary selected values independently admit semantic and rich-expansion budgets;
+rich selected values admit their actual JSON view and semantic budgets. Query
+result limits alone do not admit a binary target.
+.PP
+Binary output is stdout only, explicitly selected, capped at 16 MiB and fully
+staged before any external write. It contains one value without LF or ANSI.
+Physical Linux/macOS terminals and Windows consoles are refused before payload
+access, independently of NO_COLOR or TERM=dumb; there is no force override.
+Unsupported platforms fail unsupported. Opaque embedded writers require a
+caller-supplied safe sink; they are not unwrapped, closed or given new deadlines.
+Write/short-write errors may leave partial output. Never redirect over the input:
+the shell can truncate it before nesdit starts. No managed output, in-place edit
+or backup is provided. No new Windows bounded-stop promise.
 See the MessagePack guide for the full grammar, resource and lifecycle contract.
 .SH PROTOBUF INSPECTION
 .B nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order

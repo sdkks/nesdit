@@ -87,10 +87,12 @@ See the [text inspection guide](docs/modes/text.md) for source isolation, fixed
 10 MiB input and exact 16 MiB JSON-output limits, safe redirection, and cooperative
 versus process interruption.
 
-## Local MessagePack inspection (development source)
+## Local MessagePack inspection and conversion (development source)
 
 ```sh
 bin/nesdit --input-file event.msgpack --input-codec msgpack > event.view.json
+bin/nesdit --input-file event.view.json --input-codec msgpack-json --to msgpack > rebuilt.msgpack
+bin/nesdit --input-file ordinary.json --input-codec json --to msgpack > event.msgpack
 producer | bin/nesdit --input-stdin --input-codec msgpack
 ```
 
@@ -98,14 +100,28 @@ The current source inspects one complete MessagePack value as MessagePack JSON v
 Maps retain order, duplicate and compound keys as `$map` entry arrays; integers,
 floats, binary, invalid-UTF-8 strings, extensions and timestamps have explicit
 JSON wrappers. This preserves semantic values, not original wire bytes or widths.
-Empty input and every trailing byte (even LF) fail before filtering. Use only
-`--filter`/`--project` and optional `--to json`; arbitrary projected JSON can display.
+Empty input and every trailing byte (even LF) in binary input fail before filtering.
+Use only `--filter`/`--project`; MessagePack defaults to JSON inspection or accepts
+explicit `--to msgpack`. Ordinary `json` and rich `msgpack-json` require that binary
+target explicitly. Ordinary tag-looking objects stay application maps. JSON import
+rejects duplicate keys, invalid UTF-8 and lone surrogate escapes.
+
+Ordinary integer tokens stay exact within −2^63…2^64−1; fraction/exponent tokens
+round to binary64 (including `0.1`). Negative zero remains Float −0; overflow and
+nonzero-to-zero underflow fail unless selection removes the ordinary value.
+Malformed sources cannot be filtered away. Projection may normalize numbers under
+gojq evaluation; without projection numeric lexemes remain classified.
+
+Binary stdout is one value with no LF or styling and refuses physical terminals,
+independent of color settings. Complete staging precedes external writes, but a
+write failure can leave partial output. **Never redirect over the input:** the
+shell can truncate it before nesdit starts. Use distinct paths as above.
 
 See the [MessagePack guide](docs/modes/msgpack.md) for the exact grammar, map
-queries, numeric fidelity, independent resource limits and lifecycle. Never
-redirect over the input: the shell can truncate it first. Encoding, JSON/rich-JSON
-import, binary targets, broker MessagePack and FlatBuffers remain future work;
-this source capability does not announce a new published release.
+queries, deterministic encoding and independent limits. Semantic reconstruction
+requires both representations to fit: a 10–16 MiB rich JSON export exceeds the
+10 MiB import cap. Broker MessagePack, FlatBuffers and direct YAML/TOML conversion
+remain future work; this source capability does not announce a published release.
 
 ## Read-only Protobuf inspection
 

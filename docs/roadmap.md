@@ -142,15 +142,21 @@ and raw-text export are not included. See the [text guide](modes/text.md) for th
 source selectors, exact output-size limits and stop behavior. This is not a new
 published release announcement.
 
-## Local MessagePack inspection — development source
+## Local MessagePack inspection and conversion — development source
 
 The current source supports one local MessagePack value from explicit file or
-stdin, with JSON-only output and queries against MessagePack JSON v1. Maps retain
-ordered duplicate/compound entries; explicit wrappers distinguish integers,
-floats, binary, invalid strings, opaque extensions and timestamps. Exact EOF,
-independent semantic/view limits and output expansion checks apply. See the
-[MessagePack guide](modes/msgpack.md) for the grammar and value-versus-wire fidelity.
-This is read-only inspection, not encoding or a published release announcement.
+stdin, with default JSON inspection or explicit `--to msgpack`. Ordinary `json`
+and rich `msgpack-json` sources require explicit `--to msgpack`. Maps retain
+ordered duplicate/compound entries; wrappers distinguish integers, floats, binary,
+invalid strings, opaque extensions and timestamps. Strict JSON import preserves
+ordinary numeric lexemes until selection; selected decimals round to binary64,
+and out-of-range selected targets fail. Binary stdout refuses physical terminals
+regardless of color settings, stages completely and adds no LF or markup.
+Independent source/semantic/view/output limits apply; reconstruction requires both
+representations to fit. See the [MessagePack guide](modes/msgpack.md) for the exact
+grammar, numeric policy, shell-redirection risks and value-versus-wire fidelity.
+No broker MessagePack or binary in-place editing is included. This development
+capability is not a new published release announcement.
 
 ## Local formats and conversion — future work
 
@@ -160,7 +166,6 @@ these additions have no promised dates or new release commitments.
 
 **Direction**
 
-- MessagePack local encoding and ordinary/rich JSON import (inspection is available in development source).
 - Avro inspection and local encoding using local schemas, including Avro container files.
 - Protobuf encoding as separate future work, not part of V2's read-only decoding scope.
 - Local JSON Schema validation over JSON, not a separate wire codec.

@@ -77,3 +77,32 @@ view. This is not a binary re-encoding roundtrip or a wire-identity claim. NaN
 payload/sign/signaling bits and original integer/float widths are not compared.
 Malformed/truncated/over-limit cases live in Go boundary tests and fuzz seeds;
 the independent oracle is not claimed as a hostile-input safety verifier.
+
+## Verify actual CLI encoding independently
+
+With the same verified uninstalled Python source and a current CLI build, run:
+
+```sh
+PYTHONPATH="$oracle_source" python3 internal/msgpackview/testdata/verify_encode.py \
+  --binary bin/nesdit --output-dir "$scratch/encoding-cases" > "$scratch/encoding-receipts.json"
+```
+
+The output directory must not exist yet. The finite check converts every corpus
+wire value and rich JSON view through the actual CLI, with distinct source/output
+paths and fixed shell redirection in both file and explicit-stdin modes. It also
+covers ordinary tag collisions, insertion order, integer extrema, rounding,
+exponents, negative zero, subnormals and post-selection encoding. Each output is
+independently decoded with a **fresh** `fallback.unpackb` and compared semantically,
+not by producer wire width or our own decoder. Float bit values/sign and NaN
+category, pair/compound/duplicate maps, invalid str/bin, signed IDs and timestamps
+remain distinct. Trailing bytes are rejected by the one-shot decoder. Source
+SHA-256 values must remain unchanged; receipts record source/output, CLI and
+backend hashes. No streaming state is reused, including after failures; the
+advisory containment above still applies, not vulnerability clearance.
+
+Go tests additionally pin deterministic minimal integers, float64-only encoding,
+canonical NaN and shortest timestamps; strict lexical/rich rejection; source,
+semantic/view/output limits; cancellation and guarded library one-byte writes.
+Native process tests cover terminal refusal independent of color, queued-input
+nonconsumption, pipe/file output, blocked input/output/diagnostics and ownership.
+Windows runtime observations require an actual console, not cross-compilation.

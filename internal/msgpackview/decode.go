@@ -1,5 +1,6 @@
-// Package msgpackview decodes one MessagePack value into MessagePack JSON v1.
-// Application maps are ordered entry arrays, never Go maps or hidden tags.
+// Package msgpackview converts one MessagePack value or explicitly interpreted
+// JSON value using MessagePack JSON v1. Application maps are ordered entry arrays,
+// never Go maps or hidden tags.
 package msgpackview
 
 import (

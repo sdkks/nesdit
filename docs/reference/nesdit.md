@@ -45,21 +45,38 @@ empty bodies become strings; Core bodyless status remains an error, while stored
 history Status headers are data. No descriptor flags with text. See the text
 guide for independent budgets, output failures and lifecycle qualifications.
 
-Local MessagePack inspection (JSON output only, no encoding):
+Local MessagePack inspection and conversion:
   nesdit --input-file event.msgpack --input-codec msgpack > event.view.json
-  producer | nesdit --input-stdin --input-codec msgpack
-Uses the same explicit sources, JSON target, query/output and stop rules as text.
-Exactly one complete value and EOF are required; empty input and any trailing
-byte, even LF, fail before filtering. Maps become ordered $map entry arrays,
-retaining duplicate and compound keys. $int/$float strings preserve numeric
-values; $bin/$str64 distinguish binary from invalid-UTF-8 strings. $ext is opaque
-except timestamp -1, which becomes $time with exact seconds/nanoseconds.
-Float32 widens exactly; wire width, opcode choices and NaN bits are not retained.
-Queries see this actual MessagePack JSON v1 data. Wrappers/base64 independently
-count toward depth 100, one million values and 16 MiB key/string bytes; decoded
-semantics have separate budgets. See the MessagePack guide for the full grammar.
-Encoding, JSON/rich-JSON import, binary targets and broker MessagePack are not
-implemented. Never redirect over the source file.
+  nesdit --input-file event.view.json --input-codec msgpack-json --to msgpack > rebuilt.msgpack
+  nesdit --input-file ordinary.json --input-codec json --to msgpack > event.msgpack
+Uses the same explicit file/stdin sources, query and stop rules as text.
+MessagePack defaults to JSON inspection or accepts explicit --to msgpack.
+Ordinary json and rich msgpack-json require explicit --to msgpack; text remains
+JSON-only. No broker MessagePack, FlatBuffers, JSONL or direct YAML/TOML conversion.
+Exactly one complete binary value and EOF are required; empty input and any
+trailing byte, even LF, fail before filtering. JSON import permits trailing JSON
+whitespace, but rejects duplicate keys, invalid UTF-8 and lone surrogate escapes.
+Maps become ordered $map entry arrays, retaining duplicate and compound keys.
+$int/$float strings preserve numeric values; $bin/$str64 distinguish binary from
+invalid-UTF-8 strings. $ext is opaque except timestamp -1, represented by $time.
+Ordinary objects resembling tags stay application maps. Rich tags require exact
+shapes and canonical padded base64. Float32 widens exactly; all encoded Floats
+use float64 and NaN uses canonical quiet bits. Integer widths and timestamp
+layouts are minimal; original bytes/opcode choices are not retained.
+Ordinary integer tokens stay exact within -2^63..2^64-1; fraction/exponent tokens
+round to binary64, including 0.1. Negative zero stays Float -0; overflow and
+nonzero-to-zero underflow fail. A valid ordinary out-of-range number may be
+filtered or projected away; malformed sources cannot. Without projection the
+value bypasses identity normalization even with a filter. Projections use gojq number
+normalization and must pass the selected target profile after selection.
+Independent semantic and actual rich-view budgets are depth 100, one million
+values and 16 MiB text/bytes. Complete staging caps binary output at 16 MiB,
+with no LF or styling. Physical Unix terminals and Windows consoles are refused
+before reading, independent of NO_COLOR/TERM; no force option. Opaque embedded
+writers require caller-supplied safe sinks. External write errors may leave
+partial bytes. Never redirect over the input: the shell can truncate it first.
+Semantic reconstruction requires both representations to fit: a 10-16 MiB JSON
+export exceeds the 10 MiB import cap. See the MessagePack guide for full details.
 
 Standalone Protobuf inspection (JSON output only, no editing):
   nesdit --protobuf-file event.bin --descriptor-set schemas/events.pb --message-type example.Order
@@ -150,7 +167,7 @@ nesdit [flags] <file> [<file>...]
   -f, --from-file string            load query from file (mutually exclusive with --query)
   -h, --help                        help for nesdit
   -i, --in-place                    edit file(s) in-place using atomic temp+rename writes
-      --input-codec string          Inspection: required input codec: text (whole UTF-8 body) or msgpack (MessagePack JSON v1 view)
+      --input-codec string          Local input codec: text, msgpack, json (ordinary), or msgpack-json (MessagePack JSON v1)
       --input-file stringArray      Inspection: one regular file; commas are literal, - is not stdin
       --input-stdin                 Inspection: explicitly read one complete body through EOF from stdin; no overall timer
       --keep-going                  continue processing after per-document errors; errored docs are skipped; exit 1 at end if any errors occurred
@@ -179,7 +196,7 @@ nesdit [flags] <file> [<file>...]
       --tls-ca string               NATS: PEM CA file (regular, at most 1 MiB); requires tls://; omitted uses system trust
       --tls-cert string             NATS: PEM client certificate file (regular, at most 1 MiB); requires --tls-key and tls://
       --tls-key string              NATS: PEM client private key file (regular, at most 1 MiB); requires --tls-cert and tls://
-      --to string                   Inspection: output target: json (default "json")
+      --to string                   Local output: json for inspection; explicit msgpack for binary stdout (never a terminal) (default "json")
       --where string                filter docs by jq predicate: only matching docs have --query applied (stream: others pass through; in-place batch mode (-i): non-matching files are skipped; not supported in single-file stdout mode)
       --yaml-version string         YAML dialect for boolean coercion: 1.1 (yes/no/on/off as bools) or 1.2 (true/false only; default) (default "1.2")
 ```

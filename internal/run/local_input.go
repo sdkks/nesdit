@@ -14,6 +14,7 @@ import (
 	"github.com/sdkks/nesdit/internal/display"
 	"github.com/sdkks/nesdit/internal/logx"
 	"github.com/sdkks/nesdit/internal/msgpackview"
+	"github.com/sdkks/nesdit/internal/omap"
 	"github.com/sdkks/nesdit/internal/protobufview"
 	"github.com/sdkks/nesdit/internal/query"
 	"github.com/sdkks/nesdit/internal/textview"
@@ -50,8 +51,8 @@ func (p *localOptions) flags(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&p.files, "input-file", nil, "Inspection: one regular file; commas are literal, - is not stdin")
 	cmd.Flags().Var(&p.stdin, "input-stdin", "Inspection: explicitly read one complete body through EOF from stdin; no overall timer")
 	cmd.Flags().Lookup("input-stdin").NoOptDefVal = "true"
-	cmd.Flags().StringVar(&p.codec, "input-codec", "", "Inspection: required input codec: text (whole UTF-8 body) or msgpack (MessagePack JSON v1 view)")
-	cmd.Flags().StringVar(&p.target, "to", "json", "Inspection: output target: json")
+	cmd.Flags().StringVar(&p.codec, "input-codec", "", "Local input codec: text, msgpack, json (ordinary), or msgpack-json (MessagePack JSON v1)")
+	cmd.Flags().StringVar(&p.target, "to", "json", "Local output: json for inspection; explicit msgpack for binary stdout (never a terminal)")
 }
 
 func (p *localOptions) validate(cmd *cobra.Command, args []string) error {
@@ -85,11 +86,21 @@ func (p *localOptions) validate(cmd *cobra.Command, args []string) error {
 	if conflict != nil {
 		return conflict
 	}
-	if p.codec != "text" && p.codec != "msgpack" {
-		return errors.New("--input-codec is required and must be text or msgpack")
-	}
-	if p.target != "json" {
-		return errors.New("--to must be json for local inspection")
+	switch p.codec {
+	case "text":
+		if p.target != "json" {
+			return errors.New("--to must be json for text inspection")
+		}
+	case "msgpack":
+		if p.target != "json" && p.target != "msgpack" {
+			return errors.New("--to must be json or explicit msgpack")
+		}
+	case "json", "msgpack-json":
+		if !cmd.Flags().Changed("to") || p.target != "msgpack" {
+			return errors.New("JSON import requires explicit --to msgpack")
+		}
+	default:
+		return errors.New("--input-codec is required and must be text, msgpack, json or msgpack-json")
 	}
 	return nil
 }
@@ -121,6 +132,11 @@ func runLocalInput(opts RunOptions, p localOptions, n natsOptions, process *nats
 		}
 		return &emittedError{cause: errors.New(message)}
 	}
+	if p.target == "msgpack" {
+		if err := binaryDestination(opts.Stdout); err != nil {
+			return fail("destination", err)
+		}
+	}
 	var filter, project *query.Inspection
 	var err error
 	if n.filterSet {
@@ -149,9 +165,18 @@ func runLocalInput(opts RunOptions, p localOptions, n natsOptions, process *nats
 	if err != nil {
 		return fail("acquire", err)
 	}
+	profile := msgpackview.RichJSON
+	if p.codec == "json" {
+		profile = msgpackview.OrdinaryJSON
+	}
 	decode := textview.Decode
-	if p.codec == "msgpack" {
+	switch p.codec {
+	case "msgpack":
 		decode = msgpackview.Decode
+	case "json", "msgpack-json":
+		decode = func(ctx context.Context, body []byte) (omap.Value, error) {
+			return msgpackview.ReadJSON(ctx, body, profile)
+		}
 	}
 	value, err := decode(ctx, data)
 	if err != nil {
@@ -172,11 +197,23 @@ func runLocalInput(opts RunOptions, p localOptions, n natsOptions, process *nats
 			return fail("project", err)
 		}
 	}
-	encoded, spans, err := inspectionJSON(ctx, value, display.Terminal(opts.Stdout), display.Enabled(opts.Stdout))
+	var encoded []byte
+	var spans []display.Span
+	if p.target == "msgpack" {
+		encoded, err = msgpackview.Encode(ctx, value, profile)
+	} else {
+		encoded, spans, err = inspectionJSON(ctx, value, display.Terminal(opts.Stdout), display.Enabled(opts.Stdout))
+	}
 	if err != nil {
 		return fail("encode", err)
 	}
-	if err = display.Write(&natsWriter{ctx: ctx, w: opts.Stdout}, encoded, spans); err != nil {
+	writer := &natsWriter{ctx: ctx, w: opts.Stdout}
+	if p.target == "msgpack" {
+		_, err = writer.Write(encoded)
+	} else {
+		err = display.Write(writer, encoded, spans)
+	}
+	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return fail("write", err)
 		}

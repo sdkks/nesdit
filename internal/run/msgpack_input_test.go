@@ -143,7 +143,7 @@ func TestMsgpackFlagIsolation(t *testing.T) {
 		{"--input-file", "-", "--input-codec", "msgpack"},
 		{"--input-file", "a", "--input-file", "b", "--input-codec", "msgpack"},
 		{"--input-file", "a", "--input-stdin", "--input-codec", "msgpack"},
-		{"--input-codec", "msgpack"}, msgpackArgs("position"), msgpackArgs("--to", "msgpack"),
+		{"--input-codec", "msgpack"}, msgpackArgs("position"), msgpackArgs("--to", "yaml"),
 		msgpackArgs("--bfbs", "schema.bfbs"),
 		{"--protobuf-stdin", "--input-codec", "msgpack"},
 		{"--nats", "events", "--nats-codec", "msgpack"},
