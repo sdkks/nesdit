@@ -132,9 +132,9 @@ and full kcat feature parity.
 **Demo outcome:** inspect a bounded set of Kafka records, locate them by partition and
 offset, and filter or project their payload views without changing application-group state.
 
-## Whole-body UTF-8 inspection — development source
+## Whole-body UTF-8 inspection — available in 0.7.0
 
-The current source supports explicit file/stdin text inspection and native Core
+Explicit file/stdin text inspection and native Core
 or JetStream history `--nats-codec text`. Whole valid UTF-8 bodies become strings;
 queries select JSON views without modifying input or broker state. Empty bodies,
 BOM, NUL and whitespace remain content. Invalid UTF-8 fails; arbitrary-byte viewing
@@ -142,9 +142,9 @@ and raw-text export are not included. See the [text guide](modes/text.md) for th
 source selectors, exact output-size limits and stop behavior. This is not a new
 published release announcement.
 
-## Local MessagePack inspection and conversion — development source
+## Local MessagePack inspection and conversion — available in 0.7.0
 
-The current source supports one local MessagePack value from explicit file or
+Inspect one local MessagePack value from explicit file or
 stdin, with default JSON inspection or explicit `--to msgpack`. Ordinary `json`
 and rich `msgpack-json` sources require explicit `--to msgpack`. Maps retain
 ordered duplicate/compound entries; wrappers distinguish integers, floats, binary,
@@ -155,12 +155,11 @@ regardless of color settings, stages completely and adds no LF or markup.
 Independent source/semantic/view/output limits apply; reconstruction requires both
 representations to fit. See the [MessagePack guide](modes/msgpack.md) for the exact
 grammar, numeric policy, shell-redirection risks and value-versus-wire fidelity.
-No broker MessagePack or binary in-place editing is included. This development
-capability is not a new published release announcement.
+No broker MessagePack or binary in-place editing is included.
 
-## Read-only FlatBuffers inspection — development source
+## Read-only FlatBuffers inspection — available in 0.7.0
 
-The current source inspects one local ordinary FlatBuffers payload against a
+Inspect one local ordinary FlatBuffers payload against a
 separate ordinary BFBS schema (`--input-codec flatbuffers --bfbs FILE`,
 JSON-only output). The whole schema is validated and compiled to a finite
 root-reachable plan before payload acquisition; the checked reader validates
@@ -171,8 +170,7 @@ Root-reachable arrays, union vectors, 64-bit vectors/offsets and the
 default-strings feature are rejected during preparation. Absent scalar
 defaults are BFBS-authoritative: compiler-omitted original `-0` and >int64
 unsigned defaults read as `0`, a documented fidelity boundary. See the
-[FlatBuffers guide](modes/flatbuffers.md) for the full profile. This
-development capability is not a new published release announcement.
+[FlatBuffers guide](modes/flatbuffers.md) for the full profile.
 
 ## Local formats and conversion — future work
 

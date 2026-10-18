@@ -1,7 +1,6 @@
 # Local MessagePack inspection and conversion
 
-Available in the current development source (`make build`), not a new release
-announcement. Inspect one local MessagePack value as **MessagePack JSON v1**:
+Available since 0.7.0. Inspect one local MessagePack value as **MessagePack JSON v1**:
 
 ```sh
 bin/nesdit --input-file event.msgpack --input-codec msgpack > event.view.json

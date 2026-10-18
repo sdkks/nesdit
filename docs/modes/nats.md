@@ -19,9 +19,9 @@ records with explicit sequence/time bounds. History is a separate selector with
 its own server-version and INFO/GET permission requirements; it does not change
 Core's live envelope or support policy.
 
-## UTF-8 payloads (development source)
+## UTF-8 payloads
 
-The current development source also supports `--nats-codec text`:
+Also supported since 0.7.0 with `--nats-codec text`:
 
 ```sh
 bin/nesdit --nats 'logs.>' --server tls://broker.example.com:4222 \

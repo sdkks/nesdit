@@ -1,8 +1,7 @@
 # Whole-body UTF-8 inspection
 
-Available in the current development source; these examples do not announce a
-new published release. Build the checkout with `make build` and use `bin/nesdit`,
-or use a binary built from this source.
+Available since 0.7.0. These examples use `bin/nesdit` from `make build`
+or an installed binary built from this source.
 
 ```sh
 bin/nesdit --input-file notes.txt --input-codec text

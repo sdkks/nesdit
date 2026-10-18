@@ -63,9 +63,9 @@ replacement/disappearance fails, but changes between checks can remain undetecte
 Rerunning starts a new observation with a potentially different retained range;
 a displayed sequence is not a guaranteed resume token.
 
-## UTF-8 bodies (development source)
+## UTF-8 bodies
 
-The current development source supports `--nats-codec text` with the same history
+`--nats-codec text` is supported since 0.7.0 with the same history
 selector, bounds and permissions:
 
 ```sh

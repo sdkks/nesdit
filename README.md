@@ -63,7 +63,7 @@ nesdit config.json --output-format yaml --query '.'
 nesdit -i deploy.yaml --argjson replicas "$REPLICAS" --query '.replicas = $replicas'
 ```
 
-## Whole-body UTF-8 inspection (development source)
+## Whole-body UTF-8 inspection
 
 ```sh
 bin/nesdit --input-file notes.txt --input-codec text
@@ -87,7 +87,7 @@ See the [text inspection guide](docs/modes/text.md) for source isolation, fixed
 10 MiB input and exact 16 MiB JSON-output limits, safe redirection, and cooperative
 versus process interruption.
 
-## Local MessagePack inspection and conversion (development source)
+## Local MessagePack inspection and conversion
 
 ```sh
 bin/nesdit --input-file event.msgpack --input-codec msgpack > event.view.json
@@ -122,7 +122,7 @@ queries, deterministic encoding and independent limits. Semantic reconstruction
 requires both representations to fit: a 10–16 MiB rich JSON export exceeds the
 10 MiB import cap. Broker MessagePack and direct YAML/TOML conversion
 remain future work; this source capability does not announce a published release.
-## Read-only FlatBuffers inspection (development source)
+## Read-only FlatBuffers inspection
 
 The current source inspects one local ordinary FlatBuffers payload against one
 separate ordinary BFBS compiled schema and emits a known-field JSON view.

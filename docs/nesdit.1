@@ -183,8 +183,7 @@ flag is an explicit alias provided for documentation purposes.
 .BR \-h ", " \-\-help
 Show help and exit.
 .SH UTF-8 INSPECTION
-Whole-body text inspection is available in the current development source;
-this documents source capability, not a new published release.
+Whole-body text inspection is available since 0.7.0.
 .TP
 .B --input-file FILE
 Read exactly one nonempty regular-file path. Commas are literal; repeated files,
@@ -246,7 +245,7 @@ worker. Callers must unblock I/O. No new Windows bounded-stop promise.
 Success/false filter exits 0, failure 1, cancellation 130. Diagnostics identify
 stages/categories without body, query or evaluator contents. See the text guide.
 .SH MESSAGEPACK INSPECTION AND CONVERSION
-Available in development source; no new published release is announced.
+Available since 0.7.0.
 .B nesdit --input-file event.msgpack --input-codec msgpack
 or pipe one body to
 .B nesdit --input-stdin --input-codec msgpack
@@ -335,7 +334,7 @@ the shell can truncate it before nesdit starts. No managed output, in-place edit
 or backup is provided. No new Windows bounded-stop promise.
 See the MessagePack guide for the full grammar, resource and lifecycle contract.
 .SH FLATBUFFERS INSPECTION
-Available in development source; no new published release is announced.
+Available since 0.7.0.
 .B nesdit --input-file event.bin --input-codec flatbuffers --bfbs schemas/event.bfbs
 inspects one local ordinary FlatBuffers payload against one separate ordinary
 BFBS compiled schema. --bfbs is required, must be a regular file distinct from

@@ -1,7 +1,6 @@
 # Read-only FlatBuffers inspection
 
-Available in the current development source (`make build`), not a new release
-announcement. Inspect one local ordinary FlatBuffers payload against one
+Available since 0.7.0. Inspect one local ordinary FlatBuffers payload against one
 separate ordinary BFBS compiled schema and receive a known-field JSON view:
 
 ```sh
